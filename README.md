@@ -29,3 +29,5 @@ In a former tool which i will post to the github eventually can be used as a res
 The next steps I wish to add include reintroducing lasso regression to the ensemble which is really just a dichotomy right now, and to build a dashboard for this model to pipeline into that runs analyses on our* positions.
 
 Our* - this model's best implememtation is in a quasi-quant-hedge-fund currently on a paper trader but soon we will run it on real hard earned cash because who can stop me.
+
+There are two runnable models in the GitHub Currently (1/19), the fist of which is the overnight model that runs on a chunk of the S&P500, the second of which is an analysis tool if you want to check out more information on a single ticker and date combo. 

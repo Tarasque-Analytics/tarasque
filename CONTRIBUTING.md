@@ -1,4 +1,4 @@
-Basic commands for stupid mfs:
+Basic commands pipeline for non-cs users:
 
 git pull (do before every editing session)  
 git add . (used to add modifications to a commit)  

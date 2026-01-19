@@ -18,7 +18,7 @@ Members:
 - David Lamboni (UMD Economics & Information Science)
 
 Team 1 tasks: 
-- Write up legal documentation, collect capital, set up trading account, research hedging requirements to have team 2 implement.
+- Write up legal documentation, collect capital, set up trading account, find securities with a high z score and low RMSE.
 
 Team 2 tasks:
 - reimplement lasso regression, speed up data capture and analysis, frame data and advise implementation for team 3.

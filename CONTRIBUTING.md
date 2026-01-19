@@ -1,4 +1,4 @@
-Basic commands:
+Basic commands for stupid mfs:
 
 git pull (do before every editing session)
 git add . (used to add modifications to a commit)

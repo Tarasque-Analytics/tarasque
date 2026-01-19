@@ -1,0 +1,30 @@
+There will be three teams with some overlap:
+
+Team 1: Finance Bro Team
+Members:
+- Brian Dwyer (UMD Finance & Supply Chain)
+- Gabriel Morales (CU Boulder Finance & Accounting)
+- Romir Chandra (UMD Finance & Economics)
+- Leo Di Pietro (UMD Economics)
+
+Team 2: Data Collection & Analyisis
+Members:
+- David Lamboni (UMD Economics & Information Science)
+- Romir Chandra (UMD Finance & Economics)
+- Leo Di Pietro (UMD Economics)
+
+Team 3: Software Team 
+Members:
+- Matthew Yu (UMD Computer Science & Economics)
+- Calvin Courbois (UNC Computer Science)
+- David Lamboni (UMD Economics & Information Science)
+
+Team 1 tasks: 
+- Write up legal documentation, collect capital, set up trading account, research hedging requirements to have team 2 implement.
+
+Team 2 tasks:
+- reimplement lasso regression, speed up data capture and analysis, frame data and advise implementation for team 3.
+
+Team 3 tasks: 
+- set up web application with research dashboard that reconsiles and applies ML logic to past predictions and positions.
+

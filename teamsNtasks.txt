@@ -4,8 +4,6 @@ Team 1: Finance Bro Team
 Members:
 - Brian Dwyer (UMD Finance & Supply Chain)
 - Gabriel Morales (CU Boulder Finance & Accounting)
-- Romir Chandra (UMD Finance & Economics)
-- Leo Di Pietro (UMD Economics)
 
 Team 2: Data Collection & Analyisis
 Members:

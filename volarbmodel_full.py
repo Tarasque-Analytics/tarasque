@@ -12,6 +12,9 @@ logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 warnings.filterwarnings("ignore", category=UserWarning)  # Broader sklearn/joblib catch-all
 warnings.filterwarnings("ignore", category=ResourceWarning)  # For unclosed sqlite/yfinance DBs
 warnings.filterwarnings("ignore", category=RuntimeWarning)  # Math/array ops
+# Add this SPECIFIC silence for the parallel warning
+warnings.filterwarnings("ignore", message=".*sklearn.utils.parallel.delayed.*")
+warnings.filterwarnings("ignore", module="sklearn.utils.parallel")
 
 import time
 import csv
@@ -45,6 +48,10 @@ warnings.filterwarnings("ignore", category=UserWarning, module="sklearn.utils.pa
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="pandas.core.arraylike")
 warnings.filterwarnings("ignore", category=ResourceWarning)
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
+# Add this SPECIFIC silence for the parallel warning
+import warnings
+warnings.filterwarnings("ignore", message=".*sklearn.utils.parallel.delayed.*")
+warnings.filterwarnings("ignore", module="sklearn.utils.parallel")
 
 # --- CORE LIBRARIES ---
 import xgboost as xgb
@@ -53,6 +60,29 @@ from sklearn.metrics import mean_squared_error
 from sklearn.linear_model import Lasso
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
+
+# --- ADD THESE IMPORTS ---
+# REMOVE: import alpaca_trade_api as tradeapi
+# ADD THESE:
+from alpaca.trading.client import TradingClient
+from alpaca.trading.requests import GetOptionContractsRequest
+from alpaca.data.historical.option import OptionHistoricalDataClient
+from alpaca.data.requests import OptionSnapshotRequest
+from scipy.optimize import minimize
+
+# --- CONFIGURATION ---
+TOTAL_AUM = 5000  # Your specific allowance
+OPTIONS_BUDGET = TOTAL_AUM * 1.0  # Use full budget for the optimizer
+MIN_DTE = 150   # Target 5-13 months out (Vega plays)
+MAX_DTE = 400
+MAX_SPREAD_PCT = 0.20 # Kill trade if spread is > 20% of price
+WFA_STEP_DAYS = 25  # From your original
+WFA_NUM_STEPS = 5   # From your original
+
+# ALPACA KEYS (Enter your Paper Trading keys here)
+ALPACA_API_KEY = "PKCLNUEPLFGA3PYWJWUGDI6JXQ"
+ALPACA_SECRET_KEY = "8HMxb9TNNzDYa4mq3WjkqRXYkmzWgwsvTzNSYHwa3bQj"
+ALPACA_BASE_URL = "https://paper-api.alpaca.markets"
 
 # Dark mode bc its cool asf
 
@@ -71,11 +101,6 @@ sns.set(style="dark", rc={
 from pandas.tseries.holiday import USFederalHolidayCalendar
 from pandas.tseries.offsets import CustomBusinessDay
 
-# ---------------- CONFIGURATION ----------------
-TOTAL_AUM = 20000
-OPTIONS_BUDGET = TOTAL_AUM * 0.10
-WFA_STEP_DAYS = 25
-WFA_NUM_STEPS = 5
 
 # DYNAMIC HOLIDAY GENERATION (No more hardcoding)
 cal = USFederalHolidayCalendar()
@@ -113,6 +138,37 @@ def get_trading_days(start_date, end_date):
     days = np.busday_count(s, e, holidays=HOLIDAYS_NP)
     return max(1, days + 1)
 
+def download_global_macros():
+    """Download macro bundle once at the start."""
+    print(f"[SYSTEM] Downloading Global Macro Bundle...")
+    macro_tkrs = ["SPY", "XLK", "^VIX", "^VVIX", "HYG", "IEI", "^TNX", 
+                  "CL=F", "DX-Y.NYB", "XLP", "^IRX", "XLF", "XLE", "XLV", "IWM"]
+    try:
+        data = yf.download(macro_tkrs, start="2019-01-01", interval="1d", progress=False, auto_adjust=True)
+        # Create a clean DataFrame
+        macro_df = pd.DataFrame(index=data.index)
+        # Mapping logic (same as your original, just vectorized)
+        mapping = {
+            "^VIX": "VIX", "^VVIX": "VVIX", "HYG": "HYG", "IEI": "IEI",
+            "^TNX": "TNX_10Y", "SPY": "GSPC", "XLK": "XLK", "CL=F": "OIL",
+            "DX-Y.NYB": "USD", "XLP": "XLP", "^IRX": "IRX",
+            "XLF": "XLF", "XLE": "XLE", "XLV": "XLV", "IWM": "IWM"
+        }
+        for tkr, name in mapping.items():
+            # Handle multi-level column index if necessary
+            try:
+                col_data = data['Close'][tkr]
+            except KeyError:
+                continue
+            macro_df[name] = col_data
+            if name in ["GSPC", "XLK", "OIL", "USD", "HYG", "XLE"]:
+                macro_df[f"ret_{name.lower()}"] = np.log(macro_df[name] / (macro_df[name].shift(1) + 1e-9))
+                macro_df[f"{name.lower()}_rv"] = macro_df[f"ret_{name.lower()}"].rolling(21).std() * np.sqrt(252)
+        return macro_df.ffill().fillna(0)
+    except Exception as e:
+        print(f"[ERROR] Global Macro Fetch Failed: {e}")
+        return pd.DataFrame()
+    
 def download_history(ticker):
     import datetime
     # We use 'today' as the end date. yfinance handles 'today' as 'up to the last available minute'
@@ -164,6 +220,41 @@ def download_history(ticker):
     
     print(f"Success. Latest Point: {df.index[-1].date()}")
     return df.sort_index()
+
+def optimize_tarasque_portfolio(results_df, total_budget=5000):
+    """Calculates the Efficient Frontier weights for the final portfolio."""
+    print("\n--- Running Portfolio Optimization (Max Sharpe) ---")
+    
+    # 1. Filter for valid data
+    df = results_df.copy()
+    df = df[df['Zscore'] > 0] # Only look at positive edges
+    if df.empty: return df
+    
+    # 2. Metric: Expected Edge adjusted by Model Confidence (RMSE)
+    df['alpha_score'] = df['Zscore'] / (df['RMSE'] + 1e-9)
+    
+    num_assets = len(df)
+    init_weights = np.array([1.0 / num_assets] * num_assets)
+    # Bounds: Max 15% allocation per single contract to prevent blowups
+    bounds = tuple((0, 0.15) for _ in range(num_assets))
+    
+    def objective(weights):
+        # Maximize Alpha Score per unit of risk (simplified variance)
+        port_alpha = np.dot(weights, df['alpha_score'].values)
+        port_risk = np.sqrt(np.dot(weights.T, weights)) 
+        return -port_alpha / (port_risk + 1e-9) # Negative because we minimize
+
+    constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1.0})
+    
+    try:
+        opt = minimize(objective, init_weights, method='SLSQP', bounds=bounds, constraints=constraints)
+        df['Optimal_Weight'] = opt.x
+        df['Capital_Allocation'] = df['Optimal_Weight'] * total_budget
+    except Exception as e:
+        print(f"[OPTIMIZER FAILED] Defaulting to equal weight. Error: {e}")
+        df['Capital_Allocation'] = total_budget / num_assets
+        
+    return df.sort_values('Capital_Allocation', ascending=False)
 
 
 def build_features(df, ticker, H_trading_days):
@@ -677,30 +768,29 @@ def auto_hedge_recommendations(df_full, final_m, preds, sigma_model, opt_all, TO
 import os
 import csv
 
-def analyze_z_continuum(ticker, expuries, df_raw, preds, avg_rmse, m_xgb, m_rf, w_xgb, w_rf):
-    """Saves a 'Term Structure of Edge' chart for the ticker."""
-    continuum_data = []
-    today = date.today()
-    
-    # Analyze the first 8 available expuries
-    for exp in expuries[:8]:
-        try:
-            exp_dt = pd.to_datetime(exp)
-            days = (exp_dt.date() - today).days
-            if days < 3: continue
-            
-            # Predict for this horizon
-            p_xgb = m_xgb.predict(df_raw[preds].iloc[[-1]])[0]
-            p_rf = m_rf.predict(df_raw[preds].iloc[[-1]])[0]
-            sigma_exp = np.sqrt(np.exp((p_xgb * w_xgb + p_rf * w_rf) + 0.5 * avg_rmse**2))
-            
-            # Fetch Market IV
-            chain = yf.Ticker(ticker).option_chain(exp)
-            mkt_iv = pd.concat([chain.calls, chain.puts])['impliedVolatility'].median()
-            
-            z = (sigma_exp - mkt_iv) / (avg_rmse + 1e-9)
-            continuum_data.append({"Days": days, "Z": z})
-        except: continue
+def analyze_z_continuum(ticker, continuum_data, run_folder):
+    """Plots the Z-Score Term Structure for the ticker."""
+    if continuum_data:
+        plt.figure(figsize=(12, 5))
+        d_val = [x['Days'] for x in continuum_data]
+        z_val = [x['Z'] for x in continuum_data]
+        
+        plt.plot(d_val, z_val, marker='o', color='#00FFCC', ls='--', lw=2, label='Alpha Z-Score')
+        plt.axhline(1.96, color='#FF3366', ls=':', label='95% Confidence Upper')
+        plt.axhline(-1.96, color='#FF3366', ls=':', label='95% Confidence Lower')
+        plt.axhline(0, color='white', lw=0.5)
+        
+        plt.fill_between(d_val, z_val, 0, where=(np.array(z_val) >= 0), color='#00FFCC', alpha=0.1)
+        plt.fill_between(d_val, z_val, 0, where=(np.array(z_val) < 0), color='#FF3366', alpha=0.1)
+        
+        plt.title(f"{ticker} - Volatility Arbitrage Continuum (Term Structure of Edge)", fontsize=14)
+        plt.xlabel("Days to Expiration")
+        plt.ylabel("Z-Score (Standard Deviations)")
+        plt.legend()
+        plt.grid(alpha=0.2)
+        
+        plt.savefig(f"{run_folder}/{ticker}_Continuum.png")
+        plt.close()
 
     if continuum_data:
         plt.figure(figsize=(10, 4))
@@ -710,8 +800,6 @@ def analyze_z_continuum(ticker, expuries, df_raw, preds, avg_rmse, m_xgb, m_rf, 
         plt.title(f"{ticker} - Z-Score Horizon Continuum")
         plt.savefig(f"Results/{ticker}_Continuum.png")
         plt.close()
-# --- 2. THE UPDATED MAIN (Parts 1 & 2 Integrated) ---
-# ---------------- BATCH RUNNER ----------------
 def main():
     # Create run folder and report
     timestamp = time.strftime("%Y%m%d-%H%M%S")

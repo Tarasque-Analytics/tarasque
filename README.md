@@ -22,8 +22,6 @@ AMD Ryzen 7 7800X3D 8-Core (bottleneck)
 
 Model description: this model uses machine learning models (Random Forest & XGBoost) and factor & macroeconomic variables (ex: tech sector etf as an aggregator of factor exposure) to track panel correlation and understand historical (5yr) correlations - building an exposure map / understanding the movements of the stock. With this information, the model then judges which direction (less or more volatile) each of its factors is moving towards to recalculate its estimate for volatility. Using this estimate, and the RMSE (Root Mean Squared Error) and a pseudo-VIF (Variance inflaion factor) the model creates a Z-like statistic to quantify statistical dissimilarity of prediction vs market IV. 
 
-Application: While the model provides indication on contracts being under/over priced, these results typically indicate underlying pressure on the securities, and are a single piece of puzzle used to create the trade. Most Contracts being purchased are >180 days, however we do not intend on holding for the duration of the contracts, but more as protection agaisnt volatile markets in derivatives, with the ability 
-
 This gap between prediction is not in and of itself profit - it can show both real arbitrage and market fear priced in - especially when market IV > Model RV, in this case hesitate, however from what I have seen thus far if Model RV > Market IV, guns should metaphorically blaze. 
 
 In a former tool which i will post to the github eventually can be used as a research tool if the overnight tracker / autonomous model finds ticker/expiry combos that are statistically significant - which shows our best "deal" and a ton of other useful metrics. 

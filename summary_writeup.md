@@ -51,7 +51,7 @@ Mostt people use ML for price prediction toys, i chose vol which is tradable and
 
 Model does not model intraday execution (not automated), does not incorporate transaction costs, has no bid ask dynamic feature, does nothing with skew or smile, doesnt view portfolio (other part)
 
-Application: While the model provides indication on contracts being under/over priced, these results typically indicate underlying pressure on the securities, and are a single piece of puzzle used to create the trade. Most Contracts being purchased are >180 days, however we do not intend on holding for the duration of the contracts, but more to capture value while keeping low theta decay
+Application: While the model provides indication on contracts being under/over priced, these results typically indicate underlying pressure on the securities, and are a single piece of puzzle used to create the trade. Most Contracts being purchased are >180 days, however we do not intend on holding for the duration of the contracts, but more to capture value while keeping low theta decay.
 
 The other model does factor analysis on the entire portfolio, regresses on the factors to find neutralizations, finding exposures and runs mini vol model.
 - Takes real positions

@@ -20,6 +20,9 @@ Our* - this model's best implememtation is in a quasi-quant-hedge-fund currently
 
 There are two runnable models in the GitHub Currently (1/19), the fist of which is the overnight model that runs on a chunk of the S&P500, the second of which is an analysis tool if you want to check out more information on a single ticker and date combo. 
 
+## For site developers
+
+Please use Node version 22.21.1 for development purposes
 
 ### Below is the default README from React
 

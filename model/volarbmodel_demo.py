@@ -2,6 +2,7 @@ import warnings
 import logging
 import os
 
+
 # NUCLEAR SILENCE: This stops all background "chatter" and warnings in Python 3.14
 os.environ['PYTHONWARNINGS'] = 'ignore'
 os.environ['KMP_WARNINGS'] = 'off'
@@ -70,6 +71,28 @@ from alpaca.data.historical.option import OptionHistoricalDataClient
 from alpaca.data.requests import OptionSnapshotRequest
 from scipy.optimize import minimize
 
+import xgboost as xgb
+from sklearn.ensemble import RandomForestRegressor
+import numpy as np
+
+class VolatilityEnsemble:
+    def __init__(self, xgb_params=None, rf_params=None):
+        self.xgb_model = xgb.XGBRegressor(**(xgb_params or {}))
+        self.rf_model = RandomForestRegressor(**(rf_params or {}))
+        self.weights = {'xgb': 0.5, 'rf': 0.5}
+
+    def train(self, X_train, y_train):
+        # Fit models
+        self.xgb_model.fit(X_train, y_train)
+        self.rf_model.fit(X_train, y_train)
+        # Add your WFA logic here to update weights dynamically
+        
+    def predict(self, X_live):
+        p_xgb = self.xgb_model.predict(X_live)
+        p_rf = self.rf_model.predict(X_live)
+        # Return the weighted ensemble prediction
+        return (p_xgb * self.weights['xgb']) + (p_rf * self.weights['rf'])
+
 # --- CONFIGURATION ---
 TOTAL_AUM = 5000  # Your specific allowance
 OPTIONS_BUDGET = TOTAL_AUM * 1.0  # Use full budget for the optimizer
@@ -130,6 +153,56 @@ param_grids = {
         'min_samples_leaf': [5, 10]
     }
 }
+
+import json
+
+# --- [PART 3: JSON PACKAGING UTILS] ---
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (np.integer, int)): return int(obj)
+        elif isinstance(obj, (np.floating, float)): return float(obj)
+        elif isinstance(obj, np.ndarray): return obj.tolist()
+        return super(NumpyEncoder, self).default(obj)
+
+def save_batch_dashboard_json(run_folder, ticker, expiry, S0, sigma, z_score, regime, paths, opt_all):
+    """
+    Saves the 'digital twin' of your analysis for the website to read later.
+    """
+    # 1. Summarize Monte Carlo (compress 5000 paths -> 3 lines)
+    path_summary = {
+        "p95": np.percentile(paths, 95, axis=0).tolist(),
+        "p05": np.percentile(paths, 5, axis=0).tolist(),
+        "mean": np.mean(paths, axis=0).tolist(),
+        "steps": list(range(paths.shape[1]))
+    }
+
+    # 2. Extract Actionable Trades
+    trades_payload = []
+    if not opt_all.empty:
+        # Save top 10 actionable trades
+        signals = opt_all[opt_all["Action"] != "NONE"].copy()
+        if not signals.empty:
+            trades_payload = signals.sort_values("Edge_Pct_Val", ascending=False).head(10)[
+                ["Type", "Strike", "Mkt_Px", "Fair_Px", "Edge_Pct_Val", "PoP"]
+            ].to_dict(orient="records")
+
+    # 3. Build & Save
+    payload = {
+        "meta": {
+            "ticker": ticker,
+            "expiry": str(expiry),
+            "spot_price": S0,
+            "regime": regime,
+            "model_rv": round(sigma, 4),
+            "z_score": round(z_score, 2)
+        },
+        "charts": {"monte_carlo": path_summary},
+        "trades": trades_payload
+    }
+
+    filename = f"{run_folder}/{ticker}_payload.json"
+    with open(filename, "w") as f:
+        json.dump(payload, f, cls=NumpyEncoder, indent=4)
 
 # ---------------- TRADING DAYS ----------------
 def get_trading_days(start_date, end_date):
@@ -343,22 +416,46 @@ def get_market_regime(live_row):
         return "TRENDING"
     return "RANGING"
 
-def bs_pricing(S, K, T, r, sigma, type_="call"):
-    d1 = (np.log(S/K) + (r + 0.5*sigma**2)*T) / (sigma*np.sqrt(T))
-    d2 = d1 - sigma*np.sqrt(T)
-    if type_ == "call": return S*norm.cdf(d1) - K*np.exp(-r*T)*norm.cdf(d2)
-    return K*np.exp(-r*T)*norm.cdf(-d2) - S*norm.cdf(-d1)
+import numpy as np
+from scipy.stats import norm
+from scipy.optimize import brentq
 
-def get_iv(S, K, T, r, price, type_="call"):
-    def objective_function(sigma):
-        return bs_pricing(S, K, T, r, sigma, type_) - price
-    intrinsic = max(0, S - K if type_ == "call" else K - S)
-    if price <= intrinsic:
-        return 0.0
-    try:
-        return brentq(objective_function, 1e-4, 5.0, xtol=1e-6)
-    except (ValueError, RuntimeError):
-        return np.nan
+class OptionMath:
+    @staticmethod
+    def bs_pricing(S, K, T, r, sigma, type_="call"):
+        # Edge Case: If time is 0, return intrinsic value
+        if T <= 1e-9:
+            return max(0, S - K) if type_ == "call" else max(0, K - S)
+
+        d1 = (np.log(S/K) + (r + 0.5*sigma**2)*T) / (sigma*np.sqrt(T))
+        d2 = d1 - sigma*np.sqrt(T)
+        
+        if type_ == "call":
+            return S*norm.cdf(d1) - K*np.exp(-r*T)*norm.cdf(d2)
+        else:
+            # FIX: Added actual Put formula
+            return K*np.exp(-r*T)*norm.cdf(-d2) - S*norm.cdf(-d1)
+    
+    @staticmethod
+    def get_iv(S, K, T, r, price, type_="call"):
+        # FIX: Check intrinsic first to avoid waste
+        intrinsic = max(0, S - K) if type_ == "call" else max(0, K - S)
+        
+        # If market price is below intrinsic (arbitrage/bad data), IV is 0
+        if price <= intrinsic + 1e-5:
+            return 0.0
+
+        # FIX: Define objective function properly nested
+        def objective_function(sigma):
+            # Must explicitly call the class method
+            return OptionMath.bs_pricing(S, K, T, r, sigma, type_) - price
+        
+        try:
+            # Attempt to find root between 0.01% and 500% IV
+            return brentq(objective_function, 1e-4, 5.0, xtol=1e-6)
+        except (ValueError, RuntimeError):
+            # FIX: Return NaN on failure so your dataframe knows it failed
+            return np.nan
 
 def decompose_volatility(df, ticker_ret, benchmark_ret):
     # 63-day rolling Beta (1 quarter of data)
@@ -396,8 +493,8 @@ def process_chain(chain, S0, T, r, sigma_forecast, paths):
             spread = ask - bid
             if spread / (mid + 1e-9) > 0.40: continue # Skip if spread > 40% of price
             
-            mkt_iv = get_iv(S0, K, T, r, mid, opt_type.lower())
-            fair_px = bs_pricing(S0, K, T, r, sigma_forecast, opt_type.lower())
+            mkt_iv = OptionMath.get_iv(S0, K, T, r, mid, opt_type.lower())
+            fair_px = OptionMath.bs_pricing(S0, K, T, r, sigma_forecast, opt_type.lower())
             
             if np.isnan(mkt_iv): continue
 
@@ -514,6 +611,54 @@ def run_monte_carlo(S0, sigma, T, rmse_vol, n_sims=5000):
     p20d = np.mean(paths[:, min(20, steps)])
     tail_risk = np.percentile(paths[:, -1], 5)
     return paths, p5d, p20d, tail_risk
+
+
+
+# [PART 3: Data Packaging]
+# Place this inside your existing script, near plot_full_dashboard
+
+def package_dashboard_payload(ticker, paths, opt_all, S0, sigma, p5d, p20d, tail_risk, z_score, regime):
+    """
+    Takes the exact same data you used for plotting, but packages it 
+    into a clean JSON dictionary for a website to consume.
+    """
+    
+    # 1. Compress Monte Carlo Paths (Websites can't handle 5000 paths x 252 steps)
+    # We send only percentiles and the mean to keep it fast.
+    path_summary = {
+        "p95": np.percentile(paths, 95, axis=0).tolist(), # Top 5% outcome
+        "p05": np.percentile(paths, 5, axis=0).tolist(), # Bottom 5% outcome
+        "mean": np.mean(paths, axis=0).tolist(),         # Average outcome
+        "steps": list(range(paths.shape[1]))             # X-Axis (Days)
+    }
+
+    # 2. Package Arbitrage Signals
+    # Filter for the "Actionable" trades only
+    if not opt_all.empty:
+        signals = opt_all[opt_all["Action"] != "NONE"].copy()
+        # Convert DataFrame to list of dictionaries
+        trades_payload = signals[["Type", "Strike", "Mkt_Px", "Fair_Px", "Edge_Pct_Val", "PoP"]].to_dict(orient="records")
+    else:
+        trades_payload = []
+
+    # 3. The Final "API Response"
+    return {
+        "meta": {
+            "ticker": ticker,
+            "spot_price": S0,
+            "regime": regime, 
+            "model_rv": round(sigma, 4),
+            "z_score": round(z_score, 2),
+            "forecast_5d": round(p5d, 2),
+            "forecast_20d": round(p20d, 2),
+            "stop_loss_95": round(tail_risk, 2)
+        },
+        "charts": {
+            "monte_carlo": path_summary
+            # Add other chart data here (e.g. Volatility Cone) if needed
+        },
+        "opportunities": trades_payload
+    }
 
 def plot_full_dashboard(paths, opt_all, S0, sigma, ticker, wfa_log, p5d, p20d, tail_risk, final_m, preds, rmse, H_trading, df_full):
     plt.close('all')
@@ -888,7 +1033,29 @@ def main():
                         "Ticker": ticker, "Expiry": exp, "Days_to_Expiry": days, "Zscore": round(z_score, 3), 
                         "RMSE": round(avg_rmse, 4), "MKTIV": round(mkt_iv, 4), "MODELRV": round(sigma_model, 4)
                     })
+
+                    # === [PART 3: SAVE DASHBOARD JSON - UNFILTERED] ===
+                    # We removed the 'if z_score > 0.5' check. 
+                    # Now it saves a dashboard file for EVERY ticker and expiry.
                     
+                    print(f"   [DASHBOARD] Generating assets for {ticker}...")
+                    
+                    # 1. Get Spot & Regime
+                    current_S0 = float(live_state["close_price"].iloc[0])
+                    regime = get_market_regime(live_state)
+
+                    # 2. Run Monte Carlo (Required for charts)
+                    # Optimization: If you find this too slow, you can lower n_sims to 1000 for low Z-scores
+                    paths, p5d, p20d, tail_risk = run_monte_carlo(current_S0, sigma_model, T_annualized, avg_rmse)
+
+                    # 3. Process Option Chain (Required for trade signals)
+                    chain_full = yf_ticker.option_chain(exp)
+                    opt_data = process_chain(chain_full, current_S0, T_annualized, 0.042, sigma_model, paths)
+
+                    # 4. Save the file
+                    save_batch_dashboard_json(run_folder, ticker, exp, current_S0, sigma_model, z_score, regime, paths, opt_data)
+                    # ======================================================
+
                     # Collect for continuum plot
                     continuum_data.append({"Days": days, "Z": z_score})
                     

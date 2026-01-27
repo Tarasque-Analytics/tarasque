@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+/* Global CSS configurations: imported in root.tsx */
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+html,
+body {
+  @apply bg-white dark:bg-gray-950;
+
+  @media (prefers-color-scheme: dark) {
+    color-scheme: dark;
+  }
+}

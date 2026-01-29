@@ -1,3 +1,3 @@
-import TickerView from "../pages/TickerView";
+import TickerView from "../pages/Ticker";
 
 export default TickerView;

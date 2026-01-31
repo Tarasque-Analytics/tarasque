@@ -2,11 +2,14 @@ import { Link } from "react-router";
 import {useState, useEffect } from "react";
 
 export default function Register() {
-  const [email, setEmail] = useState("user@example.com");
-  const [password, setPassword] = useState("password123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [reenterPassword, setReenterPassword] = useState("");
   const [passwordConfirmed, setPasswordConfirmed] = useState(false);
+  const [hasUpperLowerCase, setHasUpperLowerCase] = useState(false);
+  const [hasNumber, setHasNumber] = useState(false); 
+  const [hasSpecialChar, setHasSpecialChar] = useState(false);
 
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -19,12 +22,32 @@ export default function Register() {
 
   useEffect(() => {
     console.log("Checking password confirmation:", { password, reenterPassword });
-    // can add more checks for password strength here
-    if (password === reenterPassword && password.length > 0) {
+    if (password === reenterPassword && checkPasswordStrength(password)) {
       setPasswordConfirmed(true);
     }
+
   })
 
+  function checkPasswordStrength(pw: string): boolean {
+    let hasCapital = false;
+    let hasNumber = false;
+    let hasSpecial = false;
+    let hasLower = false;
+    for (let i = 0; i < pw.length; i++) {
+      const char = pw.charAt(i);
+      hasLower = hasLower || (char >= 'a' && char <= 'z');
+      hasCapital = hasCapital || (char >= 'A' && char <= 'Z');
+      hasNumber = hasNumber || (char >= '0' && char <= '9');
+      hasSpecial = hasSpecial || "!@#$%^&*()_+-=[]{}|;':\"\\,.<>/?".includes(char);
+    }
+
+    setHasUpperLowerCase(hasCapital && hasLower);
+    setHasNumber(hasNumber);
+    setHasSpecialChar(hasSpecial);
+
+
+    return hasCapital && hasNumber && hasSpecial && hasLower;
+  }
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100">
@@ -58,6 +81,21 @@ export default function Register() {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1" style={{ color: password.length >= 8 ? 'green' : 'red' }}>
+              Must be at least 8 characters long
+            </label>
+            <label className="block text-xs font-medium text-gray-700 mb-1" style={{ color: hasUpperLowerCase ? 'green' : 'red' }}>
+              Must include uppercase and lowercase letters
+            </label>
+            <label className="block text-xs font-medium text-gray-700 mb-1" style={{ color: hasNumber ? 'green' : 'red' }}>
+              Must include at least one number
+            </label>
+            <label className="block text-xs font-medium text-gray-700 mb-1" style={{ color: hasSpecialChar ? 'green' : 'red' }}>
+              Must include a special character
+            </label>
           </div>
 
           <div>

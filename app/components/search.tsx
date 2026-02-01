@@ -1,1 +1,0 @@
-// probably simply a ticker search, no need for fuzzys yet, however lowercase/upercase shouldnt be an issue if at all possible

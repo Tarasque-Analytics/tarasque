@@ -1,10 +1,26 @@
-import { type RouteConfig, route, index } from "@react-router/dev/routes";
+import {
+  type RouteConfig,
+  route,
+  index,
+  layout,
+} from "@react-router/dev/routes";
 
 export default [
-  route("dashboard", "routes/dashboard.tsx"),
-  route("login", "routes/login.tsx"),
-  route("ticker/:symbol", "routes/ticker.tsx"),
+  // Public routes (no auth req)
+  index("./routes/navigation.tsx"),
 
-  // leave wildcard route last to handle unmatched routes
-  route("*", "routes/$.tsx"),
+  // Auth routes
+  layout("./layouts/AuthLayout.tsx", [
+    route("login", "./routes/login.tsx"),
+    route("register", "./routes/register.tsx"),
+  ]),
+
+  // Protected routes (auth req)
+  layout("./layouts/ProtectedLayout.tsx", [
+    route("dashboard", "./routes/dashboard.tsx"),
+    route("ticker/:symbol", "./routes/ticker.tsx"),
+  ]),
+
+  // Wildcard route for 404/unmatched routes
+  route("*", "./routes/$.tsx"),
 ] satisfies RouteConfig;

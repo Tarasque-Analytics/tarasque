@@ -23,9 +23,9 @@ export default function TickerView() {
       </div>
 
       {/* 3-Column Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3">
         {/* Left Column */}
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col">
           {isLoading ? (
             <div className="bg-gray-200 h-64 rounded animate-pulse" />
           ) : (
@@ -34,7 +34,7 @@ export default function TickerView() {
         </div>
 
         {/* Center Column */}
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col">
           {isLoading ? (
             <div className="bg-gray-200 h-96 rounded animate-pulse" />
           ) : (
@@ -43,7 +43,7 @@ export default function TickerView() {
         </div>
 
         {/* Right Column */}
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col">
           {isLoading ? (
             <div className="bg-gray-200 h-64 rounded animate-pulse" />
           ) : (

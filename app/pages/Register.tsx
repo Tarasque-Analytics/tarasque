@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import {useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 
 export default function Register() {
   const [email, setEmail] = useState("");
@@ -8,25 +8,25 @@ export default function Register() {
   const [reenterPassword, setReenterPassword] = useState("");
   const [passwordConfirmed, setPasswordConfirmed] = useState(false);
   const [hasUpperLowerCase, setHasUpperLowerCase] = useState(false);
-  const [hasNumber, setHasNumber] = useState(false); 
+  const [hasNumber, setHasNumber] = useState(false);
   const [hasSpecialChar, setHasSpecialChar] = useState(false);
 
-
   const handleSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      setIsLoading(true);
-      console.log("Register attempt:", { email, password });
-      setIsLoading(false);
-    };
-
+    e.preventDefault();
+    setIsLoading(true);
+    console.log("Register attempt:", { email, password });
+    setIsLoading(false);
+  };
 
   useEffect(() => {
-    console.log("Checking password confirmation:", { password, reenterPassword });
+    console.log("Checking password confirmation:", {
+      password,
+      reenterPassword,
+    });
     if (password === reenterPassword && checkPasswordStrength(password)) {
       setPasswordConfirmed(true);
     }
-
-  })
+  });
 
   function checkPasswordStrength(pw: string): boolean {
     let hasCapital = false;
@@ -35,16 +35,16 @@ export default function Register() {
     let hasLower = false;
     for (let i = 0; i < pw.length; i++) {
       const char = pw.charAt(i);
-      hasLower = hasLower || (char >= 'a' && char <= 'z');
-      hasCapital = hasCapital || (char >= 'A' && char <= 'Z');
-      hasNumber = hasNumber || (char >= '0' && char <= '9');
-      hasSpecial = hasSpecial || "!@#$%^&*()_+-=[]{}|;':\"\\,.<>/?".includes(char);
+      hasLower = hasLower || (char >= "a" && char <= "z");
+      hasCapital = hasCapital || (char >= "A" && char <= "Z");
+      hasNumber = hasNumber || (char >= "0" && char <= "9");
+      hasSpecial =
+        hasSpecial || "!@#$%^&*()_+-=[]{}|;':\"\\,.<>/?".includes(char);
     }
 
     setHasUpperLowerCase(hasCapital && hasLower);
     setHasNumber(hasNumber);
     setHasSpecialChar(hasSpecial);
-
 
     return hasCapital && hasNumber && hasSpecial && hasLower;
   }
@@ -86,16 +86,28 @@ export default function Register() {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1" style={{ color: password.length >= 8 ? 'green' : 'red' }}>
+            <label
+              className="block text-xs font-medium text-gray-700 mb-1"
+              style={{ color: password.length >= 8 ? "green" : "red" }}
+            >
               Must be at least 8 characters long
             </label>
-            <label className="block text-xs font-medium text-gray-700 mb-1" style={{ color: hasUpperLowerCase ? 'green' : 'red' }}>
+            <label
+              className="block text-xs font-medium text-gray-700 mb-1"
+              style={{ color: hasUpperLowerCase ? "green" : "red" }}
+            >
               Must include uppercase and lowercase letters
             </label>
-            <label className="block text-xs font-medium text-gray-700 mb-1" style={{ color: hasNumber ? 'green' : 'red' }}>
+            <label
+              className="block text-xs font-medium text-gray-700 mb-1"
+              style={{ color: hasNumber ? "green" : "red" }}
+            >
               Must include at least one number
             </label>
-            <label className="block text-xs font-medium text-gray-700 mb-1" style={{ color: hasSpecialChar ? 'green' : 'red' }}>
+            <label
+              className="block text-xs font-medium text-gray-700 mb-1"
+              style={{ color: hasSpecialChar ? "green" : "red" }}
+            >
               Must include a special character
             </label>
           </div>
@@ -116,13 +128,16 @@ export default function Register() {
           </div>
 
           <button
-
             type="submit"
             disabled={isLoading || !passwordConfirmed}
             className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 rounded-lg transition disabled:opacity-50"
           >
             {isLoading ? "Registering..." : "Register"}
           </button>
+
+          <Link to="/login" className="text-sm text-blue-500 hover:underline">
+            Already have an account? Login here.
+          </Link>
         </form>
       </div>
     </div>

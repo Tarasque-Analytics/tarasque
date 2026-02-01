@@ -955,13 +955,8 @@ def main():
 
     # Full S&P 500 tickers (limited to first 75 for ~7 hours)
     TICKERS = [
-        'A', 'AAPL', 'ABBV', 'ABNB', 'ABT', 'ACGL', 'ACN', 'ADBE', 'ADI', 'ADM', 'ADP', 'ADSK', 
-        'AEE', 'AEP', 'AES', 'AFL', 'AIG', 'AIZ', 'AJG', 'AKAM', 'ALB', 'ALGN', 'ALL', 'ALLE', 
-        'AMAT', 'AMCR', 'AMD', 'AME', 'AMGN', 'AMP', 'AMT', 'AMZN', 'ANET', 'ANSS', 'AON', 'AOS', 
-        'APA', 'APD', 'APH', 'APTV', 'ARE', 'AVGO', 'AVY', 'AWK', 'AXON', 'AXP', 'AZO', 'BA', 
-        'BAC', 'BALL', 'BAX', 'BBWI', 'BBY', 'BDX', 'BEN', 'BF.B', 'BIIB', 'BK', 'BKNG', 'BKR', 
-        'BLDR', 'BLK', 'BMY', 'BR', 'BRK.B', 'BRO', 'BSX', 'BWA', 'BX', 'BXP', 'C', 'CAG', 'CAH', 
-        'CARR', 'CAT', 'CB', 'CBOE', 'CBRE', 'CCI'
+        'AAPL', 'AMD', 'AMZN', 'AVGO', 'MSFT'
+        'BAC', 'NVDA', 'CBRE', 'NFLX', 'GOOG', 'META', 'MS', 'UBER'
     ]  # Exactly 75 here (A to CCI)
 
     for ticker in TICKERS:

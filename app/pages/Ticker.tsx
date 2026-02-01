@@ -23,7 +23,7 @@ export default function TickerView() {
       </div>
 
       {/* 3-Column Layout */}
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column */}
         <div className="flex flex-col gap-6">
           {isLoading ? (

@@ -10,6 +10,7 @@ export default function Register() {
   const [hasUpperLowerCase, setHasUpperLowerCase] = useState(false);
   const [hasNumber, setHasNumber] = useState(false);
   const [hasSpecialChar, setHasSpecialChar] = useState(false);
+  const [emailError, setEmailError] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,14 +20,16 @@ export default function Register() {
   };
 
   useEffect(() => {
-    console.log("Checking password confirmation:", {
-      password,
-      reenterPassword,
-    });
-    if (password === reenterPassword && checkPasswordStrength(password)) {
-      setPasswordConfirmed(true);
-    }
-  });
+    const strengthOk = checkPasswordStrength(password);
+    setPasswordConfirmed(
+      password !== "" && password === reenterPassword && strengthOk,
+    );
+  }, [password, reenterPassword]);
+
+  function validateEmail(em: string) {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(em);
+  }
 
   function checkPasswordStrength(pw: string): boolean {
     let hasCapital = false;
@@ -64,10 +67,21 @@ export default function Register() {
               placeholder="Enter your email"
               value={email}
               style={{ color: "#000000" }}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setEmail(v);
+                setEmailError(
+                  v === "" || validateEmail(v)
+                    ? ""
+                    : "Please enter a valid email address.",
+                );
+              }}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
+            {emailError ? (
+              <p className="text-xs text-red-500 mt-1">{emailError}</p>
+            ) : null}
           </div>
 
           <div>
@@ -79,7 +93,11 @@ export default function Register() {
               placeholder="Enter your password"
               value={password}
               style={{ color: "#000000" }}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setPassword(v);
+                checkPasswordStrength(v);
+              }}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
@@ -125,6 +143,15 @@ export default function Register() {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
+            {reenterPassword ? (
+              password === reenterPassword ? (
+                <p className="text-xs text-green-600 mt-1">Passwords match</p>
+              ) : (
+                <p className="text-xs text-red-500 mt-1">
+                  Passwords do not match
+                </p>
+              )
+            ) : null}
           </div>
 
           <button

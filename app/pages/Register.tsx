@@ -63,6 +63,7 @@ export default function Register() {
               type="email"
               placeholder="Enter your email"
               value={email}
+              style={{ color: "#000000" }}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
@@ -77,6 +78,7 @@ export default function Register() {
               type="password"
               placeholder="Enter your password"
               value={password}
+              style={{ color: "#000000" }}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
@@ -106,6 +108,7 @@ export default function Register() {
               type="password"
               placeholder="Confirm your password"
               value={reenterPassword}
+              style={{ color: "#000000" }}
               onChange={(e) => setReenterPassword(e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               required

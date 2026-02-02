@@ -3,6 +3,7 @@ import { Outlet } from "react-router";
 import icon from "../assets/volarbear-icon.png";
 import name from "../assets/volarbear-name.png";
 import pfp from "../assets/profile-picture.png";
+import Search from "../components/ui/search";
 
 export default function ProtectedLayout() {
   return (
@@ -31,6 +32,7 @@ export default function ProtectedLayout() {
           />
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "flex-end" }}>
+          <Search />
           <img
             src={pfp}
             alt="Volarbear"

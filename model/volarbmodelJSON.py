@@ -164,11 +164,10 @@ class NumpyEncoder(json.JSONEncoder):
         elif isinstance(obj, np.ndarray): return obj.tolist()
         return super(NumpyEncoder, self).default(obj)
 
-def save_batch_dashboard_json(run_folder, ticker, expiry, S0, sigma, z_score, regime, paths, opt_all):
+def save_batch_dashboard_json(run_folder, ticker, expiry, S0, sigma, z_score, regime, paths, opt_all, hedge_data, feat_imp):
     """
-    Saves the 'digital twin' of your analysis for the website to read later.
+    Saves the enriched JSON payload for the dashboard.
     """
-    # 1. Summarize Monte Carlo (compress 5000 paths -> 3 lines)
     path_summary = {
         "p95": np.percentile(paths, 95, axis=0).tolist(),
         "p05": np.percentile(paths, 5, axis=0).tolist(),
@@ -176,31 +175,29 @@ def save_batch_dashboard_json(run_folder, ticker, expiry, S0, sigma, z_score, re
         "steps": list(range(paths.shape[1]))
     }
 
-    # 2. Extract Actionable Trades
     trades_payload = []
     if not opt_all.empty:
-        # Save top 10 actionable trades
-        signals = opt_all[opt_all["Action"] != "NONE"].copy()
-        if not signals.empty:
-            trades_payload = signals.sort_values("Edge_Pct_Val", ascending=False).head(10)[
-                ["Type", "Strike", "Mkt_Px", "Fair_Px", "Edge_Pct_Val", "PoP"]
-            ].to_dict(orient="records")
+        # Include full dictionary to capture Greeks/Metrics calculated in process_chain
+        trades_payload = opt_all[opt_all["Action"] != "NONE"].to_dict(orient="records")
 
-    # 3. Build & Save
     payload = {
         "meta": {
             "ticker": ticker,
             "expiry": str(expiry),
-            "spot_price": S0,
+            "spot_price": round(S0, 2),
             "regime": regime,
             "model_rv": round(sigma, 4),
             "z_score": round(z_score, 2)
         },
+        "explainability": {
+            "top_model_drivers": feat_imp  # Synced Name
+        },
+        "operational_risk": hedge_data,
         "charts": {"monte_carlo": path_summary},
-        "trades": trades_payload
+        "opportunities": trades_payload
     }
 
-    filename = f"{run_folder}/{ticker}_payload.json"
+    filename = f"{run_folder}/{ticker}_{expiry}_payload.json"
     with open(filename, "w") as f:
         json.dump(payload, f, cls=NumpyEncoder, indent=4)
 
@@ -945,6 +942,27 @@ def analyze_z_continuum(ticker, continuum_data, run_folder):
         plt.title(f"{ticker} - Z-Score Horizon Continuum")
         plt.savefig(f"Results/{ticker}_Continuum.png")
         plt.close()
+
+def get_institutional_hedge_data(df_full, ticker):
+    """Calculates sparse regression betas for the JSON payload."""
+    potential_macros = ["ret_gspc", "ret_xlk", "ret_vix", "ret_hyg", "ret_iei", "ret_oil"]
+    macro_cols = [c for c in potential_macros if c in df_full.columns]
+    
+    reg_df = df_full[macro_cols + [f"ret_{ticker.lower()}"]].dropna()
+    if reg_df.empty: return {"systematic_risk": 0, "alpha_integrity": 1.0, "betas": {}}
+    
+    X = reg_df[macro_cols]
+    y = reg_df[f"ret_{ticker.lower()}"]
+    
+    model = LassoCV(cv=5, fit_intercept=False, max_iter=5000).fit(X, y)
+    r_squared = model.score(X, y)
+    
+    return {
+        "systematic_risk_pct": round(float(r_squared), 4),
+        "alpha_integrity_pct": round(float(1 - r_squared), 4),
+        "betas": {feat: round(float(coef), 4) for feat, coef in zip(macro_cols, model.coef_) if abs(coef) > 1e-4}
+    }
+
 def main():
     # Create run folder and report
     timestamp = time.strftime("%Y%m%d-%H%M%S")
@@ -955,8 +973,7 @@ def main():
 
     # Full S&P 500 tickers (limited to first 75 for ~7 hours)
     TICKERS = [
-        'AAPL', 'AMD', 'AMZN', 'AVGO', 'MSFT'
-        'BAC', 'NVDA', 'CBRE', 'NFLX', 'GOOG', 'META', 'MS', 'UBER'
+        'XOM'
     ]  # Exactly 75 here (A to CCI)
 
     for ticker in TICKERS:
@@ -977,86 +994,96 @@ def main():
                     days = (expiry_dt.date() - date.today()).days
                     if days < 3:
                         continue
-                    
+            
+                    # --- 1. SETUP & FEATURE BUILDING ---
                     H_trading = get_trading_days(df_raw.index[-1], expiry_dt)
                     T_annualized = max(1/365, days / 365.0)
                     df_full = build_features(df_raw, ticker, H_trading)
-                    
+            
                     exclude = ["rv_forward_H", "log_rv_forward_H", f"ret_{ticker.lower()}", "GSPC", "XLE", "OIL", "USD", 
-                               "VIX", "TNX_10Y", "HYG", "IEI", "VVIX", "XLK", "XLP", "IRX", "close_price", 
-                               "ma_50", "rv_1d", "macd_hist", "vix_basis", "XLF", "XLV", "IWM"]
+                            "VIX", "TNX_10Y", "HYG", "IEI", "VVIX", "XLK", "XLP", "IRX", "close_price", 
+                            "ma_50", "rv_1d", "macd_hist", "vix_basis", "XLF", "XLV", "IWM"]
                     preds = [c for c in df_full.columns if c not in exclude and not c.startswith("ret_")]
                     train_pool = df_full.dropna(subset=["log_rv_forward_H"])
                     live_state = df_full.iloc[-1:]
-                    
+            
+                    # --- 2. MODEL TRAINING & FORECASTING ---
                     print(f"   [SYSTEM] Training Ensemble for {ticker} - {exp}...")
                     wfa_log, model_errors = run_wfa_competition(train_pool, preds)
                     avg_rmse = wfa_log["RMSE"].mean()
-                    
+            
                     winner_list = wfa_log["Winner"].values
                     xgb_best = wfa_log[wfa_log["Winner"]=="XGB"].iloc[-1]["Params"] if "XGB" in winner_list else {}
-                    
+            
                     X_train = np.ascontiguousarray(train_pool[preds].values, dtype=np.float32)
                     y_train = np.ascontiguousarray(train_pool["log_rv_forward_H"].values, dtype=np.float32).flatten()
                     X_live = np.ascontiguousarray(live_state[preds].values, dtype=np.float32)
-                    
+            
                     m_xgb = xgb.XGBRegressor(n_jobs=-1, **xgb_best).fit(X_train, y_train)
                     m_rf = RandomForestRegressor(n_jobs=-1).fit(X_train, y_train)
-                    
+            
                     p_xgb = m_xgb.predict(X_live)[0]
                     p_rf = m_rf.predict(X_live)[0]
-                    
+            
                     xgb_err = float(np.mean(model_errors.get("XGB", 1.0)))
                     rf_err = float(np.mean(model_errors.get("RF", 1.0)))
                     w_xgb = (1 / (xgb_err + 1e-6)) / ((1 / (xgb_err + 1e-6)) + (1 / (rf_err + 1e-6)))
                     w_rf = 1 - w_xgb
-                    
+            
                     sigma_model = np.sqrt(np.exp((p_xgb * w_xgb + p_rf * w_rf) + 0.5 * avg_rmse**2))
-                    
-                    # Get market IV directly (skip process_chain for speed)
-                    chain = yf_ticker.option_chain(exp)
-                    if chain.calls.empty and chain.puts.empty:
+            
+                    # --- 3. MARKET DATA & Z-SCORE ---
+                    chain_full = yf_ticker.option_chain(exp)
+                    if chain_full.calls.empty and chain_full.puts.empty:
                         continue
-                    mkt_iv = pd.concat([chain.calls, chain.puts])['impliedVolatility'].median()
-                    
+                    mkt_iv = pd.concat([chain_full.calls, chain_full.puts])['impliedVolatility'].median()
+            
                     vel_col = f"{ticker.lower()}_rv_vel"
                     rv_velocity = abs(live_state[vel_col].iloc[0]) if vel_col in live_state.columns else 0
                     z_score = (sigma_model - mkt_iv) / (avg_rmse * (1 + rv_velocity) + 1e-9)
-                    
-                    # Log this combo boom
+            
                     results_log.append({
                         "Ticker": ticker, "Expiry": exp, "Days_to_Expiry": days, "Zscore": round(z_score, 3), 
                         "RMSE": round(avg_rmse, 4), "MKTIV": round(mkt_iv, 4), "MODELRV": round(sigma_model, 4)
                     })
 
-                    # === [PART 3: SAVE DASHBOARD JSON - UNFILTERED] ===
-                    # We removed the 'if z_score > 0.5' check. 
-                    # Now it saves a dashboard file for EVERY ticker and expiry.
-                    
-                    print(f"   [DASHBOARD] Generating assets for {ticker}...")
-                    
-                    # 1. Get Spot & Regime
+                    # --- 4. EXTRACT ENRICHED ANALYTICS (For Gregory Lawson) ---
+                    print(f"   [ANALYTICS] Decomposing Alpha & Risk for {ticker}...")
+            
+                    # Feature Importance
+                    importance_vals = m_xgb.feature_importances_
+                    top_idx = np.argsort(importance_vals)[-5:] 
+                    feat_imp_dict = {preds[i]: round(float(importance_vals[i]), 4) for i in top_idx}
+
+                    # Lasso Hedge Data
+                    hedge_results = get_institutional_hedge_data(df_full, ticker)
+            
+                    # --- 5. MONTE CARLO & OPTION PROCESSSING ---
                     current_S0 = float(live_state["close_price"].iloc[0])
                     regime = get_market_regime(live_state)
-
-                    # 2. Run Monte Carlo (Required for charts)
-                    # Optimization: If you find this too slow, you can lower n_sims to 1000 for low Z-scores
                     paths, p5d, p20d, tail_risk = run_monte_carlo(current_S0, sigma_model, T_annualized, avg_rmse)
-
-                    # 3. Process Option Chain (Required for trade signals)
-                    chain_full = yf_ticker.option_chain(exp)
                     opt_data = process_chain(chain_full, current_S0, T_annualized, 0.042, sigma_model, paths)
 
-                    # 4. Save the file
-                    save_batch_dashboard_json(run_folder, ticker, exp, current_S0, sigma_model, z_score, regime, paths, opt_data)
-                    # ======================================================
+                    # --- 6. SAVE ENRICHED JSON ---
+                    print(f"   [DASHBOARD] Saving high-fidelity payload for {ticker}...")
+                    save_batch_dashboard_json(
+                        run_folder=run_folder, 
+                        ticker=ticker, 
+                        expiry=exp, 
+                        S0=current_S0, 
+                        sigma=sigma_model, 
+                        z_score=z_score, 
+                        regime=regime, 
+                        paths=paths, 
+                        opt_all=opt_data,
+                        hedge_data=hedge_results,
+                        feat_imp=feat_imp_dict      # This MUST match the function def
+                    )
 
-                    # Collect for continuum plot
                     continuum_data.append({"Days": days, "Z": z_score})
-                    
-                    print(f"Processed {ticker} - {exp} | Z: {z_score:.2f}")
-                    time.sleep(1)  # Rate limit safety
-                    
+                    print(f"SUCCESS: {ticker} - {exp} | Z: {z_score:.2f}")
+                    time.sleep(1)
+
                 except Exception as e:
                     print(f"SKIP {ticker} - {exp}: {e}")
                     continue

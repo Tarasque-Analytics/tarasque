@@ -18,10 +18,10 @@ export default function Dashboard() {
       <h1>Dashboard</h1>
       <Link to="/">Go home</Link>
       <div className="flex-1 p-6">
-        {/* 3-Column Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3">
+        {/* 6-Column Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-6 grid-rows-3">
           {/* Left Column */}
-          <div className="flex flex-col">
+          <div className="flex flex-col col-start-1 col-span-1 row-span-3">
             {isLoading ? (
               <div className="bg-gray-200 h-64 rounded animate-pulse" />
             ) : (
@@ -30,7 +30,7 @@ export default function Dashboard() {
           </div>
 
           {/* Center Column */}
-          <div className="flex flex-col">
+          <div className="flex flex-col col-start-2 col-span-3 row-span-3">
             {isLoading ? (
               <div className="bg-gray-200 h-96 rounded animate-pulse" />
             ) : (
@@ -42,7 +42,7 @@ export default function Dashboard() {
           </div>
 
           {/* Right Column */}
-          <div className="flex flex-col">
+          <div className="flex flex-col col-start-5 col-span-2 row-span-3">
             {isLoading ? (
               <div className="bg-gray-200 h-64 rounded animate-pulse" />
             ) : (

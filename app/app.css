@@ -3,14 +3,19 @@
 /* Global CSS configurations: imported in root.tsx */
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --primary: #fefefe;
+  --secondary: #010101;
+  --accent: #c2e2e2;
+
+  --logoprimary: #d2be80;
+  --logosecondary: #010101;
+  --logoaccent: #d2d8d8;
 }
 
+/* Dark mode: needs testing from somebody that actually uses dark mode */
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    /* need to define alternatives for above root */
   }
 }
 
@@ -21,4 +26,28 @@ body {
   @media (prefers-color-scheme: dark) {
     color-scheme: dark;
   }
+}
+
+/* Navbar */
+.navbar {
+  @apply p-4 grid grid-cols-5 gap-8 items-center;
+  color: var(--secondary);
+  background: var(--primary);
+}
+
+.navbar-logo {
+  @apply bg-red-500 flex items-center justify-center h-20;
+}
+
+.navbar-title {
+  @apply bg-yellow-500 flex items-center justify-center h-20;
+
+}
+
+.navbar-search {
+  @apply bg-green-500 flex items-center justify-center h-20;
+}
+
+.navbar-user {
+  @apply bg-blue-500 flex items-center justify-center h-20;
 }

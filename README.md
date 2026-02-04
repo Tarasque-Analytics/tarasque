@@ -1,5 +1,5 @@
 # README
-### volarbmodel by Leo, Matthew, David, and Calvin
+### volarbmodel by Leo, Matthew, and Brian
 
 Volatility Arbitrage (vol arb)
 

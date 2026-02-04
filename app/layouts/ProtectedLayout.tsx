@@ -1,5 +1,6 @@
 // should wrap all auth-protected routes
 import { Outlet } from "react-router";
+<<<<<<< HEAD
 // import Navbar from "~/components/ui/navbar";
 import icon from "../assets/volarbear-icon.png";
 import name from "../assets/volarbear-name.png";
@@ -52,6 +53,16 @@ export default function ProtectedLayout() {
       <div>
         <Outlet />
       </div>
+=======
+import Navbar from "~/components/ui/navbar";
+
+export default function ProtectedLayout() {
+  return (
+    <div>
+      <Navbar />
+      <h2>Protected Layout</h2>
+      <Outlet />
+>>>>>>> 51955bb24c47cbb87831929fb666709d23863a33
     </div>
   );
 }

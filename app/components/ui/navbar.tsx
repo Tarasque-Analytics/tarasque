@@ -31,21 +31,5 @@ export default function Navbar() {
         <UserIcon />
       </div>
     </div>
-
-    // <div className="navbar">
-    //   <div className="navbar-logo">
-    //   <img src={VolarLogo} alt="Volarbear Logo" className="h-8" />
-    //   </div>
-    //   <div></div>
-    //   <div className="navbar-title">
-    //     <img src={VolarTitle} alt="Volarbear Title" className="h-8" />
-    //   </div>
-    //   <div className="grow max-w-md">
-    //     <SearchBar />
-    //   </div>
-    //   <div className="navbar-user">
-    //     <UserIcon />
-    //   </div>
-    // </div>
   );
 }

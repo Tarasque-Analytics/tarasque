@@ -19,35 +19,25 @@ export default function Dashboard() {
       <Link to="/">Go home</Link>
       <div className="flex-1 p-6">
         {/* 6-Column Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-6 grid-rows-3">
+        <div className="dashboard">
           {/* Left Column */}
-          <div className="flex flex-col col-start-1 col-span-1 row-span-3">
-            {isLoading ? (
-              <div className="bg-gray-200 h-64 rounded animate-pulse" />
-            ) : (
-              <PortfolioOverview />
-            )}
+          <div className="dashboard-left">
+            <PortfolioOverview />
           </div>
 
           {/* Center Column */}
-          <div className="flex flex-col col-start-2 col-span-3 row-span-3">
-            {isLoading ? (
-              <div className="bg-gray-200 h-96 rounded animate-pulse" />
-            ) : (
-              <div>
-                <DetailedAnalysis />
-                <HedgingInfo />
-              </div>
-            )}
+          <div className="dashboard-center">
+            <div className="dashboard-center-top">
+              <DetailedAnalysis />
+            </div>
+            <div className="dashboard-center-bottom">
+              <HedgingInfo />
+            </div>
           </div>
 
           {/* Right Column */}
-          <div className="flex flex-col col-start-5 col-span-2 row-span-3">
-            {isLoading ? (
-              <div className="bg-gray-200 h-64 rounded animate-pulse" />
-            ) : (
-              <SectorView />
-            )}
+          <div className="dashboard-right">
+            <SectorView />
           </div>
         </div>
       </div>

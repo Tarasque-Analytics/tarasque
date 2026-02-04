@@ -30,7 +30,7 @@ body {
 
 /* Navbar */
 .navbar {
-  @apply p-4 grid grid-cols-5 gap-8 items-center;
+  @apply p-4 grid grid-cols-5 gap-8;
   color: var(--secondary);
   background: var(--primary);
 }
@@ -50,4 +50,29 @@ body {
 
 .navbar-user {
   @apply bg-blue-500 flex items-center justify-center h-20;
+}
+
+/* Dashboard */
+.dashboard {
+  @apply grid grid-cols-1 lg:grid-cols-6;
+}
+
+.dashboard-left {
+  @apply flex flex-col col-start-1 col-span-1 row-start-1 row-span-3;
+}
+
+.dashboard-center {
+  @apply flex flex-col col-start-2 col-span-3;
+}
+
+.dashboard-center-top {
+  @apply row-span-2;
+}
+
+.dashboard-center-bottom {
+  @apply row-span-1;
+}
+
+.dashboard-right {
+  @apply flex flex-col col-start-5 col-span-2 row-span-3;
 }

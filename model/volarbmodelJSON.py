@@ -102,10 +102,18 @@ MAX_SPREAD_PCT = 0.20 # Kill trade if spread is > 20% of price
 WFA_STEP_DAYS = 25  # From your original
 WFA_NUM_STEPS = 5   # From your original
 
-# ALPACA KEYS (Enter your Paper Trading keys here)
-ALPACA_API_KEY = "PKCLNUEPLFGA3PYWJWUGDI6JXQ"
-ALPACA_SECRET_KEY = "8HMxb9TNNzDYa4mq3WjkqRXYkmzWgwsvTzNSYHwa3bQj"
-ALPACA_BASE_URL = "https://paper-api.alpaca.markets"
+import os
+
+def require_env(name: str) -> str:
+    val = os.getenv(name)
+    if not val:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return val
+
+ALPACA_API_KEY = require_env("ALPACA_API_KEY")
+ALPACA_SECRET_KEY = require_env("ALPACA_SECRET_KEY")
+ALPACA_BASE_URL = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+
 
 # Dark mode bc its cool asf
 
@@ -132,7 +140,8 @@ holidays = cal.holidays(start='2020-01-01', end='2030-12-31')
 HOLIDAYS_NP = np.array(holidays.date, dtype='datetime64[D]')
 
 MARKET_INDEX = "^GSPC"
-# ... (Rest of config remains the same)
+# ... (Old code fragment from lasso, disregard...)
+
 SECTOR_ETF   = "XLK"
 VIX_TICKER   = "^VIX"
 TNX_TICKER   = "^TNX"
@@ -280,7 +289,8 @@ def download_history(ticker):
 
     for tkr, name in mapping.items():
         df[name] = get_col(data, 'Close', tkr)
-        if name in ["GSPC", "XLK", "OIL", "USD", "HYG", "IEI", "XLP", "IRX", "XLF", "XLE", "XLV", "IWM"]:
+        if name in ["GSPC", "XLK", "OIL", "USD", 
+        "HYG", "IEI", "XLP", "IRX", "XLF", "XLE", "XLV", "IWM"]:
             df[f"ret_{name.lower()}"] = np.log(df[name] / (df[name].shift(1) + 1e-9)).fillna(0)
             df[f"{name.lower()}_rv"] = df[f"ret_{name.lower()}"].rolling(21).std() * np.sqrt(252)
             df[f"{name.lower()}_rv_vel"] = df[f"{name.lower()}_rv"].diff(5)
@@ -293,7 +303,7 @@ def download_history(ticker):
 
 def optimize_tarasque_portfolio(results_df, total_budget=5000):
     """Calculates the Efficient Frontier weights for the final portfolio."""
-    print("\n--- Running Portfolio Optimization (Max Sharpe) ---")
+    print("\n--- Running Portfolio Optimization ---")
     
     # 1. Filter for valid data
     df = results_df.copy()
@@ -438,7 +448,7 @@ class OptionMath:
         # FIX: Check intrinsic first to avoid waste
         intrinsic = max(0, S - K) if type_ == "call" else max(0, K - S)
         
-        # If market price is below intrinsic (arbitrage/bad data), IV is 0
+        # If market price is below intrinsic - bad data), IV is 0
         if price <= intrinsic + 1e-5:
             return 0.0
 
@@ -491,7 +501,7 @@ def process_chain(chain, S0, T, r, sigma_forecast, paths):
             if spread / (mid + 1e-9) > 0.40: continue # Skip if spread > 40% of price
             
             mkt_iv = OptionMath.get_iv(S0, K, T, r, mid, opt_type.lower())
-            fair_px = OptionMath.bs_pricing(S0, K, T, r, sigma_forecast, opt_type.lower())
+            model_px = OptionMath.bs_pricing(S0, K, T, r, sigma_forecast, opt_type.lower())
             
             if np.isnan(mkt_iv): continue
 
@@ -503,8 +513,8 @@ def process_chain(chain, S0, T, r, sigma_forecast, paths):
             if abs(delta) < 0.10 or abs(delta) > 0.85: continue
 
             side = "NONE"
-            if fair_px > ask: side = "LONG"
-            elif fair_px < bid: side = "SHORT"
+            if model_px > ask: side = "LONG"
+            elif model_px < bid: side = "SHORT"
             
             entry_px = ask if side == "LONG" else bid
             if side != "NONE":
@@ -522,7 +532,7 @@ def process_chain(chain, S0, T, r, sigma_forecast, paths):
             rows.append({
                 "Action": side, "Type": opt_type, "Strike": round(K, 1),
                 "Delta": round(delta, 2), "Mkt_Px": round(mid, 2),
-                "Fair_Px": round(fair_px, 2), "Edge_Pct_Val": mean_ret,
+                "model_Px": round(model_px, 2), "Edge_Pct_Val": mean_ret,
                 "PoP": f"{pop:.1%}", "Silo_Kelly": kelly_f, "IV": round(mkt_iv, 3)
             })
             
@@ -629,12 +639,12 @@ def package_dashboard_payload(ticker, paths, opt_all, S0, sigma, p5d, p20d, tail
         "steps": list(range(paths.shape[1]))             # X-Axis (Days)
     }
 
-    # 2. Package Arbitrage Signals
+    # 2. Signals
     # Filter for the "Actionable" trades only
     if not opt_all.empty:
         signals = opt_all[opt_all["Action"] != "NONE"].copy()
         # Convert DataFrame to list of dictionaries
-        trades_payload = signals[["Type", "Strike", "Mkt_Px", "Fair_Px", "Edge_Pct_Val", "PoP"]].to_dict(orient="records")
+        trades_payload = signals[["Type", "Strike", "Mkt_Px", "model_Px", "Edge_Pct_Val", "PoP"]].to_dict(orient="records")
     else:
         trades_payload = []
 
@@ -683,11 +693,11 @@ def plot_full_dashboard(paths, opt_all, S0, sigma, ticker, wfa_log, p5d, p20d, t
     if not opt_all.empty:
         c = opt_all[opt_all["Type"]=="Call"]; p = opt_all[opt_all["Type"]=="Put"]
         ax2.scatter(c["Strike"], c["Mkt_Px"], c='lime', marker='x', label='Mkt Price')
-        ax2.scatter(c["Strike"], c["Fair_Px"], c='cyan', alpha=0.5, label='Fair Px')
+        ax2.scatter(c["Strike"], c["model_Px"], c='cyan', alpha=0.5, label='model Px')
         ax2.scatter(p["Strike"], p["Mkt_Px"], c='red', marker='x', label='Mkt Price')
-        ax2.scatter(p["Strike"], p["Fair_Px"], c='orange', alpha=0.5, label='Fair Px')
+        ax2.scatter(p["Strike"], p["model_Px"], c='orange', alpha=0.5, label='model Px')
     ax2.axvline(x=S0, color="white", ls="--", label="Spot")
-    ax2.set_title("Price Arbitrage Map (Market vs Model)")
+    ax2.set_title("Price Map (Market vs Model Target)")
     ax2.legend()
     ax3 = plt.subplot(gs[1, 0])
     if not opt_all.empty:
@@ -925,7 +935,7 @@ def analyze_z_continuum(ticker, continuum_data, run_folder):
         plt.fill_between(d_val, z_val, 0, where=(np.array(z_val) >= 0), color='#00FFCC', alpha=0.1)
         plt.fill_between(d_val, z_val, 0, where=(np.array(z_val) < 0), color='#FF3366', alpha=0.1)
         
-        plt.title(f"{ticker} - Volatility Arbitrage Continuum (Term Structure of Edge)", fontsize=14)
+        plt.title(f"{ticker} - Volatility Dissimilarity Continuum (Term Structure of Edge)", fontsize=14)
         plt.xlabel("Days to Expiration")
         plt.ylabel("Z-Score (Standard Deviations)")
         plt.legend()

@@ -5,11 +5,11 @@ import HedgingInfo from "../components/dashboard/hedging_info";
 import SectorView from "../components/dashboard/sector_view";
 import DetailedAnalysis from "../components/dashboard/detailed_analysis";
 export default function Dashboard() {
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     // TODO: Fetch user's portfolio from db
-    const timer = setTimeout(() => setIsLoading(false), 500);
+    const timer = setTimeout(() => setIsLoading(false), 200);
     return () => clearTimeout(timer);
   });
 
@@ -17,28 +17,38 @@ export default function Dashboard() {
     <div>
       <h1>Dashboard</h1>
       <Link to="/">Go home</Link>
-      <div className="flex-1 p-6">
-        {/* 6-Column Layout */}
-        <div className="dashboard">
-          {/* Left Column */}
-          <div className="dashboard-left">
+      {/* Page Grid Styles */}
+      <div className="dashboard">
+        {/* Left Column */}
+        <div className="dashboard-left">
+          {isLoading ? (
+            <div className="loading-placeholder" />
+          ) : (
             <PortfolioOverview />
-          </div>
+          )}
+        </div>
 
-          {/* Center Column */}
-          <div className="dashboard-center">
-            <div className="dashboard-center-top">
+        {/* Center Column */}
+        <div className="dashboard-center">
+          <div className="dashboard-center-top">
+            {isLoading ? (
+              <div className="loading-placeholder" />
+            ) : (
               <DetailedAnalysis />
-            </div>
-            <div className="dashboard-center-bottom">
+            )}
+          </div>
+          <div className="dashboard-center-bottom">
+            {isLoading ? (
+              <div className="loading-placeholder" />
+            ) : (
               <HedgingInfo />
-            </div>
+            )}
           </div>
+        </div>
 
-          {/* Right Column */}
-          <div className="dashboard-right">
-            <SectorView />
-          </div>
+        {/* Right Column */}
+        <div className="dashboard-right">
+          {isLoading ? <div className="loading-placeholder" /> : <SectorView />}
         </div>
       </div>
     </div>

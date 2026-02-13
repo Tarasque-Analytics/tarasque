@@ -3,9 +3,9 @@
 /* Global CSS configurations: imported in root.tsx */
 
 :root {
-  --primary: #fefefe;
-  --secondary: #010101;
-  --accent: #c2e2e2;
+  --background: #eeeeee;
+  --ui-background: #ffffff;
+  --border: #bcbcbc;
 
   --logoprimary: #d2be80;
   --logosecondary: #010101;
@@ -28,51 +28,79 @@ body {
   }
 }
 
-/* Navbar */
+/* === Protected Layout === */
+.protected-layout {
+  @apply p-6;
+  background: var(--background);
+}
+
+/* === Navbar === */
 .navbar {
-  @apply p-4 grid grid-cols-5 gap-8;
-  color: var(--secondary);
-  background: var(--primary);
+  @apply h-20 p-4 grid grid-cols-12 gap-8;
+  background: var(--ui-background);
+  border: 0.2rem solid var(--border);
 }
 
 .navbar-logo {
-  @apply bg-red-500 flex items-center justify-center h-20;
+  @apply flex items-center justify-start col-span-4 h-12;
 }
 
 .navbar-title {
-  @apply bg-yellow-500 flex items-center justify-center h-20;
-
+  @apply flex items-center justify-center col-span-4 h-12;
 }
 
 .navbar-search {
-  @apply bg-green-500 flex items-center justify-center h-20;
+  @apply flex items-center justify-start col-span-3 h-12;
+  /* border: 0.1rem solid var(--border); */
 }
 
 .navbar-user {
-  @apply bg-blue-500 flex items-center justify-center h-20;
+  @apply flex items-center justify-end h-12;
 }
 
-/* Dashboard */
+/* === Dashboard === */
 .dashboard {
   @apply grid grid-cols-1 lg:grid-cols-6;
 }
 
 .dashboard-left {
-  @apply flex flex-col col-start-1 col-span-1 row-start-1 row-span-3;
+  @apply col-start-1 col-span-1 p-2;
 }
 
 .dashboard-center {
-  @apply flex flex-col col-start-2 col-span-3;
+  @apply col-start-2 col-span-3 p-2;
 }
 
 .dashboard-center-top {
-  @apply row-span-2;
+  padding-bottom: 0.5rem;
 }
 
 .dashboard-center-bottom {
-  @apply row-span-1;
+  padding-top: 0.5rem;
 }
 
 .dashboard-right {
-  @apply flex flex-col col-start-5 col-span-2 row-span-3;
+  @apply col-start-5 col-span-2 row-span-3 p-2;
+}
+
+/* === Ticker === */
+.ticker {
+  @apply grid grid-cols-1 lg:grid-cols-3;
+}
+
+.ticker-left {
+  @apply p-2;
+}
+
+.ticker-center {
+  @apply p-2;
+}
+
+.ticker-right {
+  @apply p-2;
+}
+
+/* Other */
+.loading-placeholder {
+  @apply flex bg-gray-200 rounded animate-pulse;
 }

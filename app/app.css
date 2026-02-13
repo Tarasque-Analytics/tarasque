@@ -30,7 +30,7 @@ body {
 
 /* === Protected Layout === */
 .protected-layout {
-  @apply p-6;
+  @apply p-6 min-h-screen w-full;
   background: var(--background);
 }
 

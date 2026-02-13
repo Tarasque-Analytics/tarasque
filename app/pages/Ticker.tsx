@@ -1,4 +1,4 @@
-import { useParams } from "react-router";
+import { Link, useParams } from "react-router";
 import { useState, useEffect } from "react";
 import HedgingRecommendations from "../components/ticker/hedging_recommendations";
 import Options from "../components/ticker/options";
@@ -11,41 +11,38 @@ export default function TickerView() {
   useEffect(() => {
     // TODO: Fetch ticker data from API endpoint
     // For now, just simulate loading
-    const timer = setTimeout(() => setIsLoading(false), 500);
+    const timer = setTimeout(() => setIsLoading(false), 200);
     return () => clearTimeout(timer);
-  }, [symbol]);
+  });
 
   return (
-    <div className="flex-1 p-6">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">{symbol}</h1>
-      </div>
-
-      {/* 3-Column Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3">
+    <div>
+      <h1>Ticker</h1>
+      <Link to="/">Go home</Link>
+      {/* Page Grid Styles */}
+      <div className="ticker">
         {/* Left Column */}
-        <div className="flex flex-col">
+        <div className="ticker-left">
           {isLoading ? (
-            <div className="bg-gray-200 h-64 rounded animate-pulse" />
+            <div className="loading-placeholder" />
           ) : (
             <HedgingRecommendations />
           )}
         </div>
 
         {/* Center Column */}
-        <div className="flex flex-col">
+        <div className="ticker-center">
           {isLoading ? (
-            <div className="bg-gray-200 h-96 rounded animate-pulse" />
+            <div className="loading-placeholder" />
           ) : (
             <Predictors />
           )}
         </div>
 
         {/* Right Column */}
-        <div className="flex flex-col">
+        <div className="ticker-right">
           {isLoading ? (
-            <div className="bg-gray-200 h-64 rounded animate-pulse" />
+            <div className="loading-placeholder" />
           ) : (
             <Options />
           )}

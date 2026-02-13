@@ -8,26 +8,26 @@ import VolarLogo from "~/assets/volarbear-logo.png";
 import VolarTitle from "~/assets/volarbear-title.png";
 
 // components
-import SearchBar from "./searchbar";
+import Search from "./search";
 import UserIcon from "./user_icon";
+import { Link } from "react-router";
 
 // left corner logo, centered company title, 3/4ths-centered searchbar, right corner profile icon
 export default function Navbar() {
   return (
     <div className="navbar">
       <div className="navbar-logo">
-        <img src={VolarLogo} alt="Volarbear Logo" className="h-12" />
-      </div>
-      <div>
-        <div className="bg-orange-500 flex h-20"></div>
+        <Link to="/Dashboard">
+          <img src={VolarLogo} alt="Volarbear Logo" className="h-12" />
+        </Link>
       </div>
       <div className="navbar-title">
         <img src={VolarTitle} alt="Volarbear Title" className="h-12" />
       </div>
-      <div className="navbar-search h-12">
-        <SearchBar />
+      <div className="navbar-search">
+        <Search />
       </div>
-      <div className="navbar-user h-12">
+      <div className="navbar-user">
         <UserIcon />
       </div>
     </div>

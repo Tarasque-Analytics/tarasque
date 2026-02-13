@@ -8,7 +8,7 @@ import Navbar from "~/components/ui/navbar";
 
 export default function ProtectedLayout() {
   return (
-    <div className="p-6">
+    <div className="protected-layout">
       <Navbar />
       <Outlet />
     </div>

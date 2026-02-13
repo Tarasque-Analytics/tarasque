@@ -983,7 +983,7 @@ def main():
 
     # Full S&P 500 tickers (limited to first 75 for ~7 hours)
     TICKERS = [
-        'XOM'
+        'LUV'
     ]  # Exactly 75 here (A to CCI)
 
     for ticker in TICKERS:

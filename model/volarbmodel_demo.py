@@ -954,9 +954,7 @@ def main():
     results_log = []
 
     # Full S&P 500 tickers (limited to first 75 for ~7 hours)
-    TICKERS = [
-        'AAPL', 'AMD', 'AMZN', 'AVGO', 'MSFT'
-        'BAC', 'NVDA', 'CBRE', 'NFLX', 'GOOG', 'META', 'MS', 'UBER'
+    TICKERS = [ ' luv'
     ]  # Exactly 75 here (A to CCI)
 
     for ticker in TICKERS:

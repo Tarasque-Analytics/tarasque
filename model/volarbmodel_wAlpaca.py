@@ -2,78 +2,437 @@ import warnings
 import logging
 import os
 
+from pathlib import Path
+from dotenv import load_dotenv
 
-# NUCLEAR SILENCE: This stops all background "chatter" and warnings in Python 3.14
-os.environ['PYTHONWARNINGS'] = 'ignore'
-os.environ['KMP_WARNINGS'] = 'off'
-warnings.filterwarnings("ignore")
-logging.getLogger('yfinance').setLevel(logging.CRITICAL)
+# Load .env FIRST
+env_path = Path(__file__).resolve().parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
-# Broader suppressions for cleaner output
-warnings.filterwarnings("ignore", category=UserWarning)  # Broader sklearn/joblib catch-all
-warnings.filterwarnings("ignore", category=ResourceWarning)  # For unclosed sqlite/yfinance DBs
-warnings.filterwarnings("ignore", category=RuntimeWarning)  # Math/array ops
-# Add this SPECIFIC silence for the parallel warning
-warnings.filterwarnings("ignore", message=".*sklearn.utils.parallel.delayed.*")
-warnings.filterwarnings("ignore", module="sklearn.utils.parallel")
+def require_env(name: str) -> str:
+    val = os.getenv(name)
+    if not val:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return val
+
+# Define keys SECOND
+ALPACA_API_KEY = require_env("ALPACA_API_KEY")
+ALPACA_SECRET_KEY = require_env("ALPACA_SECRET_KEY")
+ALPACA_BASE_URL = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
 
 import time
-import csv
 import datetime
+import csv
 from datetime import datetime, date, timedelta
 import numpy as np
 import pandas as pd
 import yfinance as yf
-# ... (rest of your imports)
 import xgboost as xgb
 from scipy.stats import norm
 from scipy.optimize import brentq, minimize
-
 import matplotlib
 matplotlib.use('Agg')  # Prevents the "Main thread" crash
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import seaborn as sns
-
-# Silence the clutter
-warnings.filterwarnings("ignore", category=UserWarning, module="sklearn.utils.parallel")
-warnings.filterwarnings("ignore", category=RuntimeWarning, module="pandas.core.arraylike")
-# Silences the scikit-learn background worker noise
-warnings.filterwarnings("ignore", category=UserWarning, module="sklearn.utils.parallel")
-# Silences the log warnings we fixed in Step 2
-warnings.filterwarnings("ignore", category=RuntimeWarning, module="pandas.core.arraylike")
-# Silences the yfinance database cleanup warnings
-warnings.filterwarnings("ignore", category=ResourceWarning)
-# Silence the Parallel/Joblib noise and the Log math warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="sklearn.utils.parallel")
-warnings.filterwarnings("ignore", category=RuntimeWarning, module="pandas.core.arraylike")
-warnings.filterwarnings("ignore", category=ResourceWarning)
-logging.getLogger('yfinance').setLevel(logging.CRITICAL)
-# Add this SPECIFIC silence for the parallel warning
-import warnings
-warnings.filterwarnings("ignore", message=".*sklearn.utils.parallel.delayed.*")
-warnings.filterwarnings("ignore", module="sklearn.utils.parallel")
-
-# --- CORE LIBRARIES ---
-import xgboost as xgb
 from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
 from sklearn.metrics import mean_squared_error
 from sklearn.linear_model import Lasso
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
-
-# --- ADD THESE IMPORTS ---
-# REMOVE: import alpaca_trade_api as tradeapi
-# ADD THESE:
-from alpaca.trading.client import TradingClient
-from alpaca.trading.requests import GetOptionContractsRequest
 from alpaca.data.historical.option import OptionHistoricalDataClient
+option_data_client = OptionHistoricalDataClient(ALPACA_API_KEY, ALPACA_SECRET_KEY)
+env_path = Path(__file__).resolve().parent / ".env"
+load_dotenv(dotenv_path=env_path)
+
+def require_env(name: str) -> str:
+    val = os.getenv(name)
+    if not val:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return val
+
+ALPACA_API_KEY = require_env("ALPACA_API_KEY")
+ALPACA_SECRET_KEY = require_env("ALPACA_SECRET_KEY")
+ALPACA_BASE_URL = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+
+from alpaca.trading.client import TradingClient
+
+trading_client = TradingClient(ALPACA_API_KEY, ALPACA_SECRET_KEY, paper=True)
+option_data_client = OptionHistoricalDataClient(ALPACA_API_KEY, ALPACA_SECRET_KEY)
+
+from alpaca.trading.requests import GetOptionContractsRequest
 from alpaca.data.requests import OptionSnapshotRequest
 from scipy.optimize import minimize
-
-import xgboost as xgb
 from sklearn.ensemble import RandomForestRegressor
-import numpy as np
+from datetime import date
+from alpaca.data.historical.option import OptionHistoricalDataClient
+option_data_client = OptionHistoricalDataClient(ALPACA_API_KEY, ALPACA_SECRET_KEY)
+from alpaca.data.requests import OptionChainRequest
+
+def unpack_items(resp):
+    """"
+    Alpaca SDK responses vary by version:
+    - list[Contract]
+    - tuple(list[Contract], next_token)
+    - object with .option_contracts / .contracts / .items
+    """
+    if resp is None:
+        return []
+    if isinstance(resp, tuple):
+        return resp[0] if resp else []
+    if isinstance(resp, list):
+        return resp
+    for attr in ("option_contracts", "contracts", "items"):
+        if hasattr(resp, attr):
+            return getattr(resp, attr) or []
+    return resp  # last resort
+
+def get_contract_symbol(contract):
+    if contract is None:
+        return None
+    if isinstance(contract, dict):
+        return contract.get("symbol") or contract.get("id")
+    return getattr(contract, "symbol", None) or getattr(contract, "id", None)
+
+
+# ===============================
+# OPTION CHAIN ADAPTERS
+# ===============================
+
+class OptionChain:
+    def __init__(self, calls: pd.DataFrame, puts: pd.DataFrame):
+        self.calls = calls
+        self.puts = puts
+
+
+def build_chain_for_expiry(chain_df: pd.DataFrame, expiry_date):
+    df = chain_df.copy()
+
+    # Filter to expiry
+    df = df[df["expiry"] == expiry_date]
+
+    # Sanitize
+    df = df.dropna(subset=["strike", "bid", "ask"])
+    df["strike"] = pd.to_numeric(df["strike"], errors="coerce")
+    df["bid"] = pd.to_numeric(df["bid"], errors="coerce")
+    df["ask"] = pd.to_numeric(df["ask"], errors="coerce")
+
+    # Split calls / puts
+    calls = (
+        df[df["type"].str.lower() == "call"]
+        [["strike", "bid", "ask"]]
+        .sort_values("strike")
+        .reset_index(drop=True)
+    )
+
+    puts = (
+        df[df["type"].str.lower() == "put"]
+        [["strike", "bid", "ask"]]
+        .sort_values("strike")
+        .reset_index(drop=True)
+    )
+
+    return OptionChain(calls=calls, puts=puts)
+
+
+def fetch_option_chain_alpaca(
+    data_client: OptionHistoricalDataClient,
+    underlying: str,
+) -> pd.DataFrame:
+    """
+    Fetch latest option chain snapshots for an underlying and normalize into a flat DataFrame.
+    """
+    req = OptionChainRequest(underlying_symbol=underlying)  # name per alpaca-py docs :contentReference[oaicite:4]{index=4}
+    chain = data_client.get_option_chain(req)
+
+    # The exact shape depends on alpaca-py version; normalize defensively.
+    rows = []
+    for contract_symbol, snap in chain.items():  # could be dict-like
+        q = getattr(snap, "latest_quote", None) or getattr(snap, "quote", None)
+        t = getattr(snap, "latest_trade", None) or getattr(snap, "trade", None)
+        g = getattr(snap, "greeks", None)
+
+        # Contract details are often embedded; fall back to parsing symbol if needed.
+        details = getattr(snap, "contract", None) or getattr(snap, "contract_details", None)
+
+        rows.append({
+            "contract_symbol": contract_symbol,
+            "bid": getattr(q, "bid_price", None),
+            "ask": getattr(q, "ask_price", None),
+            "bid_size": getattr(q, "bid_size", None),
+            "ask_size": getattr(q, "ask_size", None),
+            "last": getattr(t, "price", None),
+            "strike": getattr(details, "strike_price", None),
+            "type": getattr(details, "type", None),           # 'call'/'put'
+            "expiry": getattr(details, "expiration_date", None),
+            "iv": getattr(g, "implied_volatility", None) if g else None,
+            "delta": getattr(g, "delta", None) if g else None,
+            "gamma": getattr(g, "gamma", None) if g else None,
+            "vega": getattr(g, "vega", None) if g else None,
+            "theta": getattr(g, "theta", None) if g else None,
+        })
+
+    df = pd.DataFrame(rows)
+
+    # Clean types
+    if "expiry" in df.columns:
+        df["expiry"] = pd.to_datetime(df["expiry"]).dt.date
+    if "strike" in df.columns:
+        df["strike"] = pd.to_numeric(df["strike"], errors="coerce")
+
+    return df
+
+from alpaca.trading.requests import GetOptionContractsRequest
+from alpaca.data.requests import OptionSnapshotRequest
+
+from datetime import date
+
+import re
+
+_OCC_RE = re.compile(r"^[A-Z]{1,6}\d{6}([CP])\d{8}$")
+
+def infer_cp_from_symbol(sym: str):
+    """
+    Attempts to infer Call/Put from OCC-like option symbol:
+      UNDERLYING + YYMMDD + C/P + STRIKE(8 digits)
+    Returns "Call"/"Put"/None.
+    """
+    if not sym or not isinstance(sym, str):
+        return None
+    m = _OCC_RE.match(sym)
+    if not m:
+        return None
+    return "Call" if m.group(1) == "C" else "Put"
+
+
+from datetime import date, timedelta
+from datetime import date, timedelta
+from alpaca.trading.requests import GetOptionContractsRequest
+from alpaca.data.requests import OptionSnapshotRequest
+
+def fetch_chain_via_contracts(trading_client, option_data_client, underlying_symbol: str) -> pd.DataFrame:
+    """
+    Returns normalized option chain DataFrame with columns:
+    symbol, expiry (date), type ('call'/'put'), strike, bid, ask, iv
+    """
+
+    # ---------------------------
+    # 1) Pull contracts (PAGINATED)
+    # ---------------------------
+    all_contracts = []
+    page_token = None
+
+    today = date.today()
+    exp_gte = today + timedelta(days=MIN_DTE)
+    exp_lte = today + timedelta(days=MAX_DTE)
+
+    req = GetOptionContractsRequest(underlying_symbols=[underlying_symbol])
+
+    # best-effort set request filters if supported by your alpaca-py version
+    for k, v in [
+        ("expiration_date_gte", exp_gte),
+        ("expiration_date_lte", exp_lte),
+        ("limit", 1000),
+    ]:
+        try:
+            setattr(req, k, v)
+        except Exception:
+            pass
+
+    while True:
+        if page_token:
+            for token_field in ("page_token", "pagination_token", "next_page_token"):
+                try:
+                    setattr(req, token_field, page_token)
+                    break
+                except Exception:
+                    continue
+
+        resp = trading_client.get_option_contracts(req)
+
+        # unwrap contracts list
+        if hasattr(resp, "option_contracts"):
+            contracts = resp.option_contracts or []
+        elif isinstance(resp, tuple):
+            contracts = resp[0] or []
+        else:
+            contracts = resp or []
+
+        all_contracts.extend(list(contracts))
+
+        # next token (name varies)
+        page_token = getattr(resp, "next_page_token", None) or getattr(resp, "next_token", None)
+
+        print(f"[ALPACA_PAGE] got={len(contracts):,} total={len(all_contracts):,} next={bool(page_token)}")
+
+        if not page_token:
+            break
+
+    if not all_contracts:
+        print(f"[ALPACA] No contracts returned for {underlying_symbol}")
+        return pd.DataFrame()
+
+    expiries = sorted({c.expiration_date for c in all_contracts if getattr(c, "expiration_date", None)})
+    print("[ALPACA] total contracts pulled:", len(all_contracts))
+    print("[ALPACA] expiry min/max:", expiries[0], expiries[-1])
+    print("[ALPACA] unique expiries sample:", expiries[:10])
+
+    # ---------------------------
+    # 2) Build meta list from contracts
+    # ---------------------------
+    meta = []
+    symbols = []
+    for c in all_contracts:
+        sym = getattr(c, "symbol", None)
+        exp = getattr(c, "expiration_date", None)
+        strike = getattr(c, "strike_price", None)
+        typ = getattr(c, "type", None)
+
+        if not sym or exp is None or strike is None or typ is None:
+            continue
+
+        # normalize type to lowercase 'call'/'put'
+        typ_str = str(typ).lower()
+        if "call" in typ_str or typ_str == "c":
+            typ_norm = "call"
+        elif "put" in typ_str or typ_str == "p":
+            typ_norm = "put"
+        else:
+            continue
+
+        symbols.append(sym)
+        meta.append((sym, exp, typ_norm, float(strike)))
+
+    if not symbols:
+        print(f"[ALPACA] Contracts parsed but no usable symbols for {underlying_symbol}")
+        return pd.DataFrame()
+
+    # ---------------------------
+    # 3) Pull snapshots in CHUNKS (this is the missing piece)
+    # ---------------------------
+    # Many APIs cap how many symbols you can snapshot in one call.
+    # If you send 360 at once, you often only get the first ~100 back.
+    snap_map = {}
+
+    # choose chunk size conservatively
+    CHUNK = 75
+    for i in range(0, len(symbols), CHUNK):
+        chunk = symbols[i:i+CHUNK]
+        try:
+            snap_req = OptionSnapshotRequest(symbol_or_symbols=chunk)
+            snaps = option_data_client.get_option_snapshots(snap_req)  # requires client method
+        except Exception as e:
+            print(f"[ALPACA] Snapshot chunk failed ({i}-{i+len(chunk)}): {e}")
+            continue
+
+        # snaps should be dict-like: {symbol: snapshot}
+        if hasattr(snaps, "items"):
+            for sym, snap in snaps.items():
+                snap_map[sym] = snap
+
+    print(f"[ALPACA] snapshots received: {len(snap_map):,} / {len(symbols):,}")
+
+    # ---------------------------
+    # 4) Normalize to DataFrame
+    # ---------------------------
+    rows = []
+    for sym, exp, typ_norm, strike in meta:
+        snap = snap_map.get(sym)
+        if snap is None:
+            continue
+
+        quote = getattr(snap, "latest_quote", None) or getattr(snap, "quote", None)
+        greeks = getattr(snap, "greeks", None)
+
+        bid = getattr(quote, "bid_price", None) if quote else None
+        ask = getattr(quote, "ask_price", None) if quote else None
+
+        iv = None
+        if greeks is not None:
+            iv = getattr(greeks, "implied_volatility", None)
+        if iv is None:
+            iv = getattr(snap, "implied_volatility", None) or getattr(snap, "iv", None)
+
+        rows.append({
+            "symbol": sym,
+            "expiry": exp,         # already date from contract
+            "type": typ_norm,      # 'call'/'put'
+            "strike": strike,
+            "bid": float(bid) if bid is not None else None,
+            "ask": float(ask) if ask is not None else None,
+            "iv": float(iv) if iv is not None else None,
+        })
+
+    df = pd.DataFrame(rows)
+
+    if df.empty:
+        print(f"[ALPACA] Built 0 rows after snapshot join for {underlying_symbol}.")
+        return df
+
+    # Debug the actual expiry universe YOU WILL USE
+    exps = sorted(df["expiry"].dropna().unique())
+    print("[CHAIN] expiry min/max:", exps[0], exps[-1])
+    print("[CHAIN] unique expiries (first 10):", exps[:10])
+    print("[CHAIN] rows:", len(df))
+
+    return df
+
+
+def get_tickers_from_prompt(default="MS"):
+    raw = input(f"Tickers (comma-separated) [{default}]: ").strip()
+    if not raw:
+        raw = default
+    return [t.strip().upper() for t in raw.split(",") if t.strip()]
+
+
+from dataclasses import dataclass
+from datetime import date
+
+
+@dataclass
+class SimpleChain:
+    calls: pd.DataFrame
+    puts: pd.DataFrame
+
+def normalize_chain_df(chain_df: pd.DataFrame) -> pd.DataFrame:
+    # Standardize expected columns
+    df = chain_df.copy()
+    df.columns = [c.lower() for c in df.columns]
+
+    # Ensure required cols
+    for col in ["bid", "ask", "strike", "type", "expiry"]:
+        if col not in df.columns:
+            df[col] = None
+
+    # Coerce numerics
+    df["strike"] = pd.to_numeric(df["strike"], errors="coerce")
+    df["bid"] = pd.to_numeric(df["bid"], errors="coerce")
+    df["ask"] = pd.to_numeric(df["ask"], errors="coerce")
+
+    # ---- PART 4: Normalize option type robustly ----
+    # Handle: "Call"/"Put", "call"/"put", "C"/"P", mixed casing, None, weird values
+    df["type"] = df["type"].astype(str).str.strip().str.lower()
+
+    # Map common aliases
+    df.loc[df["type"].isin(["c", "call"]), "type"] = "call"
+    df.loc[df["type"].isin(["p", "put"]), "type"] = "put"
+
+    # Kill anything not call/put (prevents empty-chain surprises later)
+    df = df[df["type"].isin(["call", "put"])]
+
+    # Drop rows missing required fields
+    df = df.dropna(subset=["expiry", "strike", "bid", "ask"])
+
+    return df
+
+
+def chain_for_expiry(chain_df: pd.DataFrame, expiry: date) -> SimpleChain:
+    df = normalize_chain_df(chain_df)
+    df = df[df["expiry"] == expiry]
+    calls = df[df["type"].str.lower().eq("call")][["strike", "bid", "ask"]].copy()
+    puts  = df[df["type"].str.lower().eq("put")][["strike", "bid", "ask"]].copy()
+    return SimpleChain(calls=calls, puts=puts)
+
 
 class VolatilityEnsemble:
     def __init__(self, xgb_params=None, rf_params=None):
@@ -96,16 +455,14 @@ class VolatilityEnsemble:
 # --- CONFIGURATION ---
 TOTAL_AUM = 5000  # Your specific allowance
 OPTIONS_BUDGET = TOTAL_AUM * 1.0  # Use full budget for the optimizer
-MIN_DTE = 150   # Target 5-13 months out (Vega plays)
-MAX_DTE = 400
-MAX_SPREAD_PCT = 0.20 # Kill trade if spread is > 20% of price
+MIN_DTE = 50   # Target 5-13 months out (Vega plays)
+MAX_DTE = 450
+MAX_SPREAD_PCT = 0.25 # Kill trade if spread is > 20% of price
 WFA_STEP_DAYS = 25  # From your original
 WFA_NUM_STEPS = 5   # From your original
 
-# ALPACA KEYS (Enter your Paper Trading keys here)
-ALPACA_API_KEY = "PKCLNUEPLFGA3PYWJWUGDI6JXQ"
-ALPACA_SECRET_KEY = "8HMxb9TNNzDYa4mq3WjkqRXYkmzWgwsvTzNSYHwa3bQj"
-ALPACA_BASE_URL = "https://paper-api.alpaca.markets"
+
+
 
 # Dark mode bc its cool asf
 
@@ -132,7 +489,8 @@ holidays = cal.holidays(start='2020-01-01', end='2030-12-31')
 HOLIDAYS_NP = np.array(holidays.date, dtype='datetime64[D]')
 
 MARKET_INDEX = "^GSPC"
-# ... (Rest of config remains the same)
+# ... (Old code fragment from lasso, disregard...)
+
 SECTOR_ETF   = "XLK"
 VIX_TICKER   = "^VIX"
 TNX_TICKER   = "^TNX"
@@ -164,11 +522,10 @@ class NumpyEncoder(json.JSONEncoder):
         elif isinstance(obj, np.ndarray): return obj.tolist()
         return super(NumpyEncoder, self).default(obj)
 
-def save_batch_dashboard_json(run_folder, ticker, expiry, S0, sigma, z_score, regime, paths, opt_all):
+def save_batch_dashboard_json(run_folder, ticker, expiry, S0, sigma, z_score, regime, paths, opt_all, hedge_data, feat_imp):
     """
-    Saves the 'digital twin' of your analysis for the website to read later.
+    Saves the enriched JSON payload for the dashboard.
     """
-    # 1. Summarize Monte Carlo (compress 5000 paths -> 3 lines)
     path_summary = {
         "p95": np.percentile(paths, 95, axis=0).tolist(),
         "p05": np.percentile(paths, 5, axis=0).tolist(),
@@ -176,31 +533,29 @@ def save_batch_dashboard_json(run_folder, ticker, expiry, S0, sigma, z_score, re
         "steps": list(range(paths.shape[1]))
     }
 
-    # 2. Extract Actionable Trades
     trades_payload = []
     if not opt_all.empty:
-        # Save top 10 actionable trades
-        signals = opt_all[opt_all["Action"] != "NONE"].copy()
-        if not signals.empty:
-            trades_payload = signals.sort_values("Edge_Pct_Val", ascending=False).head(10)[
-                ["Type", "Strike", "Mkt_Px", "Fair_Px", "Edge_Pct_Val", "PoP"]
-            ].to_dict(orient="records")
+        # Include full dictionary to capture Greeks/Metrics calculated in process_chain
+        trades_payload = opt_all[opt_all["Action"] != "NONE"].to_dict(orient="records")
 
-    # 3. Build & Save
     payload = {
         "meta": {
             "ticker": ticker,
             "expiry": str(expiry),
-            "spot_price": S0,
+            "spot_price": round(S0, 2),
             "regime": regime,
             "model_rv": round(sigma, 4),
             "z_score": round(z_score, 2)
         },
+        "explainability": {
+            "top_model_drivers": feat_imp  # Synced Name
+        },
+        "operational_risk": hedge_data,
         "charts": {"monte_carlo": path_summary},
-        "trades": trades_payload
+        "opportunities": trades_payload
     }
 
-    filename = f"{run_folder}/{ticker}_payload.json"
+    filename = f"{run_folder}/{ticker}_{expiry}_payload.json"
     with open(filename, "w") as f:
         json.dump(payload, f, cls=NumpyEncoder, indent=4)
 
@@ -243,7 +598,6 @@ def download_global_macros():
         return pd.DataFrame()
     
 def download_history(ticker):
-    import datetime
     # We use 'today' as the end date. yfinance handles 'today' as 'up to the last available minute'
     today = datetime.date.today().strftime('%Y-%m-%d')
     
@@ -254,10 +608,10 @@ def download_history(ticker):
     # Force auto_adjust=True and specifically use 'period' to ensure we get a valid response
     data = yf.download(macro_tkrs, start="2019-01-01", end=today, interval="1d", progress=False, auto_adjust=True)
 
-    if data.empty or ticker not in data['Close'].columns:
-        # Fallback: Try a simpler download if the macro bundle fails
+    if data.empty or ('Close' in data and ticker not in data['Close'].columns):
         print(f"[RETRY] Macro bundle failed for {ticker}. Trying single-fetch...")
-        data = yf.download(macro_tkrs, period="max", interval="1d", progress=False, auto_adjust=True)
+        data = yf.download(ticker, period="max", interval="1d", progress=False, auto_adjust=True)
+
         
     if data.empty:
         raise ValueError(f"No data returned for {ticker}")
@@ -283,7 +637,8 @@ def download_history(ticker):
 
     for tkr, name in mapping.items():
         df[name] = get_col(data, 'Close', tkr)
-        if name in ["GSPC", "XLK", "OIL", "USD", "HYG", "IEI", "XLP", "IRX", "XLF", "XLE", "XLV", "IWM"]:
+        if name in ["GSPC", "XLK", "OIL", "USD", 
+        "HYG", "IEI", "XLP", "IRX", "XLF", "XLE", "XLV", "IWM"]:
             df[f"ret_{name.lower()}"] = np.log(df[name] / (df[name].shift(1) + 1e-9)).fillna(0)
             df[f"{name.lower()}_rv"] = df[f"ret_{name.lower()}"].rolling(21).std() * np.sqrt(252)
             df[f"{name.lower()}_rv_vel"] = df[f"{name.lower()}_rv"].diff(5)
@@ -296,7 +651,7 @@ def download_history(ticker):
 
 def optimize_tarasque_portfolio(results_df, total_budget=5000):
     """Calculates the Efficient Frontier weights for the final portfolio."""
-    print("\n--- Running Portfolio Optimization (Max Sharpe) ---")
+    print("\n--- Running Portfolio Optimization ---")
     
     # 1. Filter for valid data
     df = results_df.copy()
@@ -416,7 +771,6 @@ def get_market_regime(live_row):
         return "TRENDING"
     return "RANGING"
 
-import numpy as np
 from scipy.stats import norm
 from scipy.optimize import brentq
 
@@ -441,7 +795,7 @@ class OptionMath:
         # FIX: Check intrinsic first to avoid waste
         intrinsic = max(0, S - K) if type_ == "call" else max(0, K - S)
         
-        # If market price is below intrinsic (arbitrage/bad data), IV is 0
+        # If market price is below intrinsic - bad data), IV is 0
         if price <= intrinsic + 1e-5:
             return 0.0
 
@@ -494,7 +848,7 @@ def process_chain(chain, S0, T, r, sigma_forecast, paths):
             if spread / (mid + 1e-9) > 0.40: continue # Skip if spread > 40% of price
             
             mkt_iv = OptionMath.get_iv(S0, K, T, r, mid, opt_type.lower())
-            fair_px = OptionMath.bs_pricing(S0, K, T, r, sigma_forecast, opt_type.lower())
+            model_px = OptionMath.bs_pricing(S0, K, T, r, sigma_forecast, opt_type.lower())
             
             if np.isnan(mkt_iv): continue
 
@@ -506,8 +860,8 @@ def process_chain(chain, S0, T, r, sigma_forecast, paths):
             if abs(delta) < 0.10 or abs(delta) > 0.85: continue
 
             side = "NONE"
-            if fair_px > ask: side = "LONG"
-            elif fair_px < bid: side = "SHORT"
+            if model_px > ask: side = "LONG"
+            elif model_px < bid: side = "SHORT"
             
             entry_px = ask if side == "LONG" else bid
             if side != "NONE":
@@ -525,7 +879,7 @@ def process_chain(chain, S0, T, r, sigma_forecast, paths):
             rows.append({
                 "Action": side, "Type": opt_type, "Strike": round(K, 1),
                 "Delta": round(delta, 2), "Mkt_Px": round(mid, 2),
-                "Fair_Px": round(fair_px, 2), "Edge_Pct_Val": mean_ret,
+                "model_Px": round(model_px, 2), "Edge_Pct_Val": mean_ret,
                 "PoP": f"{pop:.1%}", "Silo_Kelly": kelly_f, "IV": round(mkt_iv, 3)
             })
             
@@ -632,12 +986,12 @@ def package_dashboard_payload(ticker, paths, opt_all, S0, sigma, p5d, p20d, tail
         "steps": list(range(paths.shape[1]))             # X-Axis (Days)
     }
 
-    # 2. Package Arbitrage Signals
+    # 2. Signals
     # Filter for the "Actionable" trades only
     if not opt_all.empty:
         signals = opt_all[opt_all["Action"] != "NONE"].copy()
         # Convert DataFrame to list of dictionaries
-        trades_payload = signals[["Type", "Strike", "Mkt_Px", "Fair_Px", "Edge_Pct_Val", "PoP"]].to_dict(orient="records")
+        trades_payload = signals[["Type", "Strike", "Mkt_Px", "model_Px", "Edge_Pct_Val", "PoP"]].to_dict(orient="records")
     else:
         trades_payload = []
 
@@ -686,11 +1040,11 @@ def plot_full_dashboard(paths, opt_all, S0, sigma, ticker, wfa_log, p5d, p20d, t
     if not opt_all.empty:
         c = opt_all[opt_all["Type"]=="Call"]; p = opt_all[opt_all["Type"]=="Put"]
         ax2.scatter(c["Strike"], c["Mkt_Px"], c='lime', marker='x', label='Mkt Price')
-        ax2.scatter(c["Strike"], c["Fair_Px"], c='cyan', alpha=0.5, label='Fair Px')
+        ax2.scatter(c["Strike"], c["model_Px"], c='cyan', alpha=0.5, label='model Px')
         ax2.scatter(p["Strike"], p["Mkt_Px"], c='red', marker='x', label='Mkt Price')
-        ax2.scatter(p["Strike"], p["Fair_Px"], c='orange', alpha=0.5, label='Fair Px')
+        ax2.scatter(p["Strike"], p["model_Px"], c='orange', alpha=0.5, label='model Px')
     ax2.axvline(x=S0, color="white", ls="--", label="Spot")
-    ax2.set_title("Price Arbitrage Map (Market vs Model)")
+    ax2.set_title("Price Map (Market vs Model Target)")
     ax2.legend()
     ax3 = plt.subplot(gs[1, 0])
     if not opt_all.empty:
@@ -779,7 +1133,7 @@ def plot_pred_vs_real(eval_slice, preds, m_xgb, m_rf, m_lasso, w_xgb, w_rf):
 
 # ---------------- AUTO-HEDGE RECOMMENDATIONS (Platinum v5.1: Lasso + Unit Logic) ----------------
 def auto_hedge_recommendations(df_full, final_m, preds, sigma_model, opt_all, TOTAL_AUM, ticker):
-    print("\n=== AUTO-HEDGE RECIPE (Lasso-Optimized, $1k Basis) ===\n")
+    print("\n=== Sparse Factor Hedge Reccomendation (Non Tail-Risk) ===\n")
 
     # --- 1. CONFIGURATION ---
     TRADE_UNIT_SIZE = 1000.0
@@ -910,8 +1264,6 @@ def auto_hedge_recommendations(df_full, final_m, preds, sigma_model, opt_all, TO
     else:
         print("  • No systematic hedges required (Pure Alpha).")
 
-import os
-import csv
 
 def analyze_z_continuum(ticker, continuum_data, run_folder):
     """Plots the Z-Score Term Structure for the ticker."""
@@ -928,7 +1280,7 @@ def analyze_z_continuum(ticker, continuum_data, run_folder):
         plt.fill_between(d_val, z_val, 0, where=(np.array(z_val) >= 0), color='#00FFCC', alpha=0.1)
         plt.fill_between(d_val, z_val, 0, where=(np.array(z_val) < 0), color='#FF3366', alpha=0.1)
         
-        plt.title(f"{ticker} - Volatility Arbitrage Continuum (Term Structure of Edge)", fontsize=14)
+        plt.title(f"{ticker} - Volatility Dissimilarity Continuum (Term Structure of Edge)", fontsize=14)
         plt.xlabel("Days to Expiration")
         plt.ylabel("Z-Score (Standard Deviations)")
         plt.legend()
@@ -945,131 +1297,247 @@ def analyze_z_continuum(ticker, continuum_data, run_folder):
         plt.title(f"{ticker} - Z-Score Horizon Continuum")
         plt.savefig(f"Results/{ticker}_Continuum.png")
         plt.close()
+
+def get_institutional_hedge_data(df_full, ticker):
+    """Calculates sparse regression betas for the JSON payload."""
+    potential_macros = ["ret_gspc", "ret_xlk", "ret_vix", "ret_hyg", "ret_iei", "ret_oil"]
+    macro_cols = [c for c in potential_macros if c in df_full.columns]
+    
+    reg_df = df_full[macro_cols + [f"ret_{ticker.lower()}"]].dropna()
+    if reg_df.empty: return {"systematic_risk": 0, "alpha_integrity": 1.0, "betas": {}}
+    
+    X = reg_df[macro_cols]
+    y = reg_df[f"ret_{ticker.lower()}"]
+    
+    model = LassoCV(cv=5, fit_intercept=False, max_iter=5000).fit(X, y)
+    r_squared = model.score(X, y)
+    
+    return {
+        "systematic_risk_pct": round(float(r_squared), 4),
+        "alpha_integrity_pct": round(float(1 - r_squared), 4),
+        "betas": {feat: round(float(coef), 4) for feat, coef in zip(macro_cols, model.coef_) if abs(coef) > 1e-4}
+    }
+
 def main():
     # Create run folder and report
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     run_folder = f"Results/Run_{timestamp}"
     os.makedirs(run_folder, exist_ok=True)
+
     report_file = f"{run_folder}/Tarasque_Alpha_Report.csv"
     results_log = []
 
-    # Full S&P 500 tickers (limited to first 75 for ~7 hours)
-    TICKERS = [ ' luv'
-    ]  # Exactly 75 here (A to CCI)
+    TICKERS = get_tickers_from_prompt(default="MS")
+
+    print("[BOOT] Starting run. TICKERS =", TICKERS)
+
 
     for ticker in TICKERS:
         try:
             print(f"\n>>> PROCESSING: {ticker}")
-            yf_ticker = yf.Ticker(ticker)
-            expuries = yf_ticker.options
-            if not expuries:
-                print(f"SKIP {ticker}: No options available")
-                continue
-            
+
+            # 1) Download history ONCE per ticker
             df_raw = download_history(ticker)
-            continuum_data = []  # Collect for plot
-            
-            for exp in expuries:
+            continuum_data = []
+
+            # 2) Fetch option chain ONCE per ticker
+            chain_df = fetch_chain_via_contracts(trading_client, option_data_client, ticker)
+            print(f"[CHAIN_RAW] rows={0 if chain_df is None else len(chain_df):,}")
+            if chain_df is None or chain_df.empty:
+                print(f"SKIP {ticker}: No option chain data from Alpaca")
+                continue
+
+            chain_df["expiry"] = pd.to_datetime(chain_df["expiry"], errors="coerce").dt.date
+
+            print("[CHAIN] expiry min/max:", chain_df["expiry"].min(), chain_df["expiry"].max())
+            print("[CHAIN] unique expiries (first 10):", sorted(chain_df["expiry"].dropna().unique())[:10])
+
+            # Hard stop early if nothing came back
+            if chain_df is None or chain_df.empty or "expiry" not in chain_df.columns:
+                print(f"SKIP {ticker}: No option chain data from Alpaca")
+                continue
+
+
+            # Defensive: ensure expiry exists
+            if "expiry" not in chain_df.columns:
+                print(f"SKIP {ticker}: chain_df missing 'expiry' column. cols={list(chain_df.columns)}")
+                continue
+
+            # Normalize expiry to datetime64[ns] so vectorized DTE works reliably
+            chain_df["expiry"] = pd.to_datetime(chain_df["expiry"], errors="coerce")
+            chain_df = chain_df.dropna(subset=["expiry"])
+
+            if chain_df.empty:
+                print(f"SKIP {ticker}: all expiry values were invalid/NaT after parsing")
+                continue
+
+            # 3) Filter expiries by DTE window ONCE (datetime - datetime)
+            today_ts = pd.Timestamp.today().normalize()
+            chain_df["dte"] = (chain_df["expiry"] - today_ts).dt.days
+
+            chain_df = chain_df[(chain_df["dte"] >= MIN_DTE) & (chain_df["dte"] <= MAX_DTE)]
+
+            if chain_df.empty:
+                print(f"SKIP {ticker}: No expiries in DTE window [{MIN_DTE},{MAX_DTE}]")
+                continue
+
+            # IMPORTANT: for later code that expects expiry as date objects:
+            chain_df["expiry"] = chain_df["expiry"].dt.date
+
+            # 2b) Hard stop if chain_df is empty or missing required columns
+            if chain_df is None or chain_df.empty:
+                print(f"SKIP {ticker}: empty chain_df from Alpaca")
+                continue
+
+            required_cols = {"expiry", "type", "strike", "bid", "ask"}
+            missing = required_cols - set(chain_df.columns)
+            if missing:
+                print(f"SKIP {ticker}: chain_df missing columns: {sorted(missing)} | cols={list(chain_df.columns)}")
+                continue
+
+
+            # 4) Loop expiries ONCE (Alpaca expiries)
+            for exp in sorted(chain_df["expiry"].unique()):
                 try:
-                    expiry_dt = pd.to_datetime(exp)
-                    days = (expiry_dt.date() - date.today()).days
+                    days = (exp - today).days
                     if days < 3:
                         continue
-                    
-                    H_trading = get_trading_days(df_raw.index[-1], expiry_dt)
+
+                    H_trading = get_trading_days(df_raw.index[-1], exp)
                     T_annualized = max(1/365, days / 365.0)
+
                     df_full = build_features(df_raw, ticker, H_trading)
-                    
-                    exclude = ["rv_forward_H", "log_rv_forward_H", f"ret_{ticker.lower()}", "GSPC", "XLE", "OIL", "USD", 
-                               "VIX", "TNX_10Y", "HYG", "IEI", "VVIX", "XLK", "XLP", "IRX", "close_price", 
-                               "ma_50", "rv_1d", "macd_hist", "vix_basis", "XLF", "XLV", "IWM"]
+
+                    exclude = [
+                        "rv_forward_H", "log_rv_forward_H", f"ret_{ticker.lower()}",
+                        "gspc", "xle", "oil", "usd", "vix", "tnx_10y", "hyg", "iei", "vvix",
+                        "xlk", "xlp", "irx", "close_price", "ma_50", "rv_1d", "macd_hist",
+                        "vix_basis", "xlf", "xlv", "iwm"
+                    ]
+
                     preds = [c for c in df_full.columns if c not in exclude and not c.startswith("ret_")]
+
                     train_pool = df_full.dropna(subset=["log_rv_forward_H"])
                     live_state = df_full.iloc[-1:]
-                    
+
                     print(f"   [SYSTEM] Training Ensemble for {ticker} - {exp}...")
                     wfa_log, model_errors = run_wfa_competition(train_pool, preds)
                     avg_rmse = wfa_log["RMSE"].mean()
-                    
+
                     winner_list = wfa_log["Winner"].values
-                    xgb_best = wfa_log[wfa_log["Winner"]=="XGB"].iloc[-1]["Params"] if "XGB" in winner_list else {}
-                    
+                    xgb_best = (
+                        wfa_log[wfa_log["Winner"] == "XGB"].iloc[-1]["Params"]
+                        if "XGB" in winner_list else {}
+                    )
+
                     X_train = np.ascontiguousarray(train_pool[preds].values, dtype=np.float32)
                     y_train = np.ascontiguousarray(train_pool["log_rv_forward_H"].values, dtype=np.float32).flatten()
-                    X_live = np.ascontiguousarray(live_state[preds].values, dtype=np.float32)
-                    
-                    m_xgb = xgb.XGBRegressor(n_jobs=-1, **xgb_best).fit(X_train, y_train)
-                    m_rf = RandomForestRegressor(n_jobs=-1).fit(X_train, y_train)
-                    
-                    p_xgb = m_xgb.predict(X_live)[0]
-                    p_rf = m_rf.predict(X_live)[0]
-                    
-                    xgb_err = float(np.mean(model_errors.get("XGB", 1.0)))
-                    rf_err = float(np.mean(model_errors.get("RF", 1.0)))
-                    w_xgb = (1 / (xgb_err + 1e-6)) / ((1 / (xgb_err + 1e-6)) + (1 / (rf_err + 1e-6)))
-                    w_rf = 1 - w_xgb
-                    
-                    sigma_model = np.sqrt(np.exp((p_xgb * w_xgb + p_rf * w_rf) + 0.5 * avg_rmse**2))
-                    
-                    # Get market IV directly (skip process_chain for speed)
-                    chain = yf_ticker.option_chain(exp)
-                    if chain.calls.empty and chain.puts.empty:
-                        continue
-                    mkt_iv = pd.concat([chain.calls, chain.puts])['impliedVolatility'].median()
-                    
-                    vel_col = f"{ticker.lower()}_rv_vel"
-                    rv_velocity = abs(live_state[vel_col].iloc[0]) if vel_col in live_state.columns else 0
-                    z_score = (sigma_model - mkt_iv) / (avg_rmse * (1 + rv_velocity) + 1e-9)
-                    
-                    # Log this combo boom
-                    results_log.append({
-                        "Ticker": ticker, "Expiry": exp, "Days_to_Expiry": days, "Zscore": round(z_score, 3), 
-                        "RMSE": round(avg_rmse, 4), "MKTIV": round(mkt_iv, 4), "MODELRV": round(sigma_model, 4)
-                    })
+                    X_live  = np.ascontiguousarray(live_state[preds].values, dtype=np.float32)
 
-                    # === [PART 3: SAVE DASHBOARD JSON - UNFILTERED] ===
-                    # We removed the 'if z_score > 0.5' check. 
-                    # Now it saves a dashboard file for EVERY ticker and expiry.
-                    
-                    print(f"   [DASHBOARD] Generating assets for {ticker}...")
-                    
-                    # 1. Get Spot & Regime
+                    m_xgb = xgb.XGBRegressor(n_jobs=-1, **xgb_best).fit(X_train, y_train)
+                    m_rf  = RandomForestRegressor(n_jobs=-1).fit(X_train, y_train)
+
+                    p_xgb = m_xgb.predict(X_live)[0]
+                    p_rf  = m_rf.predict(X_live)[0]
+
+                    xgb_err = float(np.mean(model_errors.get("XGB", 1.0)))
+                    rf_err  = float(np.mean(model_errors.get("RF", 1.0)))
+
+                    w_xgb = (1 / (xgb_err + 1e-6)) / ((1 / (xgb_err + 1e-6)) + (1 / (rf_err + 1e-6)))
+                    w_rf  = 1 - w_xgb
+
+                    sigma_model = np.sqrt(np.exp((p_xgb * w_xgb + p_rf * w_rf) + 0.5 * avg_rmse**2))
+
+                    # Build chain object for this expiry (for process_chain)
+                    chain_full = build_chain_for_expiry(chain_df, exp)
+
+                    print(
+                        f"   [CHAIN] {ticker} {exp} | "
+                        f"calls={len(chain_full.calls):,} puts={len(chain_full.puts):,}"
+                    )
+
+                    if chain_full.calls.empty and chain_full.puts.empty:
+                        print(f"SKIP {ticker} - {exp}: empty chain after filters")
+                        continue
+
+                    # Market IV proxy (if present)
+                    mkt_iv = pd.to_numeric(
+                        chain_df.loc[chain_df["expiry"] == exp, "iv"],
+                        errors="coerce"
+                    ).median()
+                    if pd.isna(mkt_iv) or mkt_iv <= 0:
+                        mkt_iv = sigma_model
+
+                    vel_col = f"{ticker.lower()}_rv_vel"
+                    rv_velocity = abs(float(live_state.get(vel_col, pd.Series([0])).iloc[0]))
+
+                    z_score = (sigma_model - mkt_iv) / (avg_rmse * (1 + rv_velocity) + 1e-9)
+
                     current_S0 = float(live_state["close_price"].iloc[0])
                     regime = get_market_regime(live_state)
 
-                    # 2. Run Monte Carlo (Required for charts)
-                    # Optimization: If you find this too slow, you can lower n_sims to 1000 for low Z-scores
-                    paths, p5d, p20d, tail_risk = run_monte_carlo(current_S0, sigma_model, T_annualized, avg_rmse)
+                    paths, p5d, p20d, tail_risk = run_monte_carlo(
+                        current_S0, sigma_model, T_annualized, avg_rmse
+                    )
+                    opt_data = process_chain(
+                        chain_full, current_S0, T_annualized, 0.042, sigma_model, paths
+                    )
 
-                    # 3. Process Option Chain (Required for trade signals)
-                    chain_full = yf_ticker.option_chain(exp)
-                    opt_data = process_chain(chain_full, current_S0, T_annualized, 0.042, sigma_model, paths)
+                    # Analytics
+                    importance_vals = m_xgb.feature_importances_
+                    top_idx = np.argsort(importance_vals)[-5:]
+                    feat_imp_dict = {preds[i]: round(float(importance_vals[i]), 4) for i in top_idx}
 
-                    # 4. Save the file
-                    save_batch_dashboard_json(run_folder, ticker, exp, current_S0, sigma_model, z_score, regime, paths, opt_data)
-                    # ======================================================
+                    hedge_results = get_institutional_hedge_data(df_full, ticker)
 
-                    # Collect for continuum plot
+                    # Log for CSV report
+                    results_log.append({
+                        "Ticker": ticker,
+                        "Expiry": str(exp),
+                        "Days_to_Expiry": int(days),
+                        "Zscore": round(float(z_score), 3),
+                        "RMSE": round(float(avg_rmse), 4),
+                        "MKTIV": round(float(mkt_iv), 4),
+                        "MODELRV": round(float(sigma_model), 4),
+                        "CallsUsed": int(len(chain_full.calls)),
+                        "PutsUsed": int(len(chain_full.puts)),
+                    })
+
+                    # Save enriched JSON
+                    print(f"   [DASHBOARD] Saving high-fidelity payload for {ticker}...")
+                    save_batch_dashboard_json(
+                        run_folder=run_folder,
+                        ticker=ticker,
+                        expiry=exp,
+                        S0=current_S0,
+                        sigma=sigma_model,
+                        z_score=z_score,
+                        regime=regime,
+                        paths=paths,
+                        opt_all=opt_data,
+                        hedge_data=hedge_results,
+                        feat_imp=feat_imp_dict
+                    )
+
                     continuum_data.append({"Days": days, "Z": z_score})
-                    
-                    print(f"Processed {ticker} - {exp} | Z: {z_score:.2f}")
-                    time.sleep(1)  # Rate limit safety
-                    
+                    print(f"SUCCESS: {ticker} - {exp} | Z: {z_score:.2f}")
+
+                    time.sleep(0.25)
+
                 except Exception as e:
                     print(f"SKIP {ticker} - {exp}: {e}")
                     continue
-            
-            # After all expuries for this ticker, plot continuum
+
+            # After all expiries for this ticker
             analyze_z_continuum(ticker, continuum_data, run_folder)
-            
+
         except Exception as e:
             print(f"SKIP {ticker}: {e}")
             continue
-    
+
     # Save full report
     pd.DataFrame(results_log).to_csv(report_file, index=False)
     print(f"\n[FINISH] Report saved as {report_file}")
-
 if __name__ == "__main__":
     if not os.path.exists("Results"):
         os.makedirs("Results")

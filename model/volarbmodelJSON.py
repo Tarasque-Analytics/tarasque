@@ -102,10 +102,18 @@ MAX_SPREAD_PCT = 0.20 # Kill trade if spread is > 20% of price
 WFA_STEP_DAYS = 25  # From your original
 WFA_NUM_STEPS = 5   # From your original
 
-# ALPACA KEYS (Enter your Paper Trading keys here)
-ALPACA_API_KEY = "PKCLNUEPLFGA3PYWJWUGDI6JXQ"
-ALPACA_SECRET_KEY = "8HMxb9TNNzDYa4mq3WjkqRXYkmzWgwsvTzNSYHwa3bQj"
-ALPACA_BASE_URL = "https://paper-api.alpaca.markets"
+import os
+
+def require_env(name: str) -> str:
+    val = os.getenv(name)
+    if not val:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return val
+
+ALPACA_API_KEY = require_env("ALPACA_API_KEY")
+ALPACA_SECRET_KEY = require_env("ALPACA_SECRET_KEY")
+ALPACA_BASE_URL = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+
 
 # Dark mode bc its cool asf
 
@@ -132,7 +140,8 @@ holidays = cal.holidays(start='2020-01-01', end='2030-12-31')
 HOLIDAYS_NP = np.array(holidays.date, dtype='datetime64[D]')
 
 MARKET_INDEX = "^GSPC"
-# ... (Rest of config remains the same)
+# ... (Old code fragment from lasso, disregard...)
+
 SECTOR_ETF   = "XLK"
 VIX_TICKER   = "^VIX"
 TNX_TICKER   = "^TNX"
@@ -164,11 +173,10 @@ class NumpyEncoder(json.JSONEncoder):
         elif isinstance(obj, np.ndarray): return obj.tolist()
         return super(NumpyEncoder, self).default(obj)
 
-def save_batch_dashboard_json(run_folder, ticker, expiry, S0, sigma, z_score, regime, paths, opt_all):
+def save_batch_dashboard_json(run_folder, ticker, expiry, S0, sigma, z_score, regime, paths, opt_all, hedge_data, feat_imp):
     """
-    Saves the 'digital twin' of your analysis for the website to read later.
+    Saves the enriched JSON payload for the dashboard.
     """
-    # 1. Summarize Monte Carlo (compress 5000 paths -> 3 lines)
     path_summary = {
         "p95": np.percentile(paths, 95, axis=0).tolist(),
         "p05": np.percentile(paths, 5, axis=0).tolist(),
@@ -176,31 +184,29 @@ def save_batch_dashboard_json(run_folder, ticker, expiry, S0, sigma, z_score, re
         "steps": list(range(paths.shape[1]))
     }
 
-    # 2. Extract Actionable Trades
     trades_payload = []
     if not opt_all.empty:
-        # Save top 10 actionable trades
-        signals = opt_all[opt_all["Action"] != "NONE"].copy()
-        if not signals.empty:
-            trades_payload = signals.sort_values("Edge_Pct_Val", ascending=False).head(10)[
-                ["Type", "Strike", "Mkt_Px", "Fair_Px", "Edge_Pct_Val", "PoP"]
-            ].to_dict(orient="records")
+        # Include full dictionary to capture Greeks/Metrics calculated in process_chain
+        trades_payload = opt_all[opt_all["Action"] != "NONE"].to_dict(orient="records")
 
-    # 3. Build & Save
     payload = {
         "meta": {
             "ticker": ticker,
             "expiry": str(expiry),
-            "spot_price": S0,
+            "spot_price": round(S0, 2),
             "regime": regime,
             "model_rv": round(sigma, 4),
             "z_score": round(z_score, 2)
         },
+        "explainability": {
+            "top_model_drivers": feat_imp  # Synced Name
+        },
+        "operational_risk": hedge_data,
         "charts": {"monte_carlo": path_summary},
-        "trades": trades_payload
+        "opportunities": trades_payload
     }
 
-    filename = f"{run_folder}/{ticker}_payload.json"
+    filename = f"{run_folder}/{ticker}_{expiry}_payload.json"
     with open(filename, "w") as f:
         json.dump(payload, f, cls=NumpyEncoder, indent=4)
 
@@ -283,7 +289,8 @@ def download_history(ticker):
 
     for tkr, name in mapping.items():
         df[name] = get_col(data, 'Close', tkr)
-        if name in ["GSPC", "XLK", "OIL", "USD", "HYG", "IEI", "XLP", "IRX", "XLF", "XLE", "XLV", "IWM"]:
+        if name in ["GSPC", "XLK", "OIL", "USD", 
+        "HYG", "IEI", "XLP", "IRX", "XLF", "XLE", "XLV", "IWM"]:
             df[f"ret_{name.lower()}"] = np.log(df[name] / (df[name].shift(1) + 1e-9)).fillna(0)
             df[f"{name.lower()}_rv"] = df[f"ret_{name.lower()}"].rolling(21).std() * np.sqrt(252)
             df[f"{name.lower()}_rv_vel"] = df[f"{name.lower()}_rv"].diff(5)
@@ -296,7 +303,7 @@ def download_history(ticker):
 
 def optimize_tarasque_portfolio(results_df, total_budget=5000):
     """Calculates the Efficient Frontier weights for the final portfolio."""
-    print("\n--- Running Portfolio Optimization (Max Sharpe) ---")
+    print("\n--- Running Portfolio Optimization ---")
     
     # 1. Filter for valid data
     df = results_df.copy()
@@ -441,7 +448,7 @@ class OptionMath:
         # FIX: Check intrinsic first to avoid waste
         intrinsic = max(0, S - K) if type_ == "call" else max(0, K - S)
         
-        # If market price is below intrinsic (arbitrage/bad data), IV is 0
+        # If market price is below intrinsic - bad data), IV is 0
         if price <= intrinsic + 1e-5:
             return 0.0
 
@@ -494,7 +501,7 @@ def process_chain(chain, S0, T, r, sigma_forecast, paths):
             if spread / (mid + 1e-9) > 0.40: continue # Skip if spread > 40% of price
             
             mkt_iv = OptionMath.get_iv(S0, K, T, r, mid, opt_type.lower())
-            fair_px = OptionMath.bs_pricing(S0, K, T, r, sigma_forecast, opt_type.lower())
+            model_px = OptionMath.bs_pricing(S0, K, T, r, sigma_forecast, opt_type.lower())
             
             if np.isnan(mkt_iv): continue
 
@@ -506,8 +513,8 @@ def process_chain(chain, S0, T, r, sigma_forecast, paths):
             if abs(delta) < 0.10 or abs(delta) > 0.85: continue
 
             side = "NONE"
-            if fair_px > ask: side = "LONG"
-            elif fair_px < bid: side = "SHORT"
+            if model_px > ask: side = "LONG"
+            elif model_px < bid: side = "SHORT"
             
             entry_px = ask if side == "LONG" else bid
             if side != "NONE":
@@ -525,7 +532,7 @@ def process_chain(chain, S0, T, r, sigma_forecast, paths):
             rows.append({
                 "Action": side, "Type": opt_type, "Strike": round(K, 1),
                 "Delta": round(delta, 2), "Mkt_Px": round(mid, 2),
-                "Fair_Px": round(fair_px, 2), "Edge_Pct_Val": mean_ret,
+                "model_Px": round(model_px, 2), "Edge_Pct_Val": mean_ret,
                 "PoP": f"{pop:.1%}", "Silo_Kelly": kelly_f, "IV": round(mkt_iv, 3)
             })
             
@@ -632,12 +639,12 @@ def package_dashboard_payload(ticker, paths, opt_all, S0, sigma, p5d, p20d, tail
         "steps": list(range(paths.shape[1]))             # X-Axis (Days)
     }
 
-    # 2. Package Arbitrage Signals
+    # 2. Signals
     # Filter for the "Actionable" trades only
     if not opt_all.empty:
         signals = opt_all[opt_all["Action"] != "NONE"].copy()
         # Convert DataFrame to list of dictionaries
-        trades_payload = signals[["Type", "Strike", "Mkt_Px", "Fair_Px", "Edge_Pct_Val", "PoP"]].to_dict(orient="records")
+        trades_payload = signals[["Type", "Strike", "Mkt_Px", "model_Px", "Edge_Pct_Val", "PoP"]].to_dict(orient="records")
     else:
         trades_payload = []
 
@@ -686,11 +693,11 @@ def plot_full_dashboard(paths, opt_all, S0, sigma, ticker, wfa_log, p5d, p20d, t
     if not opt_all.empty:
         c = opt_all[opt_all["Type"]=="Call"]; p = opt_all[opt_all["Type"]=="Put"]
         ax2.scatter(c["Strike"], c["Mkt_Px"], c='lime', marker='x', label='Mkt Price')
-        ax2.scatter(c["Strike"], c["Fair_Px"], c='cyan', alpha=0.5, label='Fair Px')
+        ax2.scatter(c["Strike"], c["model_Px"], c='cyan', alpha=0.5, label='model Px')
         ax2.scatter(p["Strike"], p["Mkt_Px"], c='red', marker='x', label='Mkt Price')
-        ax2.scatter(p["Strike"], p["Fair_Px"], c='orange', alpha=0.5, label='Fair Px')
+        ax2.scatter(p["Strike"], p["model_Px"], c='orange', alpha=0.5, label='model Px')
     ax2.axvline(x=S0, color="white", ls="--", label="Spot")
-    ax2.set_title("Price Arbitrage Map (Market vs Model)")
+    ax2.set_title("Price Map (Market vs Model Target)")
     ax2.legend()
     ax3 = plt.subplot(gs[1, 0])
     if not opt_all.empty:
@@ -928,7 +935,7 @@ def analyze_z_continuum(ticker, continuum_data, run_folder):
         plt.fill_between(d_val, z_val, 0, where=(np.array(z_val) >= 0), color='#00FFCC', alpha=0.1)
         plt.fill_between(d_val, z_val, 0, where=(np.array(z_val) < 0), color='#FF3366', alpha=0.1)
         
-        plt.title(f"{ticker} - Volatility Arbitrage Continuum (Term Structure of Edge)", fontsize=14)
+        plt.title(f"{ticker} - Volatility Dissimilarity Continuum (Term Structure of Edge)", fontsize=14)
         plt.xlabel("Days to Expiration")
         plt.ylabel("Z-Score (Standard Deviations)")
         plt.legend()
@@ -945,6 +952,27 @@ def analyze_z_continuum(ticker, continuum_data, run_folder):
         plt.title(f"{ticker} - Z-Score Horizon Continuum")
         plt.savefig(f"Results/{ticker}_Continuum.png")
         plt.close()
+
+def get_institutional_hedge_data(df_full, ticker):
+    """Calculates sparse regression betas for the JSON payload."""
+    potential_macros = ["ret_gspc", "ret_xlk", "ret_vix", "ret_hyg", "ret_iei", "ret_oil"]
+    macro_cols = [c for c in potential_macros if c in df_full.columns]
+    
+    reg_df = df_full[macro_cols + [f"ret_{ticker.lower()}"]].dropna()
+    if reg_df.empty: return {"systematic_risk": 0, "alpha_integrity": 1.0, "betas": {}}
+    
+    X = reg_df[macro_cols]
+    y = reg_df[f"ret_{ticker.lower()}"]
+    
+    model = LassoCV(cv=5, fit_intercept=False, max_iter=5000).fit(X, y)
+    r_squared = model.score(X, y)
+    
+    return {
+        "systematic_risk_pct": round(float(r_squared), 4),
+        "alpha_integrity_pct": round(float(1 - r_squared), 4),
+        "betas": {feat: round(float(coef), 4) for feat, coef in zip(macro_cols, model.coef_) if abs(coef) > 1e-4}
+    }
+
 def main():
     # Create run folder and report
     timestamp = time.strftime("%Y%m%d-%H%M%S")
@@ -955,8 +983,7 @@ def main():
 
     # Full S&P 500 tickers (limited to first 75 for ~7 hours)
     TICKERS = [
-        'AAPL', 'AMD', 'AMZN', 'AVGO', 'MSFT'
-        'BAC', 'NVDA', 'CBRE', 'NFLX', 'GOOG', 'META', 'MS', 'UBER'
+        'LUV'
     ]  # Exactly 75 here (A to CCI)
 
     for ticker in TICKERS:
@@ -977,86 +1004,96 @@ def main():
                     days = (expiry_dt.date() - date.today()).days
                     if days < 3:
                         continue
-                    
+            
+                    # --- 1. SETUP & FEATURE BUILDING ---
                     H_trading = get_trading_days(df_raw.index[-1], expiry_dt)
                     T_annualized = max(1/365, days / 365.0)
                     df_full = build_features(df_raw, ticker, H_trading)
-                    
+            
                     exclude = ["rv_forward_H", "log_rv_forward_H", f"ret_{ticker.lower()}", "GSPC", "XLE", "OIL", "USD", 
-                               "VIX", "TNX_10Y", "HYG", "IEI", "VVIX", "XLK", "XLP", "IRX", "close_price", 
-                               "ma_50", "rv_1d", "macd_hist", "vix_basis", "XLF", "XLV", "IWM"]
+                            "VIX", "TNX_10Y", "HYG", "IEI", "VVIX", "XLK", "XLP", "IRX", "close_price", 
+                            "ma_50", "rv_1d", "macd_hist", "vix_basis", "XLF", "XLV", "IWM"]
                     preds = [c for c in df_full.columns if c not in exclude and not c.startswith("ret_")]
                     train_pool = df_full.dropna(subset=["log_rv_forward_H"])
                     live_state = df_full.iloc[-1:]
-                    
+            
+                    # --- 2. MODEL TRAINING & FORECASTING ---
                     print(f"   [SYSTEM] Training Ensemble for {ticker} - {exp}...")
                     wfa_log, model_errors = run_wfa_competition(train_pool, preds)
                     avg_rmse = wfa_log["RMSE"].mean()
-                    
+            
                     winner_list = wfa_log["Winner"].values
                     xgb_best = wfa_log[wfa_log["Winner"]=="XGB"].iloc[-1]["Params"] if "XGB" in winner_list else {}
-                    
+            
                     X_train = np.ascontiguousarray(train_pool[preds].values, dtype=np.float32)
                     y_train = np.ascontiguousarray(train_pool["log_rv_forward_H"].values, dtype=np.float32).flatten()
                     X_live = np.ascontiguousarray(live_state[preds].values, dtype=np.float32)
-                    
+            
                     m_xgb = xgb.XGBRegressor(n_jobs=-1, **xgb_best).fit(X_train, y_train)
                     m_rf = RandomForestRegressor(n_jobs=-1).fit(X_train, y_train)
-                    
+            
                     p_xgb = m_xgb.predict(X_live)[0]
                     p_rf = m_rf.predict(X_live)[0]
-                    
+            
                     xgb_err = float(np.mean(model_errors.get("XGB", 1.0)))
                     rf_err = float(np.mean(model_errors.get("RF", 1.0)))
                     w_xgb = (1 / (xgb_err + 1e-6)) / ((1 / (xgb_err + 1e-6)) + (1 / (rf_err + 1e-6)))
                     w_rf = 1 - w_xgb
-                    
+            
                     sigma_model = np.sqrt(np.exp((p_xgb * w_xgb + p_rf * w_rf) + 0.5 * avg_rmse**2))
-                    
-                    # Get market IV directly (skip process_chain for speed)
-                    chain = yf_ticker.option_chain(exp)
-                    if chain.calls.empty and chain.puts.empty:
+            
+                    # --- 3. MARKET DATA & Z-SCORE ---
+                    chain_full = yf_ticker.option_chain(exp)
+                    if chain_full.calls.empty and chain_full.puts.empty:
                         continue
-                    mkt_iv = pd.concat([chain.calls, chain.puts])['impliedVolatility'].median()
-                    
+                    mkt_iv = pd.concat([chain_full.calls, chain_full.puts])['impliedVolatility'].median()
+            
                     vel_col = f"{ticker.lower()}_rv_vel"
                     rv_velocity = abs(live_state[vel_col].iloc[0]) if vel_col in live_state.columns else 0
                     z_score = (sigma_model - mkt_iv) / (avg_rmse * (1 + rv_velocity) + 1e-9)
-                    
-                    # Log this combo boom
+            
                     results_log.append({
                         "Ticker": ticker, "Expiry": exp, "Days_to_Expiry": days, "Zscore": round(z_score, 3), 
                         "RMSE": round(avg_rmse, 4), "MKTIV": round(mkt_iv, 4), "MODELRV": round(sigma_model, 4)
                     })
 
-                    # === [PART 3: SAVE DASHBOARD JSON - UNFILTERED] ===
-                    # We removed the 'if z_score > 0.5' check. 
-                    # Now it saves a dashboard file for EVERY ticker and expiry.
-                    
-                    print(f"   [DASHBOARD] Generating assets for {ticker}...")
-                    
-                    # 1. Get Spot & Regime
+                    # --- 4. EXTRACT ENRICHED ANALYTICS (For Gregory Lawson) ---
+                    print(f"   [ANALYTICS] Decomposing Alpha & Risk for {ticker}...")
+            
+                    # Feature Importance
+                    importance_vals = m_xgb.feature_importances_
+                    top_idx = np.argsort(importance_vals)[-5:] 
+                    feat_imp_dict = {preds[i]: round(float(importance_vals[i]), 4) for i in top_idx}
+
+                    # Lasso Hedge Data
+                    hedge_results = get_institutional_hedge_data(df_full, ticker)
+            
+                    # --- 5. MONTE CARLO & OPTION PROCESSSING ---
                     current_S0 = float(live_state["close_price"].iloc[0])
                     regime = get_market_regime(live_state)
-
-                    # 2. Run Monte Carlo (Required for charts)
-                    # Optimization: If you find this too slow, you can lower n_sims to 1000 for low Z-scores
                     paths, p5d, p20d, tail_risk = run_monte_carlo(current_S0, sigma_model, T_annualized, avg_rmse)
-
-                    # 3. Process Option Chain (Required for trade signals)
-                    chain_full = yf_ticker.option_chain(exp)
                     opt_data = process_chain(chain_full, current_S0, T_annualized, 0.042, sigma_model, paths)
 
-                    # 4. Save the file
-                    save_batch_dashboard_json(run_folder, ticker, exp, current_S0, sigma_model, z_score, regime, paths, opt_data)
-                    # ======================================================
+                    # --- 6. SAVE ENRICHED JSON ---
+                    print(f"   [DASHBOARD] Saving high-fidelity payload for {ticker}...")
+                    save_batch_dashboard_json(
+                        run_folder=run_folder, 
+                        ticker=ticker, 
+                        expiry=exp, 
+                        S0=current_S0, 
+                        sigma=sigma_model, 
+                        z_score=z_score, 
+                        regime=regime, 
+                        paths=paths, 
+                        opt_all=opt_data,
+                        hedge_data=hedge_results,
+                        feat_imp=feat_imp_dict      # This MUST match the function def
+                    )
 
-                    # Collect for continuum plot
                     continuum_data.append({"Days": days, "Z": z_score})
-                    
-                    print(f"Processed {ticker} - {exp} | Z: {z_score:.2f}")
-                    time.sleep(1)  # Rate limit safety
-                    
+                    print(f"SUCCESS: {ticker} - {exp} | Z: {z_score:.2f}")
+                    time.sleep(1)
+
                 except Exception as e:
                     print(f"SKIP {ticker} - {exp}: {e}")
                     continue

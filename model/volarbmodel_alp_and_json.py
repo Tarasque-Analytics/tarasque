@@ -7,6 +7,7 @@ import xgboost as xgb
 from datetime import datetime, date, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
+from arch import arch_model
 
 # --- SKLEARN IMPORTS ---
 from sklearn.model_selection import TimeSeriesSplit
@@ -28,6 +29,104 @@ from alpaca.data.enums import Adjustment
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import GetOptionContractsRequest
 
+import yfinance as yf # Ensure this is imported
+
+# --- HELPER 1: GARCH FORECASTER (Isolated) ---
+def get_garch_vol(returns, horizon=21):
+    """Safe wrapper for GARCH. If it fails, returns None so we can fallback."""
+    try:
+        from arch import arch_model
+        # Scale to avoid optimizer errors
+        scaled = returns * 100.0 
+        model = arch_model(scaled, vol='Garch', p=1, q=1, dist='skewt', rescale=False)
+        res = model.fit(disp='off', show_warning=False)
+        var = res.forecast(horizon=horizon).variance.iloc[-1].values
+        # Rescale back
+        return (np.sqrt(np.mean(var)) / 100.0) * np.sqrt(252)
+    except Exception as e:
+        print(f"[WARN] GARCH failed: {e}")
+        return None
+
+# --- HELPER 2: RATE FETCH (Isolated) ---
+def get_risk_free_rate():
+    """Fetches ^IRX without touching DataIngestion class."""
+    try:
+        ticker = yf.Ticker("^IRX")
+        # specific check to ensure we don't crash on empty data
+        hist = ticker.history(period="5d")
+        if not hist.empty:
+            return hist["Close"].iloc[-1] / 1000.0
+    except:
+        pass
+    return 0.045 # Default fallback
+
+# --- CLASS: EVENT CALENDAR ---
+class EventCalendar:
+    def __init__(self):
+        # 2025-2026 FOMC Meeting Dates (Projected/Actual)
+        # These are the Wednesdays when the rate decision is announced
+        self.fomc_dates = [
+            "2025-12-17", 
+            "2026-01-28", "2026-03-18", "2026-04-29", "2026-06-17",
+            "2026-07-29", "2026-09-16", "2026-11-04", "2026-12-16"
+        ]
+        self.fomc_dates = sorted([datetime.strptime(d, "%Y-%m-%d").date() for d in self.fomc_dates])
+
+    def get_days_to_fomc(self, target_date):
+        """Returns days to next Fed meeting (0 if today)."""
+        if isinstance(target_date, datetime): target_date = target_date.date()
+        
+        future = [d for d in self.fomc_dates if d >= target_date]
+        if not future: return 100 # Default "far away" if schedule runs out
+        
+        return (future[0] - target_date).days
+
+    def get_hist_earnings(self, ticker):
+        """Returns a list of all known earnings dates (past and future)."""
+        try:
+            df = yf.Ticker(ticker).get_earnings_dates()
+            if df is None or df.empty: return []
+            # Index is usually timestamps
+            return [t.date() for t in df.index]
+        except: return []
+
+    def get_next_earnings(self, ticker):
+        """
+        Fetches next earnings date from yfinance. 
+        Returns (Date, Days_Until).
+        """
+        try:
+            t = yf.Ticker(ticker)
+            cal = t.calendar
+            
+            # CRASH FIX: Check type before asking if it's empty
+            if cal is None: return None, 100
+            if isinstance(cal, pd.DataFrame) and cal.empty: return None, 100
+            if isinstance(cal, dict) and not cal: return None, 100
+            
+            # Extract dates safely
+            dates = []
+            if isinstance(cal, dict):
+                # Handle Dict (New yfinance)
+                dates = cal.get('Earnings Date', [])
+                if not dates: dates = cal.get('Earnings High', []) # Fallback
+            else:
+                # Handle DataFrame (Old yfinance)
+                dates = cal.iloc[0].tolist()
+            
+            # Filter for future
+            future_dates = []
+            for d in dates:
+                if hasattr(d, "date"): d = d.date()
+                if d >= date.today(): future_dates.append(d)
+                
+            if future_dates:
+                return sorted(future_dates)[0], (sorted(future_dates)[0] - date.today()).days
+            
+            return None, 100
+        except Exception as e:
+            print(f"[WARN] Earnings fetch failed: {e}")
+            return None, 100
 # --- CONFIGURATION ---
 env_path = Path(__file__).resolve().parent / ".env"
 load_dotenv(dotenv_path=env_path)
@@ -57,19 +156,34 @@ class DataIngestion:
             "UUP", "XLP", "XLF", "XLE", "XLV", 
             "IWM", "XLC", "IYR", "EEM", "XLI", "MCHI"
         ]
-                                             
-    def fetch_data(self, ticker, lookback_days=1200):
-        print(f"\n[DATA] Pulling Data for {ticker} (High/Low/Close)...")
-        symbols = [ticker] + self.factor_data
-        start_dt = datetime.now() - timedelta(days=lookback_days)
 
-        req = StockBarsRequest(
-            symbol_or_symbols=symbols,
-            timeframe=TimeFrame.Day,
-            start=start_dt,
-            limit=None,
-            adjustment=Adjustment.ALL,
-            feed="sip"
+    # Inside DataIngestion class
+def fetch_risk_free_rate(self):
+    """
+    Fetches the 3-Month Treasury Bill Rate (^IRX) to use as the risk-free rate.
+    Returns float (e.g., 0.052 for 5.2%)
+    """
+    try:
+        # ^IRX is the CBOE Interest Rate 13-Week T-Bill Index
+        # The price is the yield * 10 (e.g., 52.0 = 5.2%)
+        ticker = yf.Ticker("^IRX")
+        hist = ticker.history(period="5d")
+        if not hist.empty:
+            rate = hist["Close"].iloc[-1] / 1000.0 # Convert 52 -> 0.052
+            print(f"[RATES] Risk-Free Rate set to: {rate:.2%}")
+            return rate
+    except Exception as e:
+        print(f"[WARN] Rate fetch failed ({e}). Defaulting to 4.5%")
+    return 0.045
+                                             
+def fetch_data(self, ticker, lookback_days=1200):
+    print(f"\n[DATA] Pulling Data for {ticker} (High/Low/Close)...")
+    symbols = [ticker] + self.factor_data
+    start_dt = datetime.now() - timedelta(days=lookback_days)
+
+    req = StockBarsRequest(
+            symbol_or_symbols=symbols, timeframe=TimeFrame.Day,
+            start=start_dt, limit=None, adjustment=Adjustment.ALL, feed="sip"
         )
         try: 
             bars = self.stock_client.get_stock_bars(req).df
@@ -80,52 +194,197 @@ class DataIngestion:
         if bars.empty: return pd.DataFrame()
         
         bars = bars.reset_index()
-        
-        # PIVOT
         closes = bars.pivot(index="timestamp", columns="symbol", values="close").ffill()
         highs = bars.pivot(index="timestamp", columns="symbol", values="high").ffill()
         lows = bars.pivot(index="timestamp", columns="symbol", values="low").ffill()
         opens = bars.pivot(index="timestamp", columns="symbol", values="open").ffill()
         
-        if ticker not in closes.columns:
-            return pd.DataFrame()
+        if ticker not in closes.columns: return pd.DataFrame()
 
-        # --- FEATURE ENGINEERING ---
         df = pd.DataFrame(index=closes.index)
+        df[f"close_{ticker}"] = closes[ticker]
         
-        # --- THE FIX: SAVE RAW CLOSE PRICE ---
-        df[f"close_{ticker}"] = closes[ticker] # <--- THIS WAS MISSING
+        # --- EVENT FEATURES (Historical Training) ---
+        calendar = EventCalendar()
         
-        # 1. Garman-Klass Volatility
+        # 1. FOMC (Fed)
+        df["date_obj"] = df.index.date
+        df["days_to_fomc"] = df["date_obj"].apply(calendar.get_days_to_fomc)
+        df["event_fed_gravity"] = 1.0 / (df["days_to_fomc"] + 1)
+        
+        # 2. Earnings (Real History)
+        earn_dates = calendar.get_hist_earnings(ticker)
+        if earn_dates:
+            # Create a dataframe of earnings dates
+            earn_df = pd.DataFrame({"earn_date": pd.to_datetime(earn_dates)}).sort_values("earn_date")
+            
+            # --- TIMEZONE FIX START ---
+            # 1. Ensure earnings are datetime64 (sometimes list comes back as date objects)
+            earn_df["earn_date"] = pd.to_datetime(earn_df["earn_date"])
+            
+            # 2. Strip timezone from Earnings if it exists
+            if earn_df["earn_date"].dt.tz is not None:
+                earn_df["earn_date"] = earn_df["earn_date"].dt.tz_localize(None)
+            
+            # 3. Create temp column from index
+            df["temp_ts"] = pd.to_datetime(df.index)
+            
+            # 4. Strip timezone from Main DF if it exists (Alpaca usually sends UTC)
+            if df["temp_ts"].dt.tz is not None:
+                df["temp_ts"] = df["temp_ts"].dt.tz_localize(None)
+            # --- TIMEZONE FIX END ---
+
+            # MERGE ASOF: Now safe because both are naive
+            merged = pd.merge_asof(
+                df, earn_df, 
+                left_on="temp_ts", right_on="earn_date", 
+                direction="forward"
+            )
+            
+            # Calculate Days Until
+            merged["days_to_earn"] = (merged["earn_date"] - merged["temp_ts"]).dt.days
+            
+            # Fill NaNs with 100
+            merged["days_to_earn"] = merged["days_to_earn"].fillna(100)
+            
+            # Gravity
+            df["event_earn_gravity"] = 1.0 / (merged["days_to_earn"].clip(0, 30) + 1).values
+        else:
+            df["event_earn_gravity"] = 0.0
+            
+        # ---------------------------
+
+        # Garman-Klass Volatility
         log_hl = np.log(highs[ticker] / lows[ticker])
         log_co = np.log(closes[ticker] / opens[ticker])
         gk_var = 0.5 * (log_hl**2) - (2 * np.log(2) - 1) * (log_co**2)
         
         df["rv_TARGET"] = np.sqrt(gk_var.rolling(window=21).mean()) * np.sqrt(252)
-        
-        # 2. Simple Returns
         df["ret_TARGET"] = np.log(closes[ticker] / closes[ticker].shift(1))
 
-        # 3. RSI
+        # Technicals
         delta = closes[ticker].diff()
         gain = (delta.where(delta > 0, 0)).rolling(14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
         rs = gain / (loss + 1e-9)
         df["tech_RSI"] = 100 - (100 / (1 + rs))
         
-        # 4. ATR
         tr1 = highs[ticker] - lows[ticker]
         tr2 = abs(highs[ticker] - closes[ticker].shift(1))
         tr3 = abs(lows[ticker] - closes[ticker].shift(1))
         tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
         df["tech_ATR"] = tr.rolling(14).mean() / closes[ticker]
 
-        # 5. Factor Returns
         for sym in self.factor_data:
             if sym in closes.columns:
                 df[f"ret_{sym}"] = np.log(closes[sym] / closes[sym].shift(1))
         
         df = df.dropna()
+        df = df.drop(columns=["date_obj", "temp_ts"], errors="ignore")
+        
+        df.index = df.index.date
+        print(f"[DATA] Success. {len(df)} rows ready.")
+        return dfreq = StockBarsRequest(
+            symbol_or_symbols=symbols, timeframe=TimeFrame.Day,
+            start=start_dt, limit=None, adjustment=Adjustment.ALL, feed="sip"
+        )
+        try: 
+            bars = self.stock_client.get_stock_bars(req).df
+        except Exception as e:
+            print(f"[ERROR] Alpaca API: {e}")
+            return pd.DataFrame()
+            
+        if bars.empty: return pd.DataFrame()
+        
+        bars = bars.reset_index()
+        closes = bars.pivot(index="timestamp", columns="symbol", values="close").ffill()
+        highs = bars.pivot(index="timestamp", columns="symbol", values="high").ffill()
+        lows = bars.pivot(index="timestamp", columns="symbol", values="low").ffill()
+        opens = bars.pivot(index="timestamp", columns="symbol", values="open").ffill()
+        
+        if ticker not in closes.columns: return pd.DataFrame()
+
+        df = pd.DataFrame(index=closes.index)
+        df[f"close_{ticker}"] = closes[ticker]
+        
+        # --- EVENT FEATURES (Historical Training) ---
+        calendar = EventCalendar()
+        
+        # 1. FOMC (Fed)
+        df["date_obj"] = df.index.date
+        df["days_to_fomc"] = df["date_obj"].apply(calendar.get_days_to_fomc)
+        df["event_fed_gravity"] = 1.0 / (df["days_to_fomc"] + 1)
+        
+        # 2. Earnings (Real History)
+        earn_dates = calendar.get_hist_earnings(ticker)
+        if earn_dates:
+            # Create a dataframe of earnings dates
+            earn_df = pd.DataFrame({"earn_date": pd.to_datetime(earn_dates)}).sort_values("earn_date")
+            
+            # --- TIMEZONE FIX START ---
+            # 1. Ensure earnings are datetime64 (sometimes list comes back as date objects)
+            earn_df["earn_date"] = pd.to_datetime(earn_df["earn_date"])
+            
+            # 2. Strip timezone from Earnings if it exists
+            if earn_df["earn_date"].dt.tz is not None:
+                earn_df["earn_date"] = earn_df["earn_date"].dt.tz_localize(None)
+            
+            # 3. Create temp column from index
+            df["temp_ts"] = pd.to_datetime(df.index)
+            
+            # 4. Strip timezone from Main DF if it exists (Alpaca usually sends UTC)
+            if df["temp_ts"].dt.tz is not None:
+                df["temp_ts"] = df["temp_ts"].dt.tz_localize(None)
+            # --- TIMEZONE FIX END ---
+
+            # MERGE ASOF: Now safe because both are naive
+            merged = pd.merge_asof(
+                df, earn_df, 
+                left_on="temp_ts", right_on="earn_date", 
+                direction="forward"
+            )
+            
+            # Calculate Days Until
+            merged["days_to_earn"] = (merged["earn_date"] - merged["temp_ts"]).dt.days
+            
+            # Fill NaNs with 100
+            merged["days_to_earn"] = merged["days_to_earn"].fillna(100)
+            
+            # Gravity
+            df["event_earn_gravity"] = 1.0 / (merged["days_to_earn"].clip(0, 30) + 1).values
+        else:
+            df["event_earn_gravity"] = 0.0
+            
+        # ---------------------------
+
+        # Garman-Klass Volatility
+        log_hl = np.log(highs[ticker] / lows[ticker])
+        log_co = np.log(closes[ticker] / opens[ticker])
+        gk_var = 0.5 * (log_hl**2) - (2 * np.log(2) - 1) * (log_co**2)
+        
+        df["rv_TARGET"] = np.sqrt(gk_var.rolling(window=21).mean()) * np.sqrt(252)
+        df["ret_TARGET"] = np.log(closes[ticker] / closes[ticker].shift(1))
+
+        # Technicals
+        delta = closes[ticker].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+        rs = gain / (loss + 1e-9)
+        df["tech_RSI"] = 100 - (100 / (1 + rs))
+        
+        tr1 = highs[ticker] - lows[ticker]
+        tr2 = abs(highs[ticker] - closes[ticker].shift(1))
+        tr3 = abs(lows[ticker] - closes[ticker].shift(1))
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        df["tech_ATR"] = tr.rolling(14).mean() / closes[ticker]
+
+        for sym in self.factor_data:
+            if sym in closes.columns:
+                df[f"ret_{sym}"] = np.log(closes[sym] / closes[sym].shift(1))
+        
+        df = df.dropna()
+        df = df.drop(columns=["date_obj", "temp_ts"], errors="ignore")
+        
         df.index = df.index.date
         print(f"[DATA] Success. {len(df)} rows ready.")
         return df
@@ -222,8 +481,6 @@ class DataIngestion:
             
         return pd.DataFrame(all_snaps)
 # --- CLASS 2: MODEL ---
-# --- CLASS 2: MODEL (Now with Leak-Proof WFA) ---
-# --- CLASS 2: MODEL (Term Structure Aware) ---
 class VolArbModel:
     def __init__(self):
         # We train on 3 'Anchor' horizons: 1 Month, 3 Months, 6 Months
@@ -244,6 +501,42 @@ class VolArbModel:
             }
             self.weights[h] = {"XGB": 0.33, "RF": 0.33, "Lasso": 0.33}
             self.rmse_scores[h] = 0.0
+
+    from arch import arch_model
+
+class GarchForecaster:
+    @staticmethod
+    def fit_predict(returns, horizon=21):
+        """
+        Fits a GARCH(1,1) on returns (scaled to 100 for stability)
+        and forecasts variance 'horizon' days out.
+        """
+        # 1. Scale returns (GARCH optimizers hate small numbers like 0.001)
+        # We work in "percent" space (0.1% -> 0.1)
+        scaled_ret = returns * 100.0
+        
+        # 2. Fit GARCH(1,1) with Skewed Student's T distribution (captures fat tails)
+        # 'vol="Garch"' is standard. 'dist="skewt"' handles the non-normal crash risk.
+        model = arch_model(scaled_ret, vol='Garch', p=1, q=1, dist='skewt', rescale=False)
+        res = model.fit(disp='off', show_warning=False)
+        
+        # 3. Forecast
+        # Analytic forecast of variance over the next 'horizon' days
+        forecast = res.forecast(horizon=horizon)
+        
+        # Extract the variance forecast (cumulative over horizon)
+        # The forecast object returns a DataFrame, we want the last row
+        var_forecast = forecast.variance.iloc[-1].values
+        
+        # 4. Convert back to Annualized Volatility
+        # Mean variance per day over the horizon
+        avg_daily_var = np.mean(var_forecast) 
+        
+        # Rescale back from "percent space" (divide by 100^2) and annualize
+        daily_vol = np.sqrt(avg_daily_var) / 100.0
+        annualized_vol = daily_vol * np.sqrt(252)
+        
+        return annualized_vol, res.conditional_volatility.iloc[-1] / 100.0 * np.sqrt(252)
 
     def prepare_features(self, df):
         d = df.copy()
@@ -374,7 +667,6 @@ class HedgeLab:
             return {}
 
         # 2. Fit Lasso (Finds the 'Beta' to each factor)
-        # alpha=0.0005 is loose enough to find hedges, tight enough to cut noise
         hedge_model = Lasso(alpha=0.0005, fit_intercept=False, positive=False)
         
         X = df[factor_cols]
@@ -385,109 +677,182 @@ class HedgeLab:
         # 3. Extract Recipe
         recipe = {}
         for factor, coef in zip(factors, hedge_model.coef_):
-            if abs(coef) > 0.01: # Filter out near-zero weights
-                # Inverse the sign for hedging (If Correlation is +, we Short)
-                # If MS moves with SPY (Coef +1.2), we Short 1.2 SPY.
+            if abs(coef) > 0.01: 
                 recipe[factor] = round(-coef, 4)
                 
         # Sort by impact
         return dict(sorted(recipe.items(), key=lambda item: abs(item[1]), reverse=True))# --- EXECUTION PIPELINE (v2.4: Robust & Z-Score Aware) ---
 # --- EXECUTION (v2.5: Term Structure Interpolation) ---
+import os
+import time
+import json
+import numpy as np
+import pandas as pd
+from datetime import datetime, date, timedelta
+from arch import arch_model  # Ensure this is installed: pip install arch
+from scipy.stats import norm
+
+# --- CLASS: GARCH FORECASTER (New Engine) ---
+class GarchForecaster:
+    @staticmethod
+    def fit_predict(returns, horizon=21):
+        """
+        Fits a GARCH(1,1) with Skewed T-distribution to capture tail risk.
+        Returns: (Annualized Vol Forecast, Current Conditional Vol)
+        """
+        # Scale returns to percentage (e.g., 0.01 -> 1.0) for optimizer stability
+        scaled_ret = returns * 100.0
+        
+        # Fit GARCH(1,1) with Skewed Student's T
+        try:
+            model = arch_model(scaled_ret, vol='Garch', p=1, q=1, dist='skewt', rescale=False)
+            res = model.fit(disp='off', show_warning=False)
+            
+            # Forecast variance over horizon
+            forecast = res.forecast(horizon=horizon)
+            var_forecast = forecast.variance.iloc[-1].values
+            
+            # Average daily variance -> Annualized Vol
+            avg_daily_var = np.mean(var_forecast)
+            daily_vol = np.sqrt(avg_daily_var) / 100.0
+            annualized_vol = daily_vol * np.sqrt(252)
+            
+            current_cond_vol = res.conditional_volatility.iloc[-1] / 100.0 * np.sqrt(252)
+            return annualized_vol, current_cond_vol
+            
+        except Exception as e:
+            print(f"[WARN] GARCH fit failed: {e}. Defaulting to naive volatility.")
+            # Fallback: simple std dev
+            naive_vol = returns.std() * np.sqrt(252)
+            return naive_vol, naive_vol
+
+# --- EXECUTION PIPELINE (Refactored) ---
 def run_analysis(ticker, lookback=1200):
     print("\n" + "="*50)
-    print(f"   TARASQUE ENGINE v2.5 (TERM STRUCTURE) | TARGET: {ticker}")
+    print(f"   TARASQUE ENGINE v2.6 (STABILIZED Z-SCORE) | TARGET: {ticker}")
     print("="*50)
     
+    # 1. SETUP & DATA
     start_t = time.time()
-    try: from volarbmodel_alp_and_json import DataIngestion 
-    except: from data_ingestion import DataIngestion
+    try: from volarbmodel_alp_and_json import DataIngestion, VolArbModel, QuantLib, HedgeLab, EventCalendar
+    except: 
+        # Fallback for local testing if classes are in same file
+        pass 
         
     engine = DataIngestion()
     df = engine.fetch_data(ticker, lookback_days=lookback)
     if df.empty: return
 
-    # 1. MODELING
+    # 2. RATES
+    r_free = engine.fetch_risk_free_rate()
+
+    # 3. ML MODEL TRAINING
     model = VolArbModel()
-    
-    # NOTE: prepare_features now returns a DICT of targets (y_dict) for the term structure
+    # Note: prepare_features returns current_vol_vel (the last known velocity)
     X, y_dict, current_vol_vel = model.prepare_features(df)
-    
+    current_price = df[f"close_{ticker}"].iloc[-1]
+
     print(f"[INFO] Training Data: {len(X)} samples | {len(model.predictors)} features")
     model.train_wfa(X, y_dict, splits=5)
-    
-    # 2. FORECAST CURVE (The 3 Anchor Points)
-    # Returns: {21: 0.24, 63: 0.26, 126: 0.28}
-    rv_curve = model.predict_curve(X.iloc[[-1]])
-    
-    current_price = df[f"close_{ticker}"].iloc[-1]
-    
-    # Display the Curve
-    curve_str = " | ".join([f"{k}d: {v:.2%}" for k,v in rv_curve.items()])
-    print(f"\n[FORECAST] Term Structure: {curve_str}")
-    print(f"           Spot Price:     ${current_price:.2f}")
 
-    # 3. HEDGE RECIPE
-    print("[HEDGE] Cooking optimal hedge basket...")
-    hedge_recipe = HedgeLab.cook_recipe(df, ticker, engine.factor_data)
+    # 4. GARCH BASELINE (The "True" Center)
+    print("[MODEL] Fitting GARCH(1,1) Skew-T...")
+    returns = df[f"ret_{ticker}"].dropna()
+    garch_vol_21d, _ = GarchForecaster.fit_predict(returns, horizon=21)
+
+    # 5. FORECAST GENERATION
+    # Prepare current features for ML prediction
+    current_features = X.iloc[[-1]].copy()
     
-    # 4. PRICING LOOP (With Interpolation)
-    # We grab contracts from 1 day out to 300 days out
+    # --- Event Gravity Injection ---
+    ev_cal = EventCalendar()
+    next_earn_date, earn_days = ev_cal.get_next_earnings(ticker)
+    if earn_days < 14:
+        print("[ADJUST] Earnings imminent. Boosting volatility gravity.")
+        current_features["event_fed_gravity"] = max(
+            current_features["event_fed_gravity"].iloc[0], 
+            1.0 / (earn_days + 1)
+        )
+    
+    # Get ML Curve
+    rv_curve = model.predict_curve(current_features)
+    
+    print(f"[FORECAST] GARCH (21d): {garch_vol_21d:.2%} | ML (21d): {rv_curve[21]:.2%}")
+
+    # 6. CALCULATE FAIR ATM VOL
+    # We blend GARCH (Statistical) and ML (Feature-based)
+    # Weighting GARCH higher (60%) as it is structurally sounder
+    fair_atm_vol = 0.6 * garch_vol_21d + 0.4 * rv_curve[21]
+
+    # 7. MARKET ANALYSIS & WEDGE CALCULATION
     chain = engine.fetch_option_chain(ticker, spot_price=current_price, min_dte=1, max_dte=300)
-    opportunities = []
     
+    opportunities = []
     avg_mkt_iv = 0.0
     
     if not chain.empty:
-        # Calculate ATM IV for the metadata (simple average of near-term)
-        atm_chain = chain.iloc[(chain['strike'] - current_price).abs().argsort()[:10]]
-        avg_mkt_iv = atm_chain[atm_chain['mkt_iv'] > 0]['mkt_iv'].mean()
-        if pd.isna(avg_mkt_iv): avg_mkt_iv = rv_curve[21]
+        # A. Find Market ATM Volatility
+        atm_contracts = chain[
+            (chain['strike'] >= current_price * 0.98) & 
+            (chain['strike'] <= current_price * 1.02)
+        ]
+        
+        if not atm_contracts.empty:
+            mkt_atm_vol = atm_contracts['mkt_iv'].median()
+        else:
+            closest = chain.iloc[(chain['strike'] - current_price).abs().argsort()[:5]]
+            mkt_atm_vol = closest['mkt_iv'].median()
+            
+        avg_mkt_iv = mkt_atm_vol
 
-        print("[PRICING] Running Term-Structure Pricing...")
+        # B. The VRP Wedge (Signal)
+        # If Market > Fair, Wedge is Positive (Sell).
+        vrp_wedge = mkt_atm_vol - fair_atm_vol
+        print(f"[PRICING] Market ATM: {mkt_atm_vol:.2%} | Fair ATM: {fair_atm_vol:.2%} | Wedge: {vrp_wedge:.2%}")
+
+        # C. The Velocity Stabilizer (Risk Control)
+        # Normalize velocity to 0.0 - 1.0 range to prevent infinite denominators
+        norm_velocity = min(abs(float(current_vol_vel)), 1.0)
+        
+        # Calculate Stabilized Z-Score Denominator
+        base_uncertainty = model.rmse_scores[21]
+        regime_penalty = 1.0 + (2.0 * norm_velocity) # Lambda = 2.0
+        adjusted_uncertainty = base_uncertainty * regime_penalty
+        
+        # Calculate The Global Z-Score (Does the wedge survive the regime check?)
+        # If velocity is high, adjusted_uncertainty is high -> Z-score drops -> We don't trade.
+        global_z_score = vrp_wedge / adjusted_uncertainty
+        
+        print(f"[RISK] Vel: {norm_velocity:.2f} | Penalty: {regime_penalty:.2f}x | Z-Score: {global_z_score:.2f}")
+
+        # 8. PRICING LOOP
+        print("[PRICING] Running Parallel-Shift Pricing...")
         
         for _, row in chain.iterrows():
-            # Handle Expiry Date
+            # Expiry setup
             try: expiry_dt = datetime.strptime(row['expiry'], "%Y-%m-%d").date()
-            except: expiry_dt = date.today() + timedelta(days=30)
-            
-            # Days to Expiry (DTE)
+            except: continue
             dte = (expiry_dt - date.today()).days
-            T = max(1/365, dte / 365.0) # Avoid division by zero
-            
-            # --- INTERPOLATION LOGIC (The New Brain) ---
-            # We slide along the curve to find the exact Vol for this specific date
-            if dte <= 21:
-                sigma = rv_curve[21]
-            elif dte <= 63:
-                # Linear Interpolation between 1 Month and 3 Months
-                ratio = (dte - 21) / (63 - 21)
-                sigma = rv_curve[21] + ratio * (rv_curve[63] - rv_curve[21])
-            elif dte <= 126:
-                # Linear Interpolation between 3 Months and 6 Months
-                ratio = (dte - 63) / (126 - 63)
-                sigma = rv_curve[63] + ratio * (rv_curve[126] - rv_curve[63])
-            else:
-                # Cap at 6 Months (Long-term mean reversion assumption)
-                sigma = rv_curve[126]
-            # -------------------------------------------
+            if dte < 1: continue
+            T = dte / 365.0
 
-            # Calculate Z-Score specific to THIS maturity
-            contract_iv = row['mkt_iv']
-            z_score = 0.0
+            # --- ROBUST PRICING LOGIC ---
             
-            if contract_iv > 0:
-                 # Normalize velocity to avoid div/0
-                 norm_vel = max(0.01, float(current_vol_vel))
-                 # How far is THIS contract's IV from the interpolated Model Vol?
-                 z_score = (contract_iv - sigma) / norm_vel
+            # A. Parallel Shift
+            # We accept market skew, but apply our Fair Value level
+            mkt_iv = row['mkt_iv']
+            if mkt_iv == 0: continue
+            
+            fair_vol_strike = mkt_iv - vrp_wedge
+            fair_vol_strike = max(0.01, fair_vol_strike) # Safety floor
 
-            # Pricing using the INTERPOLATED sigma
+            # B. Black-Scholes Price
             theo_price = QuantLib.bs_price(
-                S=current_price, K=row['strike'], T=T, r=0.045, 
-                sigma=sigma, type_=row['type']
+                S=current_price, K=row['strike'], T=T, r=r_free, 
+                sigma=fair_vol_strike, type_=row['type']
             )
-            
-            # Trade Logic
+
+            # C. Trade Logic
             mkt = row['mid']
             edge = 0.0
             action = "WATCH"
@@ -495,31 +860,31 @@ def run_analysis(ticker, lookback=1200):
             if mkt > 0:
                 if theo_price > mkt:
                     edge = (theo_price - mkt) / mkt
-                    if edge > 0.05: action = "BUY_UNDERSOLD"
+                    # Only buy if edge is high AND Z-score confirms we are in a "Cheap" regime
+                    if edge > 0.05 and global_z_score < -1.0: 
+                        action = "BUY_UNDERSOLD"
                 elif theo_price < mkt:
                     edge = (mkt - theo_price) / mkt
-                    if edge > 0.05: action = "SELL_OVERPRICED"
-            
+                    # Only sell if edge is high AND Z-score confirms "Expensive" regime
+                    if edge > 0.05 and global_z_score > 1.0: 
+                        action = "SELL_OVERPRICED"
+
             opportunities.append({
                 "symbol": row['symbol'], "type": row['type'], "strike": row['strike'],
                 "expiry": row['expiry'], "mkt_px": round(mkt, 2), "model_px": round(theo_price, 2),
                 "edge_pct": round(edge*100, 1), "action": action, 
-                "iv": round(contract_iv, 4), 
-                "model_vol": round(sigma, 4), # Saving this proves the curve works
-                "z_score": round(z_score, 2)
+                "iv": round(mkt_iv, 4), 
+                "fair_vol": round(fair_vol_strike, 4),
+                "z_score": round(global_z_score, 2)
             })
-            
+
         opportunities = sorted(opportunities, key=lambda x: abs(x['edge_pct']), reverse=True)
-        print(f"[SCAN] Processed {len(opportunities)} contracts across Term Structure.")
+        print(f"[SCAN] Processed {len(opportunities)} contracts.")
 
-    # 5. PAYLOAD
-    # We use the Short Term (21d) RMSE for the Monte Carlo cone visualization
-    chart_data, tail_risk = QuantLib.monte_carlo_cone(
-        current_price, rv_curve[21], 30/365, model.rmse_scores[21]
-    )
-
-    # 5. PAYLOAD
-    # We use the Short Term (21d) RMSE for the Monte Carlo cone visualization
+    # 9. PAYLOAD GENERATION
+    print("[HEDGE] Cooking optimal hedge basket...")
+    hedge_recipe = HedgeLab.cook_recipe(df, ticker, engine.factor_data)
+    
     chart_data, tail_risk = QuantLib.monte_carlo_cone(
         current_price, rv_curve[21], 30/365, model.rmse_scores[21]
     )
@@ -530,24 +895,23 @@ def run_analysis(ticker, lookback=1200):
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "spot_price": round(current_price, 2),
             "forecast_rv": {k: round(v, 4) for k, v in rv_curve.items()},
+            "garch_21d": round(garch_vol_21d, 4),
             "market_iv_atm": round(avg_mkt_iv, 4),
-            "term_structure_rmse": {k: round(v, 4) for k, v in model.rmse_scores.items()},
+            "vrp_wedge": round(vrp_wedge, 4),
+            "z_score_stabilized": round(global_z_score, 2), # The new key metric
             "tail_risk_95": round(tail_risk, 2)
         },
         "hedging": {
             "recipe": hedge_recipe,
-            "interpretation": "To aptly factor hedge this investment, hold these positions."
+            "interpretation": "Hold these positions to neutralize factor exposure."
         },
         "explainability": {
             "drivers": {k: round(v, 4) for k, v in model.feature_importance.items()}
         },
         "charts": {"monte_carlo": chart_data},
-        
-        # --- THE FIX: REMOVE [:50] ---
         "opportunities": opportunities 
-        # -----------------------------
     }
-    
+
     os.makedirs("Results", exist_ok=True)
     fname = f"Results/{ticker}_Payload.json"
     with open(fname, "w") as f: json.dump(payload, f, indent=4)

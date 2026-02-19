@@ -1,53 +1,47 @@
-import { Link, useParams } from "react-router";
+import { Link, useParams, useLoaderData } from "react-router";
 import { useState, useEffect } from "react";
-import HedgingRecommendations from "../components/ticker/hedging_recommendations";
+import Attributes from "../components/ticker/attributes";
+import MonteCarlo from "~/components/ticker/monte_carlo";
 import Options from "../components/ticker/options";
 import Predictors from "../components/ticker/predictors";
+import type { TickerDataPayload } from "../context/TickerDataContext";
+import { TickerDataProvider } from "../context/TickerDataContext";
 
 export default function TickerView() {
   const { symbol } = useParams<{ symbol: string }>();
+  const payloadData = useLoaderData() as TickerDataPayload;
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // TODO: Fetch ticker data from API endpoint
-    // For now, just simulate loading
-    const timer = setTimeout(() => setIsLoading(false), 200);
-    return () => clearTimeout(timer);
-  });
+    // Data is preloaded from route loader
+    setIsLoading(false);
+  }, []);
 
   return (
-    <div>
-      <h1>Ticker</h1>
-      <Link to="/">Go home</Link>
-      {/* Page Grid Styles */}
-      <div className="ticker">
-        {/* Left Column */}
-        <div className="ticker-left">
-          {isLoading ? (
-            <div className="loading-placeholder" />
-          ) : (
-            <HedgingRecommendations />
-          )}
-        </div>
-
-        {/* Center Column */}
-        <div className="ticker-center">
-          {isLoading ? (
-            <div className="loading-placeholder" />
-          ) : (
-            <Predictors />
-          )}
-        </div>
-
-        {/* Right Column */}
-        <div className="ticker-right">
-          {isLoading ? (
-            <div className="loading-placeholder" />
-          ) : (
-            <Options />
-          )}
-        </div>
+    <TickerDataProvider data={payloadData}>
+      <div>
+        <h1>Ticker</h1>
+        <Link to="/">Go home</Link>
+        {/* Component Grid */}
+        {isLoading ? (
+          <div className="loading-placeholder" />
+        ) : (
+          <div className="ticker">
+            <div className="attributes-box">
+              <Attributes />
+            </div>
+            <div className="monte-carlo-box">
+              <MonteCarlo />
+            </div>
+            <div className="options-box">
+              <Options />
+            </div>
+            <div className="predictors-box">
+              <Predictors />
+            </div>
+          </div>
+        )}
       </div>
-    </div>
+    </TickerDataProvider>
   );
 }

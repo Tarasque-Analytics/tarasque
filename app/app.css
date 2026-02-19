@@ -85,19 +85,19 @@ body {
 
 /* === Ticker === */
 .ticker {
-  @apply grid grid-cols-1 lg:grid-cols-3;
+  @apply grid grid-flow-row grid-cols-4 gap-4;
 }
 
-.ticker-left {
-  @apply p-2;
+.attributes-box {
 }
 
-.ticker-center {
-  @apply p-2;
+.montecarlo-box {
 }
 
-.ticker-right {
-  @apply p-2;
+.options-box {
+}
+
+.predictors-box {
 }
 
 /* Other */

@@ -3,9 +3,9 @@
 import { useTickerData } from '~/context/TickerDataContext';
 import Placeholder from '../ui/placeholder';
 
-const { monteCarloData } = useTickerData();
-
 export default function Options() {
+  const { opportunities } = useTickerData();
+
   return (
     <div>
       <Placeholder title="Options" />

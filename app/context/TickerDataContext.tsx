@@ -25,8 +25,8 @@ export function TickerDataProvider({ data, children }: TickerDataProviderProps) 
     meta: data.meta,
     hedging: data.hedging,
     explainability: data.explainability,
-    monteCarloData: data.charts.monte_carlo,
-    opportunities: data.opportunities,
+    monteCarloData: data.charts?.monte_carlo,
+    opportunities: data.opportunities || [],
   }), [data]);
 
   return (

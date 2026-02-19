@@ -1,9 +1,9 @@
 import { useTickerData } from '~/context/TickerDataContext';
 import Placeholder from '../ui/placeholder';
 
-const { explainability } = useTickerData();
-
 export default function MonteCarlo() {
+  const { monteCarloData } = useTickerData();
+
   return (
     <div>
       <Placeholder title="Monte Carlo Simulation" />

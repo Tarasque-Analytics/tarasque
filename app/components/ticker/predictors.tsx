@@ -2,9 +2,9 @@
 import { useTickerData } from '~/context/TickerDataContext';
 import Placeholder from '../ui/placeholder';
 
-const { opportunities } = useTickerData();
-
 export default function Predictors() {
+  const { explainability } = useTickerData();
+
   return (
     <div>
       <Placeholder title="Predictors" />

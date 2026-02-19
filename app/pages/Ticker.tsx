@@ -20,8 +20,7 @@ export default function TickerView() {
   return (
     <TickerDataProvider data={payloadData}>
       <div>
-        <h1>Ticker</h1>
-        <Link to="/">Go home</Link>
+        <div className="flex justify-center">Data and Analytics for {symbol}</div>
         {/* Component Grid */}
         {isLoading ? (
           <div className="loading-placeholder" />

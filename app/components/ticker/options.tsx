@@ -4,9 +4,8 @@ import Placeholder from '../ui/placeholder';
 
 export default function Options() {
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="text-lg font-semibold text-gray-900 mb-4">Options</h2>
-      <Placeholder />
+    <div>
+      <Placeholder title="Options" />
     </div>
   );
 }

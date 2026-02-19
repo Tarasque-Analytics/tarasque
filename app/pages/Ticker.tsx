@@ -1,6 +1,7 @@
 import { Link, useParams, useLoaderData } from "react-router";
 import { useState, useEffect } from "react";
-import HedgingRecommendations from "../components/ticker/hedging_recommendations";
+import Attributes from "../components/ticker/attributes";
+import MonteCarlo from "~/components/ticker/monte_carlo";
 import Options from "../components/ticker/options";
 import Predictors from "../components/ticker/predictors";
 import type { TickerDataPayload } from "../context/TickerDataContext";
@@ -21,27 +22,25 @@ export default function TickerView() {
       <div>
         <h1>Ticker</h1>
         <Link to="/">Go home</Link>
-        {/* Page Grid Styles */}
-        <div className="ticker">
-          {/* Left Column */}
-          <div className="ticker-left">
-            {isLoading ? (
-              <div className="loading-placeholder" />
-            ) : (
-              <HedgingRecommendations />
-            )}
+        {/* Component Grid */}
+        {isLoading ? (
+          <div className="loading-placeholder" />
+        ) : (
+          <div className="ticker">
+            <div className="attributes-box">
+              <Attributes />
+            </div>
+            <div className="monte-carlo-box">
+              <MonteCarlo />
+            </div>
+            <div className="options-box">
+              <Options />
+            </div>
+            <div className="predictors-box">
+              <Predictors />
+            </div>
           </div>
-
-          {/* Center Column */}
-          <div className="ticker-center">
-            {isLoading ? <div className="loading-placeholder" /> : <Options />}
-          </div>
-
-          {/* Right Column */}
-          <div className="ticker-right">
-            {isLoading ? <div className="loading-placeholder" /> : <Predictors />}
-          </div>
-        </div>
+        )}
       </div>
     </TickerDataProvider>
   );

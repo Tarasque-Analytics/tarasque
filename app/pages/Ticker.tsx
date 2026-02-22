@@ -25,18 +25,18 @@ export default function TickerView() {
         {isLoading ? (
           <div className="loading-placeholder" />
         ) : (
-          <div className="grid grid-flow-row grid-cols-4 gap-4">
-            <div className="attributes-box">
+          <div className="grid grid-cols-4 grid-rows-2 gap-4">
+            <div className="">
               <Attributes />
             </div>
-            <div className="monte-carlo-box">
-              <MonteCarlo />
-            </div>
-            <div className="options-box">
+            <div className="row-span-2 col-span-2">
               <Options />
             </div>
-            <div className="predictors-box">
+            <div className="row-span-2">
               <Predictors />
+            </div>
+            <div className="">
+              <MonteCarlo />
             </div>
           </div>
         )}

@@ -27,8 +27,8 @@ export default function Navigation() {
             </Link>
           </li>
           <li className="nav-item">
-            <Link to="/ticker/AAPL" className="nav-link">
-              Ticker (AAPL Example)
+            <Link to="/ticker/MS" className="nav-link">
+              Ticker (MS Example)
             </Link>
           </li>
           <li className="nav-item">

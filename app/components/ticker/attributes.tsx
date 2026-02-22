@@ -22,7 +22,7 @@ export default function Attributes() {
 
   return (
     <div className="flex flex-col gap-2">
-      <text>Attributes</text>
+      <Placeholder title="Attributes" />
       <text>Z-score: {meta.z_score_stabilized}</text>
       <text>21-day RV: {meta.forecast_rv["21"]}</text>
       <text>63-day RV: {meta.forecast_rv["63"]}</text>

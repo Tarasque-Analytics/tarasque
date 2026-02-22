@@ -1,6 +1,5 @@
 import { useTickerData } from "~/context/TickerDataContext";
 import Placeholder from "../ui/placeholder";
-import { Line } from "react-chartjs-2";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -11,34 +10,29 @@ import {
   Tooltip,
   Legend,
 } from "chart.js";
+import { Line } from "react-chartjs-2";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
-// From routes/ticker.tsx
-// charts:
-// monte_carlo:
-// graph this: three-column data (p95, mean, p05)
-// use steps length for x-axis (bottom left)
-
-// From TickerDataContext.tsx
-// monteCarloData: data.charts?.monte_carlo,
-
-// "monte_carlo": {
-// "p95": [],
-// "p05": [],
-// "mean": [],
-// "steps": []
-// }
-
 export default function MonteCarlo() {
   const { monteCarloData } = useTickerData();
+  if (!monteCarloData) {
+    return (
+      <div>
+        <Placeholder title="Something went wrong" />
+      </div>
+    );
+  }
 
-  const options = {
+  const chartOptions = {
     responsive: true,
     plugins: {
       title: {
         display: true,
         text: "20-Day Monte Carlo",
+      },
+      legend: {
+        position: "top" as const,
       },
     },
     scales: {
@@ -57,12 +51,7 @@ export default function MonteCarlo() {
       y: {
         title: {
           display: true,
-          text: "Price",
-        },
-        ticks: {
-          callback: function (value: string | number) {
-            return "$" + value;
-          },
+          text: "Price ($)",
         },
       },
     },
@@ -96,7 +85,7 @@ export default function MonteCarlo() {
   return (
     <div>
       <Placeholder title="Monte Carlo Results" />
-      <Line options={options} data={data} />
+      <Line options={chartOptions} data={data} />
     </div>
   );
 }

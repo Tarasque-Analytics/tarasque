@@ -2,6 +2,18 @@
 // # on the bottom i want to show the top ten predictors by a metric of Prob. of profit and getEnabledCategorie
 import { useTickerData } from '~/context/TickerDataContext';
 import Placeholder from '../ui/placeholder';
+import {
+  Chart as ChartJS,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
+import { Scatter } from 'react-chartjs-2';
+
+ChartJS.register(LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
 // From routes/ticker.tsx
 // opportunities:

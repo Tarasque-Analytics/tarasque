@@ -18,9 +18,9 @@ export default function Dashboard() {
       <h1>Dashboard</h1>
       <Link to="/">Go home</Link>
       {/* Page Grid Styles */}
-      <div className="dashboard">
+      <div className="grid grid-cols-6">
         {/* Left Column */}
-        <div className="dashboard-left">
+        <div className="col-start-1 col-span-1 p-2">
           {isLoading ? (
             <div className="loading-placeholder" />
           ) : (
@@ -29,15 +29,15 @@ export default function Dashboard() {
         </div>
 
         {/* Center Column */}
-        <div className="dashboard-center">
-          <div className="dashboard-center-top">
+        <div className="col-start-2 col-span-3 p-2">
+          <div className="pb-2">
             {isLoading ? (
               <div className="loading-placeholder" />
             ) : (
               <DetailedAnalysis />
             )}
           </div>
-          <div className="dashboard-center-bottom">
+          <div className="pt-2">
             {isLoading ? (
               <div className="loading-placeholder" />
             ) : (
@@ -47,7 +47,7 @@ export default function Dashboard() {
         </div>
 
         {/* Right Column */}
-        <div className="dashboard-right">
+        <div className="col-start-5 col-span-2 row-span-3 p-2">
           {isLoading ? <div className="loading-placeholder" /> : <SectorView />}
         </div>
       </div>

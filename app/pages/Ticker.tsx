@@ -25,7 +25,7 @@ export default function TickerView() {
         {isLoading ? (
           <div className="loading-placeholder" />
         ) : (
-          <div className="ticker">
+          <div className="grid grid-flow-row grid-cols-4 gap-4">
             <div className="attributes-box">
               <Attributes />
             </div>

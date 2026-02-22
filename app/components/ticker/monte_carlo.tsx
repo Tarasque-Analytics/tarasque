@@ -32,6 +32,13 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, T
 
 export default function MonteCarlo() {
   const { monteCarloData } = useTickerData();
+  if (!monteCarloData) {
+    return (
+      <div>
+        <Placeholder title="Something went wrong" />
+      </div>
+    );
+  }
 
   const options = {
     responsive: true,

@@ -32,7 +32,7 @@ export default function MonteCarlo() {
         text: "20-Day Monte Carlo",
       },
       legend: {
-        position: 'top' as const,
+        position: "top" as const,
       },
     },
     scales: {

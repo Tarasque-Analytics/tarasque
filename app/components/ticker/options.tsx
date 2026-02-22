@@ -117,8 +117,8 @@ export default function Options() {
       // Draw label
       chart.ctx.font = 'bold 12px Arial';
       chart.ctx.fillStyle = 'black';
-      chart.ctx.textAlign = 'center';
-      chart.ctx.fillText(`Spot Price: $${spotPrice.toFixed(2)}`, spotX, yScale.top - 10);
+      chart.ctx.textAlign = 'right';
+      chart.ctx.fillText(`Spot Price: $${spotPrice.toFixed(2)}`, spotX - 12, yScale.top + 20);
       
       chart.ctx.restore();
     },

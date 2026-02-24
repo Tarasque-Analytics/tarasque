@@ -36,52 +36,11 @@ body {
 
 /* === Navbar === */
 .navbar {
-  @apply h-20 p-4 grid grid-cols-12 gap-8;
   background: var(--ui-background);
   border: 0.2rem solid var(--border);
 }
 
-.navbar-logo {
-  @apply flex items-center justify-start col-span-4 h-12;
-}
-
-.navbar-title {
-  @apply flex items-center justify-center col-span-4 h-12;
-}
-
-.navbar-search {
-  @apply flex items-center justify-start col-span-3 h-12;
-  /* border: 0.1rem solid var(--border); */
-}
-
-.navbar-user {
-  @apply flex items-center justify-end h-12;
-}
-
 /* === Dashboard === */
-.dashboard {
-  @apply grid grid-cols-1 lg:grid-cols-6;
-}
-
-.dashboard-left {
-  @apply col-start-1 col-span-1 p-2;
-}
-
-.dashboard-center {
-  @apply col-start-2 col-span-3 p-2;
-}
-
-.dashboard-center-top {
-  padding-bottom: 0.5rem;
-}
-
-.dashboard-center-bottom {
-  padding-top: 0.5rem;
-}
-
-.dashboard-right {
-  @apply col-start-5 col-span-2 row-span-3 p-2;
-}
 
 .dashboard-section {
   @apply bg-white rounded-lg shadow p-6;
@@ -92,27 +51,23 @@ body {
 }
 
 /* === Ticker === */
-.ticker {
-  @apply grid grid-cols-1 lg:grid-cols-3;
-}
-
-.ticker-left {
-  @apply p-2;
-}
-
-.ticker-center {
-  @apply p-2;
-}
-
-.ticker-right {
-  @apply p-2;
-}
 
 /* Other */
 .loading-placeholder {
   @apply flex bg-gray-200 rounded animate-pulse;
 }
 
+.ticker-gain-loss {
+  @apply flex gap-2 w-full;
+}
+
 .symbol {
   @apply font-bold text-gray-900;
+}
+
+
+/* === Miscellaneous === */
+
+.view-more-button {
+  @apply text-blue-500 mt-2;
 }

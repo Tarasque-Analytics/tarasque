@@ -1,4 +1,38 @@
-# Volarbmodel Application Developer Guide
+# Planned Tech Stack
+  ## Framework
+    React 19
+    React Router 7
+    Typescript 5
+    Vite 7
+  ## Frontend
+    TailwindCSS 4
+    Google Fonts
+    Chart.js 4
+    React Chart.js 2
+  ## Backend
+    Task: Set up FastAPI for data requests
+    Task: Set up PostgreSQL for holding model outputs
+  ## Server-Side Rendering
+    Node.js server
+  ## Deployment
+    Task: Deploy initial site on Vercel
+    Later: Migrate to AWS Amplify
+  ## CI/CD
+    Task: Create github workflow to trigger on PR
+      npm ci
+      npm run lint
+      npm run typecheck
+      Vitest
+      npm run build
+    Task: Set up Vitest for unit testing
+    Task: Set up Playwright for web testing
+  ## QA & Monitoring
+    (?)
+  ## Security
+    Optional (for resume): Rate limiting
+    Optional (for resume): Configurable domain access
+
+# Volarbmodel Application Developer Guide (AI Generated)
 
 ## Overview
 The volarbmodel web application is a full-stack TypeScript application for visualizing and interacting with volatility arbitrage model data. This guide covers the application/frontend portion of the project.

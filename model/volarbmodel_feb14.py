@@ -402,7 +402,7 @@ class QuantLib:
 
     @staticmethod
     def monte_carlo_cone(S0, sigma, T, rmse_vol, n_sims=500):
-        r = 0.045
+        r = 0.0359
         steps = int(T * 252)
         if steps < 5: steps = 5
         dt = T / steps
@@ -658,4 +658,6 @@ def run_analysis(ticker, lookback=1200):
     print(f"\n[SUCCESS] Dashboard generated at {fname}")
 
 if __name__ == "__main__":
-    run_analysis("MS")
+    run_analysis("NNE")
+
+

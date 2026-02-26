@@ -4,6 +4,7 @@ import PortfolioTickers from './portfolio_components/portfolio_tickers';
 import portfoliodata from "./portfolio_components/test_portfolio.json";
 import { PortfolioDataProvider } from '../../context/PortfolioDataContext';
 import PortfolioPieChart from './portfolio_components/portfolio_pie_chart';
+import PortfolioGraph from './portfolio_components/portfolio_graph';
 export default function PortfolioOverview() {
   
   return (
@@ -12,6 +13,7 @@ export default function PortfolioOverview() {
       <PortfolioDataProvider data={portfoliodata}>
         <PortfolioTickers />
         <PortfolioPieChart />
+        <PortfolioGraph />
       </PortfolioDataProvider>
 
     </div>

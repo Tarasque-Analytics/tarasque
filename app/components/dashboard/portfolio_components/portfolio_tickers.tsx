@@ -19,7 +19,7 @@ export default function PortfolioTickers() {
   const displayedHoldings = showAll ? sortedHoldings : sortedHoldings.slice(0, 5);
 
   return (
-    <div className="portfolio-tickers">
+    <div className="flex flex-col">
       {displayedHoldings.map((holding) => (
         <HoldingView key={holding[0]} ticker={holding[0]} gain_loss={holding[1]} />
       ))}

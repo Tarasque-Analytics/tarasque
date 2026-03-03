@@ -50,18 +50,6 @@ body {
   @apply text-lg font-semibold text-gray-900 mb-4;
 }
 
-.portfolio-graph-container {
-  @apply bg-white rounded-lg shadow p-4;
-  width: 100%;
-  height: 250px;
-  min-height: 250px;
-}
-
-.portfolio-graph-wrapper {
-  width: 100%;
-  height: 100%;
-}
-
 /* === Ticker === */
 
 /* Other */

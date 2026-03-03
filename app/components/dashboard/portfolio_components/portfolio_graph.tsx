@@ -79,10 +79,8 @@ export default function PortfolioGraph() {
   };
 
   return (
-    <div className="portfolio-graph-container">
-      <div className="portfolio-graph-wrapper">
-        <Line data={chartData} options={options} />
-      </div>
+    <div className="shadow h-60 mt-5">
+      <Line data={chartData} options={options} />
     </div>
   );
 }

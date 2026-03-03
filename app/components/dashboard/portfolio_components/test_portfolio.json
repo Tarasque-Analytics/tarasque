@@ -1,0 +1,89 @@
+{
+    "id": 1,
+    "name": "My Portfolio",
+    "description": "This is my portfolio.",
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-01-01T00:00:00Z",
+    "holdings": [
+        {
+            "id": 1,
+            "ticker": "AAPL",
+            "quantity": 10,
+            "price_bought": 100,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        },
+        {
+            "id": 2,
+            "ticker": "GOOGL",
+            "quantity": 5,
+            "price_bought": 100,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        },
+        {
+            "id": 3,
+            "ticker": "MSFT",
+            "quantity": 8,
+            "price_bought": 100,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        },
+        {
+            "id": 4,
+            "ticker": "TSLA",
+            "quantity": 3,
+            "price_bought": 100,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        },
+        {
+            "id": 5,
+            "ticker": "AMZN",
+            "quantity": 6,
+            "price_bought": 100,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        },
+        {
+            "id": 6,
+            "ticker": "NVDA",
+            "quantity": 4,
+            "price_bought": 100,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        },
+        {
+            "id": 7,
+            "ticker": "META",
+            "quantity": 7,
+            "price_bought": 100,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        },
+        {
+            "id": 8,
+            "ticker": "UBER",
+            "quantity": 9,
+            "price_bought": 100,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        },
+        {
+            "id": 9,
+            "ticker": "CBRE",
+            "quantity": 12,
+            "price_bought": 100,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        },
+        {
+            "id": 10,
+            "ticker": "AVGO",
+            "quantity": 6,
+            "price_bought": 100,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        }
+    ]
+}

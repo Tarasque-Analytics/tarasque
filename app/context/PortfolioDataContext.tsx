@@ -42,30 +42,3 @@ export function usePortfolioData(): PortfolioData {
     }
     return context;
 }
-
-// TODO: Implement logic to get real current prices for holdings
-export function getCurrentPrices() : Record<string, number> {
-    const portfolioData = usePortfolioData();
-    const prices: Record<string, number> = useMemo(() => { // cache the prices
-        const result: Record<string, number> = {};
-        for (const holding of portfolioData.holdings) {
-            result[holding.ticker] = (Math.random() - 0.5) * 20 + holding.price_bought; // Placeholder logic, replace with real price fetching
-        }
-        return result;
-    }, [portfolioData.holdings]);
-    return prices;
-}
-
-export function gainLossPercent(): Record<string, number> {
-    const currentPrices = getCurrentPrices();
-    const portfolioData = usePortfolioData();
-    const gainLoss: Record<string, number> = useMemo(() => {
-        const gainLoss: Record<string, number> = {};
-        for (const holding of portfolioData.holdings) {
-            const currentPrice = currentPrices[holding.ticker];
-            gainLoss[holding.ticker] = (currentPrice - holding.price_bought) / holding.price_bought * 100;
-        }
-        return gainLoss;
-    }, [currentPrices, portfolioData.holdings]);
-    return gainLoss
-}

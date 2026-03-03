@@ -15,7 +15,9 @@
 /* Dark mode: needs testing from somebody that actually uses dark mode */
 @media (prefers-color-scheme: dark) {
   :root {
-    /* need to define alternatives for above root */
+    --background: #121212;
+    --ui-background: #1E1E1E;
+    --border: #333333;
   }
 }
 

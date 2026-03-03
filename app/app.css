@@ -43,11 +43,8 @@ body {
 /* === Dashboard === */
 
 .dashboard-section {
-  @apply bg-white rounded-lg shadow p-6;
-}
-
-.dashboard-section-title {
-  @apply text-lg font-semibold text-gray-900 mb-4;
+  @apply rounded-lg shadow p-6;
+  background: var(--ui-background);
 }
 
 /* === Ticker === */

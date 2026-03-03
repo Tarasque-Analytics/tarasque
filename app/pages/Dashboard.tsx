@@ -15,42 +15,38 @@ export default function Dashboard() {
 
   return (
     <div>
-      <h1>Dashboard</h1>
-      <Link to="/">Go home</Link>
-      {/* Page Grid Styles */}
-      <div className="grid grid-cols-6">
-        {/* Left Column */}
-        <div className="col-start-1 col-span-1 p-2">
-          {isLoading ? (
-            <div className="loading-placeholder" />
-          ) : (
-            <PortfolioOverview />
-          )}
-        </div>
+      <div className="flex justify-center">Dashboard</div>
+      <Link to="/" className="flex justify-center">
+        Go to Navigation
+      </Link>
+      {/* Component Grid */}
+      {isLoading ? (
+        <div className="loading-placeholder" />
+      ) : (
+        <div className="grid grid-cols-6">
+          {/* Left Column */}
+          <div className="col-start-1 col-span-1 p-2">
+            <div className="dashboard-section">
+              <PortfolioOverview />
+            </div>
+          </div>
 
-        {/* Center Column */}
-        <div className="col-start-2 col-span-3 p-2">
-          <div className="pb-2">
-            {isLoading ? (
-              <div className="loading-placeholder" />
-            ) : (
+          {/* Center Column */}
+          <div className="col-start-2 col-span-3 p-2">
+            <div className="pb-2">
               <DetailedAnalysis />
-            )}
-          </div>
-          <div className="pt-2">
-            {isLoading ? (
-              <div className="loading-placeholder" />
-            ) : (
+            </div>
+            <div className="pt-2">
               <HedgingInfo />
-            )}
+            </div>
+          </div>
+
+          {/* Right Column */}
+          <div className="col-start-5 col-span-2 row-span-3 p-2">
+            <SectorView />
           </div>
         </div>
-
-        {/* Right Column */}
-        <div className="col-start-5 col-span-2 row-span-3 p-2">
-          {isLoading ? <div className="loading-placeholder" /> : <SectorView />}
-        </div>
-      </div>
+      )}
     </div>
   );
 }

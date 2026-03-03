@@ -49,7 +49,7 @@ export default function PortfolioPieChart() {
 
   return (
     <div className="flex justify-center items-center">
-      <div className="w-80 h-80">
+      <div className="w-full aspect-square">
         <Pie data={chartData} options={options} />
       </div>
     </div>

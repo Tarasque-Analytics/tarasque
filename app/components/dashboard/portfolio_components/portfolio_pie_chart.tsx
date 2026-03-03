@@ -48,8 +48,8 @@ export default function PortfolioPieChart() {
   };
 
   return (
-    <div className="pie-chart-container">
-      <div className="pie-chart-wrapper">
+    <div className="flex justify-center items-center">
+      <div className="w-80 h-80">
         <Pie data={chartData} options={options} />
       </div>
     </div>

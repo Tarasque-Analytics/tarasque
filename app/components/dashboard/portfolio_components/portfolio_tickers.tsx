@@ -23,7 +23,7 @@ export default function PortfolioTickers() {
       {displayedHoldings.map((holding) => (
         <HoldingView key={holding[0]} ticker={holding[0]} gain_loss={holding[1]} />
       ))}
-      {sortedHoldings.length > 3 && (
+      {sortedHoldings.length > 5 && (
         <button onClick={() => setShowAll(!showAll)} className="view-more-button">
           {showAll ? "View Less" : "View More"}
         </button>

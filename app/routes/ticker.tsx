@@ -1,10 +1,30 @@
 import type { TickerDataPayload } from "../context/TickerDataContext";
+import type { LoaderFunctionArgs } from "react-router";
 import TickerView from "../pages/Ticker";
 
-// Route loader: fetch MS_Payload.json
-export async function loader(): Promise<TickerDataPayload> {
-  const payload = await import("../assets/data/MS_Payload.json");
-  return payload;
+// Glob all Payload JSON files in the data directory
+const payloadModules = import.meta.glob('../assets/data/*_Payload.json');
+
+// Route loader: dynamically fetch ${symbol}_Payload.json based on URL parameter
+export async function loader({ params }: LoaderFunctionArgs): Promise<TickerDataPayload> {
+  const { symbol } = params;
+  
+  if (!symbol) {
+    throw new Response("Symbol parameter is required", { status: 400 });
+  }
+  
+  // Construct the module path
+  const modulePath = `../assets/data/${symbol}_Payload.json`;
+  
+  // Check if the module exists
+  if (!(modulePath in payloadModules)) {
+    throw new Response(`No data found for symbol: ${symbol}`, { status: 404 });
+  }
+  
+  // Dynamically import the module
+  const module = await payloadModules[modulePath]() as { default: TickerDataPayload };
+  
+  return module.default || module;
 }
 
 // For parsing payload JSON file:

@@ -32,6 +32,9 @@
     Optional (for resume): Rate limiting
     Optional (for resume): Configurable domain access
 
+# IMPORTANT:
+Both the frontend and the backend need to be running (see the related instructions for the [frontend](#frontend-development) and the [backend](#backend-quick-start)) in order to load any page that requires dynamic data.
+
 # Volarbmodel Application Developer Guide (AI Generated)
 
 ## Overview
@@ -112,7 +115,7 @@ volarbmodel/
 npm install
 ```
 
-### Development
+### Frontend Development
 ```bash
 npm run dev
 ```
@@ -259,14 +262,48 @@ Run `npm run typecheck` to regenerate route types after modifying `routes.ts`.
 ### SSR Hydration Mismatches
 Ensure server and client render the same content. Avoid using `Date.now()`, `Math.random()`, or browser-only APIs without guards.
 
+## Backend Setup
+
+The application includes a FastAPI backend server for serving ticker data. For detailed setup instructions, see [BACKEND_SETUP.md](BACKEND_SETUP.md).
+
+### Backend Quick Start
+
+1. **Install backend dependencies**:
+   ```bash
+   pip install -r backend/requirements.txt
+   ```
+
+2. **Start the backend server**:
+   ```bash
+   python backend/main.py
+   ```
+   The server will run on `http://localhost:8000`
+
+3. **In a separate terminal, start the frontend**:
+   ```bash
+   npm run dev
+   ```
+
+### API Integration
+
+The frontend communicates with the backend through the API utility in `app/utils/tickers.ts`:
+
+- `getAvailableTickers()` - Fetches list of available ticker symbols
+- `loadTickerPayload(symbol)` - Loads ticker data for a specific symbol
+
+### Database Integration (TODO)
+
+The backend is designed to easily integrate with PostgreSQL. See the [BACKEND_SETUP.md](BACKEND_SETUP.md) file for PostgreSQL integration instructions.
+
 ## Next Steps for New Developers
 
 1. **Explore the codebase**: Start with `app/routes.ts` and trace through the route structure
 2. **Run the dev server**: Get the app running locally and navigate through the routes
-3. **Review components**: Check out the components in `app/components/` to understand the UI building blocks
-4. **Understand data flow**: Review `TickerDataContext.tsx` to see how data is managed
-5. **Read React Router docs**: Familiarize yourself with React Router 7 features (loaders, actions, etc.)
-6. **Check Chart.js docs**: If working on visualizations, review Chart.js and react-chartjs-2 documentation
+3. **Run the backend**: Start the FastAPI server to serve ticker data
+4. **Review components**: Check out the components in `app/components/` to understand the UI building blocks
+5. **Understand data flow**: Review `TickerDataContext.tsx` to see how data is managed
+6. **Read React Router docs**: Familiarize yourself with React Router 7 features (loaders, actions, etc.)
+7. **Check Chart.js docs**: If working on visualizations, review Chart.js and react-chartjs-2 documentation
 
 ## Useful Resources
 

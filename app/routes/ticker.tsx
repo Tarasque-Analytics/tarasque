@@ -1,10 +1,24 @@
 import type { TickerDataPayload } from "../context/TickerDataContext";
+import type { LoaderFunctionArgs } from "react-router";
+import { loadTickerPayload } from "../utils/tickers";
 import TickerView from "../pages/Ticker";
 
-// Route loader: fetch MS_Payload.json
-export async function loader(): Promise<TickerDataPayload> {
-  const payload = await import("../assets/data/MS_Payload.json");
-  return payload;
+// Route loader: fetch ticker data from backend API
+export async function loader({ params }: LoaderFunctionArgs): Promise<TickerDataPayload> {
+  const { symbol } = params;
+  
+  if (!symbol) {
+    throw new Response("Symbol parameter is required", { status: 400 });
+  }
+  
+  try {
+    return await loadTickerPayload(symbol);
+  } catch (error) {
+    throw new Response(
+      `Failed to load data for ${symbol}: ${error instanceof Error ? error.message : "Unknown error"}`,
+      { status: 404 }
+    );
+  }
 }
 
 // For parsing payload JSON file:

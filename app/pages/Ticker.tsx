@@ -1,4 +1,4 @@
-import { Link, useParams, useLoaderData } from "react-router";
+import { useParams, useLoaderData } from "react-router";
 import { useState, useEffect } from "react";
 import Attributes from "../components/ticker/attributes";
 import MonteCarlo from "~/components/ticker/monte_carlo";

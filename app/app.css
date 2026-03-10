@@ -44,9 +44,29 @@ body {
 
 /* === Dashboard === */
 
+.dashboard-section {
+  @apply rounded-lg shadow p-6;
+  background: var(--ui-background);
+}
+
 /* === Ticker === */
 
 /* Other */
 .loading-placeholder {
   @apply flex bg-gray-200 rounded animate-pulse;
+}
+
+.ticker-gain-loss {
+  @apply flex gap-2 w-full;
+}
+
+.symbol {
+  @apply font-bold text-gray-900;
+}
+
+
+/* === Miscellaneous === */
+
+.view-more-button {
+  @apply text-blue-500 mt-2;
 }

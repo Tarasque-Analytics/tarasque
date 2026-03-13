@@ -1,7 +1,7 @@
 # Setup
    ## Prerequisites
    Before starting, ensure you have the following installed:
-   *[Docker Desktop](https://www.docker.com/products/docker-desktop/) (Must be running)
+   * [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Must be running)
    * [Supabase CLI](https://supabase.com/docs/guides/cli)
    * [Node.js](https://nodejs.org/) (v18 or higher)
    ## Start Supabase

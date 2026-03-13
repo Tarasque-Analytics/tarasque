@@ -62,4 +62,3 @@ supabase db diff -f table_name
 
 This will generate a migration file to sync the UI changes with the `migrations` folder for the rest of the team.
 
-```

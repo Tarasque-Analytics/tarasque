@@ -1,6 +1,7 @@
 import os
 import time
 import json
+from matplotlib import ticker
 import numpy as np
 import pandas as pd
 import xgboost as xgb
@@ -247,12 +248,14 @@ class DataIngestion:
 
     def fetch_option_chain(self, ticker, spot_price, min_dte=25, max_dte=50):
         print(f"[CHAIN] Hunting for LIVE {ticker} options ({min_dte}-{max_dte} DTE)...")
+    
         try:
             req = GetOptionContractsRequest(
-                underlying_symbols=[ticker], status='active', 
+                underlying_symbols=[ticker],
+                status='active',
                 expiration_date_gte=date.today() + timedelta(days=min_dte),
                 expiration_date_lte=date.today() + timedelta(days=max_dte),
-                limit=1000 
+                limit=1000
             )
             res = self.trade_client.get_option_contracts(req)
             contracts = res.option_contracts
@@ -264,43 +267,85 @@ class DataIngestion:
             print("[CHAIN] No contracts found.")
             return pd.DataFrame()
 
-        print(f"[CHAIN] Found {len(contracts)} contracts. Snapshotting...")
+        print(f"[CHAIN] Found {len(contracts)} active contracts. Snapshotting in chunks...")
+
         all_snaps = []
         chunk_size = 75
         symbols = [c.symbol for c in contracts]
-        
+
         for i in range(0, len(symbols), chunk_size):
-            chunk = symbols[i:i+chunk_size]
+            chunk = symbols[i:i + chunk_size]
             try:
                 snap_req = OptionSnapshotRequest(symbol_or_symbols=chunk)
                 snaps = self.option_client.get_option_snapshot(snap_req)
-                for sym, snap in snaps.items():
+
+                for sym, snap in snaps.items():          # snaps is always dict[str, OptionsSnapshot]
+                    if snap is None:
+                        continue
+
                     c_det = next((x for x in contracts if x.symbol == sym), None)
-                    if not c_det: continue
-                    
+                    if not c_det:
+                        continue
+
+                
                     bid = snap.latest_quote.bid_price if snap.latest_quote else 0.0
                     ask = snap.latest_quote.ask_price if snap.latest_quote else 0.0
                     last = snap.latest_trade.price if snap.latest_trade else 0.0
-                    
-                    iv = 0.0
-                    if hasattr(snap, 'greeks') and snap.greeks:
-                         iv = getattr(snap.greeks, 'implied_volatility', getattr(snap.greeks, 'iv', 0.0))
-                    if iv == 0.0: iv = getattr(snap, 'implied_volatility', 0.0)
 
+                
+                    iv = getattr(snap, 'implied_volatility', 0.0)
+                    if iv == 0.0 and hasattr(snap, 'greeks') and snap.greeks:
+                        iv = getattr(snap.greeks, 'implied_volatility', getattr(snap.greeks, 'iv', 0.0))
+
+                    # === MID PRICE ===
                     mid = 0.0
-                    if bid > 0 and ask > 0: mid = (bid + ask) / 2
-                    elif last > 0: mid = last
-                    
-                    if mid > 0:
-                        all_snaps.append({
-                            "symbol": sym, "type": c_det.type,
-                            "strike": float(c_det.strike_price),
-                            "expiry": str(c_det.expiration_date),
-                            "bid": bid, "ask": ask, "mid": mid, "last": last,
-                            "mkt_iv": iv
-                        })
+                    if bid > 0 and ask > 0:
+                        mid = (bid + ask) / 2
+                    elif last > 0:
+                        mid = last
+
+                    # === MARKET GREEKS ===
+                    greeks_dict = {}
+                    if hasattr(snap, 'greeks') and snap.greeks is not None:
+                        g = snap.greeks
+                        greeks_dict = {
+                            "delta": clean_num(getattr(g, 'delta', None), 4),
+                            "gamma": clean_num(getattr(g, 'gamma', None), 6),
+                            "vega":  clean_num(getattr(g, 'vega', None), 4),
+                            "theta": clean_num(getattr(g, 'theta', None), 4),
+                            "rho":   clean_num(getattr(g, 'rho', None), 4),
+                        }
+
+                    # === OPEN INTEREST ===
+                    oi = None
+                    if hasattr(c_det, 'open_interest') and c_det.open_interest is not None:
+                        try:
+                            oi = int(c_det.open_interest)
+                        except (ValueError, TypeError):
+                            oi = None
+
+                    # === APPEND EVERY VALID SNAPSHOT (this fixes the empty list) ===
+                    # We include even zero-mid contracts so your JSON always has data.
+                    # The pricing loop already skips mkt_iv == 0 or mkt == 0.
+                    all_snaps.append({
+                        "symbol": sym,
+                        "type": c_det.type,
+                        "strike": float(c_det.strike_price),
+                        "expiry": str(c_det.expiration_date),
+                        "bid": bid,
+                        "ask": ask,
+                        "mid": mid,
+                        "last": last,
+                        "mkt_iv": iv,
+                        "greeks": greeks_dict,
+                        "open_interest": oi,
+                    })
+
             except Exception as e:
+                print(f"[WARN] Snapshot chunk failed ({len(chunk)} symbols): {e}")
                 continue
+
+        print(f"[CHAIN] ✅ Snapshot complete → {len(all_snaps)} contracts loaded (including illiquid/after-hours).")
         return pd.DataFrame(all_snaps)
 
 # --- CLASS 4: MODEL ---
@@ -621,7 +666,14 @@ def run_analysis(ticker, lookback=1200):
                 # VOLATILITY FIELDS (The source of NaNs)
                 "iv": clean_num(mkt_iv, 4), 
                 "fair_vol": clean_num(fair_vol_strike, 4),
-                "z_score": clean_num(term_z_score, 2)
+                "z_score": clean_num(term_z_score, 2),
+
+                "greeks":row.get("greeks", {}),
+                "open_interest": clean_num(row.get("open_interest"), 0),
+
+                "bid_size": clean_num(row.get("bid_size"), 0),
+                "ask_size": clean_num(row.get("ask_size"), 0),
+
             })
         opportunities = sorted(opportunities, key=lambda x: abs(x['edge_pct']), reverse=True)
         print(f"[SCAN] Processed {len(opportunities)} contracts.")
@@ -658,6 +710,6 @@ def run_analysis(ticker, lookback=1200):
     print(f"\n[SUCCESS] Dashboard generated at {fname}")
 
 if __name__ == "__main__":
-    run_analysis("NNE")
+    run_analysis("SMHX")
 
 

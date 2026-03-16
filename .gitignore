@@ -26,3 +26,12 @@ backend/.mypy_cache/
 backend/.coverage
 backend/htmlcov/
 backend/*.log
+
+# Supabase
+.branches
+.temp
+
+# dotenvx
+.env.keys
+.env.local
+.env.*.local

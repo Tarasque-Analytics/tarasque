@@ -9,6 +9,11 @@ Before starting, ensure you have the following installed:
 
 ---
 
+## Important note for local supabase
+If you don't want to download the supabase CLI, you can preface supabase commands with `npx`
+like in the following command
+`npx supabase start`
+
 ## Start Supabase
 Type this in the terminal while in the `volarbmodal` directory:
 ```bash

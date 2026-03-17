@@ -1,6 +1,7 @@
 import os
 import time
 import json
+from matplotlib import ticker
 import numpy as np
 import pandas as pd
 import xgboost as xgb
@@ -14,7 +15,7 @@ from scipy.optimize import brentq
 # --- SKLEARN IMPORTS ---
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import mean_squared_error
-from sklearn.linear_model import Lasso
+from sklearn.linear_model import LassoCV
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 
@@ -28,6 +29,17 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import GetOptionContractsRequest
 
 import yfinance as yf 
+from scipy.interpolate import PchipInterpolator
+
+def clean_num(val, decimals=2):
+    """
+    Sanitizes float inputs for JSON serialization.
+    Converts NaN/Inf -> None (which becomes 'null' in JSON).
+    Rounds valid numbers to 'decimals'.
+    """
+    if val is None or pd.isna(val) or np.isinf(val):
+        return None
+    return round(float(val), decimals)
 
 # --- CONFIGURATION ---
 env_path = Path(__file__).resolve().parent / ".env"
@@ -237,12 +249,14 @@ class DataIngestion:
 
     def fetch_option_chain(self, ticker, spot_price, min_dte=25, max_dte=50):
         print(f"[CHAIN] Hunting for LIVE {ticker} options ({min_dte}-{max_dte} DTE)...")
+    
         try:
             req = GetOptionContractsRequest(
-                underlying_symbols=[ticker], status='active', 
+                underlying_symbols=[ticker],
+                status='active',
                 expiration_date_gte=date.today() + timedelta(days=min_dte),
                 expiration_date_lte=date.today() + timedelta(days=max_dte),
-                limit=1000 
+                limit=1000
             )
             res = self.trade_client.get_option_contracts(req)
             contracts = res.option_contracts
@@ -254,43 +268,85 @@ class DataIngestion:
             print("[CHAIN] No contracts found.")
             return pd.DataFrame()
 
-        print(f"[CHAIN] Found {len(contracts)} contracts. Snapshotting...")
+        print(f"[CHAIN] Found {len(contracts)} active contracts. Snapshotting in chunks...")
+
         all_snaps = []
         chunk_size = 75
         symbols = [c.symbol for c in contracts]
-        
+
         for i in range(0, len(symbols), chunk_size):
-            chunk = symbols[i:i+chunk_size]
+            chunk = symbols[i:i + chunk_size]
             try:
                 snap_req = OptionSnapshotRequest(symbol_or_symbols=chunk)
                 snaps = self.option_client.get_option_snapshot(snap_req)
-                for sym, snap in snaps.items():
+
+                for sym, snap in snaps.items():          # snaps is always dict[str, OptionsSnapshot]
+                    if snap is None:
+                        continue
+
                     c_det = next((x for x in contracts if x.symbol == sym), None)
-                    if not c_det: continue
-                    
+                    if not c_det:
+                        continue
+
+                
                     bid = snap.latest_quote.bid_price if snap.latest_quote else 0.0
                     ask = snap.latest_quote.ask_price if snap.latest_quote else 0.0
                     last = snap.latest_trade.price if snap.latest_trade else 0.0
-                    
-                    iv = 0.0
-                    if hasattr(snap, 'greeks') and snap.greeks:
-                         iv = getattr(snap.greeks, 'implied_volatility', getattr(snap.greeks, 'iv', 0.0))
-                    if iv == 0.0: iv = getattr(snap, 'implied_volatility', 0.0)
 
+                
+                    iv = getattr(snap, 'implied_volatility', 0.0)
+                    if iv == 0.0 and hasattr(snap, 'greeks') and snap.greeks:
+                        iv = getattr(snap.greeks, 'implied_volatility', getattr(snap.greeks, 'iv', 0.0))
+
+                    # === MID PRICE ===
                     mid = 0.0
-                    if bid > 0 and ask > 0: mid = (bid + ask) / 2
-                    elif last > 0: mid = last
-                    
-                    if mid > 0:
-                        all_snaps.append({
-                            "symbol": sym, "type": c_det.type,
-                            "strike": float(c_det.strike_price),
-                            "expiry": str(c_det.expiration_date),
-                            "bid": bid, "ask": ask, "mid": mid, "last": last,
-                            "mkt_iv": iv
-                        })
+                    if bid > 0 and ask > 0:
+                        mid = (bid + ask) / 2
+                    elif last > 0:
+                        mid = last
+
+                    # === MARKET GREEKS ===
+                    greeks_dict = {}
+                    if hasattr(snap, 'greeks') and snap.greeks is not None:
+                        g = snap.greeks
+                        greeks_dict = {
+                            "delta": clean_num(getattr(g, 'delta', None), 4),
+                            "gamma": clean_num(getattr(g, 'gamma', None), 6),
+                            "vega":  clean_num(getattr(g, 'vega', None), 4),
+                            "theta": clean_num(getattr(g, 'theta', None), 4),
+                            "rho":   clean_num(getattr(g, 'rho', None), 4),
+                        }
+
+                    # === OPEN INTEREST ===
+                    oi = None
+                    if hasattr(c_det, 'open_interest') and c_det.open_interest is not None:
+                        try:
+                            oi = int(c_det.open_interest)
+                        except (ValueError, TypeError):
+                            oi = None
+
+                    # === APPEND EVERY VALID SNAPSHOT (this fixes the empty list) ===
+                    # We include even zero-mid contracts so your JSON always has data.
+                    # The pricing loop already skips mkt_iv == 0 or mkt == 0.
+                    all_snaps.append({
+                        "symbol": sym,
+                        "type": c_det.type,
+                        "strike": float(c_det.strike_price),
+                        "expiry": str(c_det.expiration_date),
+                        "bid": bid,
+                        "ask": ask,
+                        "mid": mid,
+                        "last": last,
+                        "mkt_iv": iv,
+                        "greeks": greeks_dict,
+                        "open_interest": oi,
+                    })
+
             except Exception as e:
+                print(f"[WARN] Snapshot chunk failed ({len(chunk)} symbols): {e}")
                 continue
+
+        print(f"[CHAIN] ✅ Snapshot complete → {len(all_snaps)} contracts loaded (including illiquid/after-hours).")
         return pd.DataFrame(all_snaps)
 
 # --- CLASS 4: MODEL ---
@@ -307,16 +363,17 @@ class VolArbModel:
         for h in self.horizons:
             self.models[h] = {
                 "XGB": xgb.XGBRegressor(n_jobs=-1, n_estimators=100, max_depth=4, learning_rate=0.05),
-                "RF": RandomForestRegressor(n_jobs=-1, n_estimators=100, min_samples_leaf=5),
-                "Lasso": Lasso(alpha=0.001, max_iter=10000)
+                "RF": RandomForestRegressor(n_jobs=-1, n_estimators=100, min_samples_leaf=50),
+                "LassoCV": LassoCV(cv=TimeSeriesSplit(n_splits=3), max_iter=10000)
             }
-            self.weights[h] = {"XGB": 0.33, "RF": 0.33, "Lasso": 0.33}
+            self.weights[h] = {"XGB": 0.33, "RF": 0.33, "LassoCV": 0.33}
             self.rmse_scores[h] = 0.0
 
     def prepare_features(self, df):
         d = df.copy()
         for h in self.horizons:
-            d[f"y_{h}"] = d["rv_TARGET"].rolling(h).mean().shift(-h)
+            raw_target = d["rv_TARGET"].rolling(h).mean().shift(-h)
+            d[f"y_{h}"] = np.log(raw_target + 1e-9)
         
         d["vol_trend"] = d["rv_TARGET"] / (d["rv_TARGET"].rolling(63).mean() + 1e-9)
         d["vol_vel"] = d["rv_TARGET"].diff(5).abs()
@@ -332,6 +389,9 @@ class VolArbModel:
     def train_wfa(self, X, y_dict, splits=5):
         print(f"[MODEL] Training Term Structure Anchors {self.horizons}...")
         tscv = TimeSeriesSplit(n_splits=splits)
+        
+        # 1. THE FINAL SCALER
+        # Fit on all available data up to today. Used ONLY for the final model fit.
         self.final_scaler = StandardScaler()
         X_final_s = pd.DataFrame(self.final_scaler.fit_transform(X), columns=X.columns, index=X.index)
 
@@ -339,31 +399,48 @@ class VolArbModel:
             y = y_dict[h]
             errors = {"XGB": [], "RF": [], "Lasso": []}
             
+            # 2. THE VALIDATION LOOP
             for tr_idx, te_idx in tscv.split(X):
                 X_tr, X_te = X.iloc[tr_idx], X.iloc[te_idx]
                 y_tr, y_te = y.iloc[tr_idx], y.iloc[te_idx]
                 
-                scaler = StandardScaler()
-                X_tr_s = scaler.fit_transform(X_tr)
-                X_te_s = scaler.transform(X_te)
+                # STRICT OUT-OF-SAMPLE SCALING: Fit only on the training fold
+                fold_scaler = StandardScaler()
+                X_tr_s = fold_scaler.fit_transform(X_tr)
+                X_te_s = fold_scaler.transform(X_te)
                 
+                # Fit fold models on LOG targets
                 self.models[h]["XGB"].fit(X_tr_s, y_tr)
                 self.models[h]["RF"].fit(X_tr_s, y_tr)
-                self.models[h]["Lasso"].fit(X_tr_s, y_tr)
+                self.models[h]["LassoCV"].fit(X_tr_s, y_tr) # Assuming you made this change
                 
-                errors["XGB"].append(np.sqrt(mean_squared_error(y_te, self.models[h]["XGB"].predict(X_te_s))))
-                errors["RF"].append(np.sqrt(mean_squared_error(y_te, self.models[h]["RF"].predict(X_te_s))))
-                errors["Lasso"].append(np.sqrt(mean_squared_error(y_te, self.models[h]["Lasso"].predict(X_te_s))))
+                # Predict in LOG space, but exponentiate back to LINEAR space
+                preds_lin_xgb = np.exp(self.models[h]["XGB"].predict(X_te_s))
+                preds_lin_rf = np.exp(self.models[h]["RF"].predict(X_te_s))
+                preds_lin_lasso = np.exp(self.models[h]["LassoCV"].predict(X_te_s))
+                
+                # Exponentiate the OOS test targets back to LINEAR space
+                y_te_lin = np.exp(y_te)
+                
+                # Calculate True Economic RMSE
+                errors["XGB"].append(np.sqrt(mean_squared_error(y_te_lin, preds_lin_xgb)))
+                errors["RF"].append(np.sqrt(mean_squared_error(y_te_lin, preds_lin_rf)))
+                errors["Lasso"].append(np.sqrt(mean_squared_error(y_te_lin, preds_lin_lasso)))
 
+            # 3. CALCULATE WEIGHTS
             rmse_x, rmse_r, rmse_l = np.mean(errors["XGB"]), np.mean(errors["RF"]), np.mean(errors["Lasso"])
             inv = (1/rmse_x) + (1/rmse_r) + (1/rmse_l)
+            
             self.weights[h] = {"XGB": (1/rmse_x)/inv, "RF": (1/rmse_r)/inv, "Lasso": (1/rmse_l)/inv}
             self.rmse_scores[h] = rmse_x*self.weights[h]["XGB"] + rmse_r*self.weights[h]["RF"] + rmse_l*self.weights[h]["Lasso"]
             
+            # 4. FINAL FIT
+            # Train the models on the fully scaled dataset for live prediction
             self.models[h]["XGB"].fit(X_final_s, y)
             self.models[h]["RF"].fit(X_final_s, y)
-            self.models[h]["Lasso"].fit(X_final_s, y)
+            self.models[h]["LassoCV"].fit(X_final_s, y)
 
+        # 5. FEATURE IMPORTANCE
         xgb_imps = self.models[21]["XGB"].feature_importances_
         self.feature_importance = {self.predictors[i]: float(xgb_imps[i]) for i in np.argsort(xgb_imps)[::-1][:10]}
 
@@ -371,11 +448,21 @@ class VolArbModel:
         feat_s = self.final_scaler.transform(current_features)
         feat_df = pd.DataFrame(feat_s, columns=current_features.columns)
         curve = {}
+        
         for h in self.horizons:
-            pred = (self.models[h]["XGB"].predict(feat_df)[0] * self.weights[h]["XGB"] +
-                    self.models[h]["RF"].predict(feat_df)[0] * self.weights[h]["RF"] +
-                    self.models[h]["Lasso"].predict(feat_df)[0] * self.weights[h]["Lasso"])
-            curve[h] = pred
+            # Predict in log space
+            pred_log_xgb = self.models[h]["XGB"].predict(feat_df)[0]
+            pred_log_rf = self.models[h]["RF"].predict(feat_df)[0]
+            pred_log_lasso = self.models[h]["LassoCV"].predict(feat_df)[0]
+            
+            # Blend the LOG forecasts using your inverse-linear-RMSE weights
+            blended_log_pred = (pred_log_xgb * self.weights[h]["XGB"] +
+                                pred_log_rf * self.weights[h]["RF"] +
+                                pred_log_lasso * self.weights[h]["Lasso"])
+            
+            # Convert final blended forecast back to LINEAR space
+            curve[h] = np.exp(blended_log_pred)
+            
         return curve
 
 # --- CLASS 5: MATH ---
@@ -392,7 +479,7 @@ class QuantLib:
 
     @staticmethod
     def monte_carlo_cone(S0, sigma, T, rmse_vol, n_sims=500):
-        r = 0.045
+        r = 0.0359
         steps = int(T * 252)
         if steps < 5: steps = 5
         dt = T / steps
@@ -418,7 +505,7 @@ class HedgeLab:
         target_col = "ret_TARGET"
         if not factor_cols or target_col not in df.columns: return {}
 
-        hedge_model = Lasso(alpha=0.0005, fit_intercept=False, positive=False)
+        hedge_model = LassoCV(alphas=[0.0005], fit_intercept=False, positive=False)
         X = df[factor_cols]
         y = df[target_col]
         hedge_model.fit(X, y)
@@ -470,6 +557,9 @@ def run_analysis(ticker, lookback=1200):
     # 5. FAIR VOL & WEDGE
     fair_atm_vol = 0.25 * garch_vol_21d + 0.75 * rv_curve[21]
     
+    x_anchors = [21, 63, 126]
+    y_anchors = [rv_curve[21], rv_curve[63], rv_curve[126]]
+    vol_term_structure = PchipInterpolator(x_anchors, y_anchors)
     chain = engine.fetch_option_chain(ticker, spot_price=current_price, min_dte=1, max_dte=300)
     opportunities = []
     avg_mkt_iv = 0.0
@@ -502,38 +592,34 @@ def run_analysis(ticker, lookback=1200):
         # Pricing Loop
         print("[PRICING] Running Parallel-Shift Pricing...")
         for _, row in chain.iterrows():
+    
             # 1. Expiry & Time to Maturity (T)
-            try: expiry_dt = datetime.strptime(row['expiry'], "%Y-%m-%d").date()
-            except: continue
+            try: 
+                expiry_dt = datetime.strptime(row['expiry'], "%Y-%m-%d").date()
+            except Exception: 
+                continue
+        
             dte = (expiry_dt - date.today()).days
-            if dte < 1: continue
+            if dte < 1: 
+                continue
             T = dte / 365.0
 
             mkt_iv = row['mkt_iv']
-            if mkt_iv == 0: continue
+            if mkt_iv == 0: 
+                continue
 
-            # 2. INTERPOLATION (Restoring the Term Structure Logic)
-            # We slide along the curve (21d -> 63d -> 126d) to find the model's exact vol for this DTE
-            model_vol_interp = 0.0
+            # 2. INTERPOLATION (Monotonic Cubic Spline)
             if dte <= 21:
                 model_vol_interp = rv_curve[21]
-            elif dte <= 63:
-                ratio = (dte - 21) / (63 - 21)
-                model_vol_interp = rv_curve[21] + ratio * (rv_curve[63] - rv_curve[21])
-            elif dte <= 126:
-                ratio = (dte - 63) / (126 - 63)
-                model_vol_interp = rv_curve[63] + ratio * (rv_curve[126] - rv_curve[63])
+            elif dte >= 126:
+                model_vol_interp = rv_curve[126]
             else:
-                model_vol_interp = rv_curve[126] # Cap at 6 months
+                model_vol_interp = float(vol_term_structure(dte))
 
             # 3. PER-CONTRACT Z-SCORE
-            # How far is this SPECIFIC contract from the Model's Interpolated Vol?
-            # Note: We use the adjusted_uncertainty (stabilized by velocity) from earlier
             term_z_score = (mkt_iv - model_vol_interp) / adjusted_uncertainty
 
-            # 4. PRICING (Using Parallel Shift for safety)
-            # We still price using the "Wedge" method to respect market skew shape,
-            # but we use the term_z_score for filtering.
+            # 4. PRICING
             fair_vol_strike = mkt_iv - vrp_wedge
             fair_vol_strike = max(0.01, fair_vol_strike)
 
@@ -542,71 +628,65 @@ def run_analysis(ticker, lookback=1200):
                 sigma=fair_vol_strike, type_=row['type']
             )
 
-            # ... (Inside the pricing loop) ...
-            
-            # 1. LIQUIDITY MEASURE
-            bid = row['bid']
-            ask = row['ask']
+            # 5. LIQUIDITY MEASURE
+            bid = row.get('bid', 0.0)
+            ask = row.get('ask', 0.0)
             spread_pct = 0.0
             liquidity_status = "ILLIQUID"
-            
+    
             if ask > 0:
                 spread_pct = (ask - bid) / ask
                 if spread_pct <= 0.02: liquidity_status = "HIGH"
                 elif spread_pct <= 0.05: liquidity_status = "MEDIUM"
                 else: liquidity_status = "LOW"
 
-            # 2. MONEYNESS CHECK (For Advice Context)
+            # 6. MONEYNESS CHECK
             moneyness = row['strike'] / current_price
             is_deep = (moneyness < 0.85 or moneyness > 1.15)
-            
-            # 3. TRADE LOGIC (The "Smart" Advice)
-            mkt = row['mid']
+    
+            # 7. TRADE LOGIC
+            mkt = row.get('mid', 0.0)
             edge = 0.0
-            action = "WATCH" # Default
-            
+            action = "WATCH" 
+    
             if mkt > 0:
                 if theo_price > mkt:
                     edge = (theo_price - mkt) / mkt
-                    
-                    # Buy Logic
-                    if liquidity_status == "LOW":
-                        action = "PASS_Liquidity"
-                    elif is_deep:
-                        action = "PASS_DeepITM"
-                    elif edge > 0.10 and term_z_score < -1.5: # Higher threshold for Buy
-                        action = "BUY_VOL_CHEAP"
-                    elif edge > 0.05:
-                         action = "LEAN_LONG"
-                    
+                    if liquidity_status == "LOW": action = "PASS_Liquidity"
+                    elif is_deep: action = "PASS_DeepITM"
+                    elif edge > 0.10 and term_z_score < -1.5: action = "BUY_VOL_CHEAP"
+                    elif edge > 0.05: action = "LEAN_LONG"
+            
                 elif theo_price < mkt:
                     edge = (mkt - theo_price) / mkt
-                    
-                    # Sell Logic
-                    if liquidity_status == "LOW":
-                        action = "PASS_Liquidity"
-                    elif is_deep:
-                        action = "PASS_StockSub" # It's just a stock proxy
-                    elif edge > 0.10 and term_z_score > 1.5: # Higher threshold for Sell
-                        action = "SELL_VOL_RICH"
-                    elif edge > 0.05:
-                        action = "LEAN_SHORT"
+                    if liquidity_status == "LOW": action = "PASS_Liquidity"
+                    elif is_deep: action = "PASS_StockSub" 
+                    elif edge > 0.10 and term_z_score > 1.5: action = "SELL_VOL_RICH"
+                    elif edge > 0.05: action = "LEAN_SHORT"
 
-            # 4. JSON STRUCTURE UPDATE
+            # 8. JSON STRUCTURE UPDATE
+            # Safely using .get() with defaults to prevent KeyErrors on missing data
             opportunities.append({
                 "symbol": row['symbol'], 
                 "type": row['type'], 
-                "strike": row['strike'],
+                "strike": float(row['strike']), 
                 "expiry": row['expiry'], 
-                "mkt_px": round(mkt, 2), 
-                "model_px": round(theo_price, 2),
-                "edge_pct": round(edge*100, 1), 
-                "spread_pct": round(spread_pct*100, 1), # New Metric
-                "liquidity": liquidity_status,          # New Metric
+        
+                "mkt_px": clean_num(mkt, 2), 
+                "model_px": clean_num(theo_price, 2),
+                "edge_pct": clean_num(edge*100, 1), 
+                "spread_pct": clean_num(spread_pct*100, 1), 
+        
+                "liquidity": liquidity_status,          
                 "action": action, 
-                "iv": round(mkt_iv, 4), 
-                "fair_vol": round(fair_vol_strike, 4),
-                "z_score": round(term_z_score, 2)
+        
+                "iv": clean_num(mkt_iv, 4), 
+                "fair_vol": clean_num(fair_vol_strike, 4),
+                "z_score": clean_num(term_z_score, 2),
+
+                "open_interest": clean_num(row.get("open_interest", 0), 0),
+                "bid_size": clean_num(row.get("bid_size", 0), 0),
+                "ask_size": clean_num(row.get("ask_size", 0), 0),
             })
         opportunities = sorted(opportunities, key=lambda x: abs(x['edge_pct']), reverse=True)
         print(f"[SCAN] Processed {len(opportunities)} contracts.")
@@ -625,10 +705,10 @@ def run_analysis(ticker, lookback=1200):
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "spot_price": round(current_price, 2),
             "forecast_rv": {k: round(v, 4) for k, v in rv_curve.items()},
-            "garch_21d": round(garch_vol_21d, 4),
+            "garch_21d": clean_num(garch_vol_21d, 4),
             "market_iv_atm": round(avg_mkt_iv, 4),
-            "vrp_wedge": round(vrp_wedge, 4),
-            "z_score_stabilized": round(global_z_score, 2),
+            "vrp_wedge": clean_num(vrp_wedge, 4),
+            "z_score_stabilized": clean_num(global_z_score, 2),
             "tail_risk_95": round(tail_risk, 2)
         },
         "hedging": {"recipe": hedge_recipe, "interpretation": "Factor Hedge Positions"},
@@ -643,4 +723,6 @@ def run_analysis(ticker, lookback=1200):
     print(f"\n[SUCCESS] Dashboard generated at {fname}")
 
 if __name__ == "__main__":
-    run_analysis("MS")
+    run_analysis("CVX")
+
+  

@@ -4,7 +4,7 @@ Web application:
 The model:
 The volarbear model ingests data from alpaca for use by a 10 year backtest suite using several ML methods including but not limited to XGBoost, Random Forest, LassoCV, and classical Garch stabilizers. 
 
-These models are used to forecast realized volatility (RV or modelRV), using the karman-glass definition of volatility (Open, High, Low, Close), and build feature importance to tell us what is currently driving the stock, and how thats changed over time. 
+These models are used to forecast realized volatility (RV or modelRV), using the karman-glass definition of volatility (Open, High, Low, Close),   and build feature importance to tell us what is currently driving the stock, and how thats changed over time. 
 Forecast is set up as a monotonic cublic spline that fits a quadratic onto the forecasted points giving smoother forecasts than the linear one before it.
 All four models are present and make their own estimation, they are then given votes proportional to their inverse-error.
 

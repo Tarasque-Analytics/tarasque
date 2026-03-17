@@ -1,6 +1,7 @@
 import os
 import time
 import json
+import shap
 from matplotlib import ticker
 import numpy as np
 import pandas as pd
@@ -465,6 +466,55 @@ class VolArbModel:
             
         return curve
 
+    
+
+    def explain_prediction(self, current_features, horizon=21):
+        """
+        Calculates SHAP values for the current day's features.
+        Returns the data dictionary required for the web app's Force Plot.
+        """
+        # 1. Scale today's features using the WFA-fitted scaler
+        feat_s = self.final_scaler.transform(current_features)
+        feat_df = pd.DataFrame(feat_s, columns=current_features.columns)
+
+        # 2. Extract the dominant tree model from the ensemble
+        # SHAP TreeExplainer requires a tree architecture (XGBoost/RandomForest)
+        tree_model = None
+        model_name = ""
+        for name, model in self.models[horizon].items():
+            if hasattr(model, "feature_importances_"): 
+                tree_model = model
+                model_name = name
+                break
+
+        if tree_model is None:
+            return {"error": "No tree-based model found in the ensemble for SHAP extraction."}
+
+        # 3. Calculate SHAP Values
+        explainer = shap.TreeExplainer(tree_model)
+        shap_values = explainer.shap_values(feat_df)
+
+        # 4. Extract the Base Value safely
+        base_value = explainer.expected_value
+        if isinstance(base_value, np.ndarray):
+            base_value = base_value[0]
+            
+        # 5. Map values to feature names and sort by absolute impact
+        feature_names = self.predictors
+        # shap_values for a single prediction is a 2D array, we want the first row
+        impacts = {feature_names[i]: float(shap_values[0][i]) for i in range(len(feature_names))}
+        
+        # Sort by the absolute magnitude to find the top 10 market drivers today
+        top_impacts = dict(sorted(impacts.items(), key=lambda item: abs(item[1]), reverse=True)[:10])
+
+        # 6. JSON Payload for the Web Developer
+        return {
+            "horizon": horizon,
+            "anchor_model": model_name,
+            "base_value_log": float(base_value),
+            "shap_values": top_impacts
+        }
+
 # --- CLASS 5: MATH ---
 class QuantLib:
     @staticmethod
@@ -554,6 +604,22 @@ def run_analysis(ticker, lookback=1200):
     rv_curve = model.predict_curve(current_features)
     print(f"[FORECAST] GARCH (21d): {garch_vol_21d:.2%} | ML (21d): {rv_curve[21]:.2%}")
 
+    shap_payload = model.explain_prediction(current_features, horizon=21)
+    if "error" in shap_payload:
+        print(f"[SHAP] Explanation Error: {shap_payload['error']}")
+    else:
+        print(f"\n[SHAP DIAGNOSTICS] Top volatility drivers today for {ticker} (21d):")
+        print(f"Anchor Model: {shap_payload['anchor_model']}")
+        print(f"Base Log-Vol: {shap_payload['base_value_log']:.4f}")
+        print("-" * 45)
+
+        # Iterate through the dictionary to create a clean visual leaderboard
+        for feature, impact in shap_payload['shap_values'].items():
+            # Force a '+' sign for positive numbers to make directional impact obvious
+            sign = "+" if impact > 0 else ""
+        print(f"{feature:<25} | Impact: {sign}{impact:.4f}")
+        
+        print("-" * 45 + "\n")
     # 5. FAIR VOL & WEDGE
     fair_atm_vol = 0.25 * garch_vol_21d + 0.75 * rv_curve[21]
     
@@ -723,6 +789,6 @@ def run_analysis(ticker, lookback=1200):
     print(f"\n[SUCCESS] Dashboard generated at {fname}")
 
 if __name__ == "__main__":
-    run_analysis("CVX")
+    run_analysis("NVDA")
 
   

@@ -1,7 +1,4 @@
 .DS_Store
-.env
-.env.local
-.env*.local
 /node_modules/
 
 # React Router
@@ -26,3 +23,22 @@ backend/.mypy_cache/
 backend/.coverage
 backend/htmlcov/
 backend/*.log
+
+# Supabase
+<<<<<<< HEAD
+supabase/.branches
+supabase/.temp
+=======
+.branches
+.temp
+>>>>>>> refs/remotes/origin/new_database
+
+# dotenvx
+.env.keys
+.env.local
+<<<<<<< HEAD
+.env.*.local
+.env*.local
+=======
+.env.*.local
+>>>>>>> refs/remotes/origin/new_database

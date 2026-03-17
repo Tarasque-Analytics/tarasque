@@ -15,7 +15,7 @@ Additionals:
 Modeling Z score distribution over time would make for an interesting way to conceptualize “regimes”
 Included stocks must have >50millionUSD daily volume (good for both options, usability, and model training).
 Were going to assign sector IDS to each company, and cap size markers, among others (i.e., apple would be classed as both tech and mega cap). [ can likely pull the GICS or global industry classification standard codes and measuring market cap ]
-Conducting residual analysis on the outputs is requisite. Sorting by top 100 most erroneous stocks or days will be crucial to helping us guide the model).
+Conducting residual analysis on the outputs is requisite. Sorting by top 100 most erroneous stocks or days will be crucial to helping us guide the model.
 SHAP (SHapley Additive exPlanations) game theory based, tells about feature importance, exactly how much, which direction its heading in - will allow for the app to display a force plot for every stock, allowing us to see where correlations are going.
 Going to need to log historical fed dates and earnings dates (ouch)
 Going to want to write a script for every day to push market data for all stocks to make db complete again.

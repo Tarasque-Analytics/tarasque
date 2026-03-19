@@ -1,6 +1,6 @@
 import { Link } from "react-router";
 import { useState, useEffect } from "react";
-
+import { supabase } from "supabaseClient";
 export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -11,14 +11,23 @@ export default function Register() {
   const [hasNumber, setHasNumber] = useState(false);
   const [hasSpecialChar, setHasSpecialChar] = useState(false);
   const [emailError, setEmailError] = useState("");
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setIsLoading(true);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    console.log("Register attempt:", { email, password });
-    setIsLoading(false);
-  };
-
+  // Works?
+  const { data, error } = await supabase.auth.signUp({ email, password });
+  console.log("Register attempt:", { email, password });
+  const { data: tableData } = await supabase.from('stonks').select('*');
+  console.log(tableData);
+  const { error: insertError } = await supabase.from('stonks').insert({
+    user_id: data.user.id
+  });
+  if (insertError) {
+    console.error("Insert error:", insertError);
+  }
+  setIsLoading(false);
+};
   useEffect(() => {
     const strengthOk = checkPasswordStrength(password);
     setPasswordConfirmed(

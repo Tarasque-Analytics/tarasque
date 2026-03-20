@@ -1,7 +1,0 @@
-This project is meant to do two things: Look great as a project to prospective employers and to potentially make us a lot of money
-
-Roadmap: 
-- Readd Lasso regression as a linear stabilizer to the RV Prediction
-- Speed the model up (75 Tickers take ~3 Hrs on my hardware ATM)
-- Create an interactive dashboard for constant analysis of positions, market shifts, and much more.
-- Reconsile past predictions to build secondary models on probit / logit regression models to create a rating system for potential "plays"

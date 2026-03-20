@@ -22,6 +22,23 @@ Going to want to write a script for every day to push market data for all stocks
 
 Validity
 Mincer-zarnowitz regression using the outputs (easy to conceptualize)
+.   
 Asymmetric QLIKE (quasi-liklihood) loss function- robust loss function used to evaluate vol forecasts designed to penalixe understamation and overstimation differently, 
 Event capture - tracking 2 stdev events like cascades, success is defined by how many of those events occurred when the model spikes before the stock does.
 
+Other requisite fixes and such:
+- find real interpolated market IV rather than computing locally or alternatively copy standardized logic
+- scrap options printout
+- reintroduce sector proxies with stiff constraints, pick top two for each stock, regress against one another, use the rolling residual variance of one to isolate its additional/different variance (i.e., amazon would be tech and consumer products)
+- engineering features on a sparse group of variables, like rolling variance, vol expansions, drawdown depth, rolling correlations, etc
+- addings dividend payment days not just earnings for additional volatility
+- limit constraints on mL. theyre already built not to overfit.
+- filter out stocks with little liquidity
+- passive index analysis, i.e., say vix is low because the sandp isnt moving much but 30% of the companoes are in high percentile risk situations, we call that time to go. 
+- find unpredicted wedges in quiet markets, or low wedges in crazy markets, both value
+- orthogonalization: regressing two highly correlated variables against one another for unique signals - also can be used to create "betas" for each equity 
+- short term momentum & price regime (current price / rolling 252 day high)-1 gives the model an understanding of how far it is from its recent peak
+
+-for strategy backtest, it would be wise for wedge to signal enter and exit from a position
+- add to ui wether the stock is coupling or detaching from the sector - shows of idiosyncratic risk
+- check out d3.js and highcharts for custom math

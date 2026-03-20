@@ -143,10 +143,8 @@ class DataIngestion:
         self.option_client = OptionHistoricalDataClient(ALPACA_API_KEY, ALPACA_SECRET_KEY)
         
         self.factor_data = [
-            "SPY", "XLK", "VIXY", "HYG", "IEI", 
-            "IEF", "QQQ", "TLT", "GLD", "USO", 
-            "UUP", "XLP", "XLF", "XLE", "XLV", 
-            "IWM", "XLC", "IYR", "EEM", "XLI", "MCHI"
+             "VIXY", "HYG", "USO"
+             "TLT", "UUP", "SPY"
         ]
 
     def fetch_risk_free_rate(self):
@@ -162,7 +160,7 @@ class DataIngestion:
             print(f"[WARN] Rate fetch failed ({e}). Defaulting to 4.5%")
         return 0.045
                             
-    def fetch_data(self, ticker, lookback_days=1200):
+    def fetch_data(self, ticker, lookback_days=3000):
         print(f"\n[DATA] Pulling Data for {ticker}...")
         symbols = [ticker] + self.factor_data
         start_dt = datetime.now() - timedelta(days=lookback_days)
@@ -363,9 +361,9 @@ class VolArbModel:
         
         for h in self.horizons:
             self.models[h] = {
-                "XGB": xgb.XGBRegressor(n_jobs=-1, n_estimators=100, max_depth=4, learning_rate=0.05),
-                "RF": RandomForestRegressor(n_jobs=-1, n_estimators=100, min_samples_leaf=50),
-                "LassoCV": LassoCV(cv=TimeSeriesSplit(n_splits=3), max_iter=10000)
+                "XGB": xgb.XGBRegressor(n_jobs=-1, n_estimators=100, max_depth=4, learning_rate=0.05, reg_alpha=0.01, gamma=0.1, colsample_bytree=0.8, reg_lambda=1.0),
+                "RF": RandomForestRegressor(n_jobs=-1, n_estimators=100, min_samples_leaf=5), # change leafs to 50 when we have full database in place
+                "LassoCV": LassoCV(cv=TimeSeriesSplit(n_splits=3), max_iter=10000) # when we expand DB, splits must be scaled to fit growth, can make dynamic later
             }
             self.weights[h] = {"XGB": 0.33, "RF": 0.33, "LassoCV": 0.33}
             self.rmse_scores[h] = 0.0
@@ -631,19 +629,63 @@ def run_analysis(ticker, lookback=1200):
     avg_mkt_iv = 0.0
     vrp_wedge = 0.0
     global_z_score = 0.0
+
+    target_dte = 21 
+
+    import pandas as pd
+    import re
+
+    # If the OCC symbol is the index, move it to a column temporarily
+    if 'symbol' not in chain.columns:
+        chain = chain.reset_index(names='symbol')
+
+    # The OCC format contains a 6-digit date (YYMMDD) right before the 'C' or 'P'
+    # Extract that string, convert to datetime, and calculate DTE
+    chain['expiration_date'] = pd.to_datetime(chain['symbol'].str.extract(r'(\d{6})[CP]', expand=False), format='%y%m%d')
+    chain['days_to_expiration'] = (chain['expiration_date'] - pd.Timestamp.today().normalize()).dt.days
+    chain['dte_distance'] = (chain['days_to_expiration'] - target_dte).abs()
     
+    # Assuming your fair_atm_vol is your 21-day prediction
+
+    # 1. Ensure Alpaca's expiration_date is a pandas datetime object
+    chain['expiration_date'] = pd.to_datetime(chain['expiration_date'])
+
+    # 2. Calculate the raw DTE integer against today's date
+    chain['days_to_expiration'] = (chain['expiration_date'] - pd.Timestamp.today().normalize()).dt.days
+
+    # 3. Now your original wedge math will execute
+    chain['dte_distance'] = (chain['days_to_expiration'] - target_dte).abs()
+
+    
+
     if not chain.empty:
-        # Calculate Wedge
-        atm_contracts = chain[
-            (chain['strike'] >= current_price * 0.98) & (chain['strike'] <= current_price * 1.02)
+        # 1. Lock the Term Structure: Find the expiration date closest to your model's target
+        chain['dte_distance'] = (chain['days_to_expiration'] - target_dte).abs()
+        best_dte = chain.sort_values('dte_distance').iloc[0]['days_to_expiration']
+        
+        # Isolate the chain to ONLY contracts on that specific expiration date
+        time_filtered_chain = chain[chain['days_to_expiration'] == best_dte]
+
+        # 2. Lock the Moneyness: Find the ATM contracts for that specific date
+        atm_contracts = time_filtered_chain[
+            (time_filtered_chain['strike'] >= current_price * 0.98) & 
+            (time_filtered_chain['strike'] <= current_price * 1.02)
         ]
-        if not atm_contracts.empty: mkt_atm_vol = atm_contracts['mkt_iv'].median()
+    
+        # 3. Calculate the Market IV
+        if not atm_contracts.empty: 
+            mkt_atm_vol = atm_contracts['mkt_iv'].median()
         else:
-            closest = chain.iloc[(chain['strike'] - current_price).abs().argsort()[:5]]
+            # Fallback: Grab the 4 closest strikes on that specific expiration date
+            closest = time_filtered_chain.iloc[(time_filtered_chain['strike'] - current_price).abs().argsort()[:4]]
             mkt_atm_vol = closest['mkt_iv'].median()
             
+        # 4. Calculate the localized Wedge
         avg_mkt_iv = mkt_atm_vol
         vrp_wedge = mkt_atm_vol - fair_atm_vol
+        
+        # Print the diagnostics so you can verify the DTE match
+        print(f"[PRICING] Target DTE: {target_dte} | Matched DTE: {best_dte}")
         print(f"[PRICING] Market ATM: {mkt_atm_vol:.2%} | Fair ATM: {fair_atm_vol:.2%} | Wedge: {vrp_wedge:.2%}")
 
         # Stabilized Z-Score
@@ -789,6 +831,6 @@ def run_analysis(ticker, lookback=1200):
     print(f"\n[SUCCESS] Dashboard generated at {fname}")
 
 if __name__ == "__main__":
-    run_analysis("NVDA")
+    run_analysis("CVX")
 
   

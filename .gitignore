@@ -25,20 +25,11 @@ backend/htmlcov/
 backend/*.log
 
 # Supabase
-<<<<<<< HEAD
-supabase/.branches
-supabase/.temp
-=======
 .branches
 .temp
->>>>>>> refs/remotes/origin/new_database
 
 # dotenvx
+.env
 .env.keys
 .env.local
-<<<<<<< HEAD
 .env.*.local
-.env*.local
-=======
-.env.*.local
->>>>>>> refs/remotes/origin/new_database

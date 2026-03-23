@@ -1,6 +1,6 @@
 import { Link } from "react-router";
 import { useState, useEffect } from "react";
-
+import { supabase } from "supabaseClient";
 export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -12,10 +12,14 @@ export default function Register() {
   const [hasSpecialChar, setHasSpecialChar] = useState(false);
   const [emailError, setEmailError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     console.log("Register attempt:", { email, password });
+    const { data, error } =await supabase.from('stonks').insert({ name: email, is_complete: true });
+      if (error) {
+        console.error("Registration error:", error);
+      }
     setIsLoading(false);
   };
 
@@ -169,4 +173,4 @@ export default function Register() {
       </div>
     </div>
   );
-}
+  }

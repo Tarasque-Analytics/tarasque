@@ -831,6 +831,6 @@ def run_analysis(ticker, lookback=1200):
     print(f"\n[SUCCESS] Dashboard generated at {fname}")
 
 if __name__ == "__main__":
-    run_analysis("CVX")
+    run_analysis("NNE")
 
   

@@ -95,3 +95,6 @@ Swap 10/20yr treasury constant maturtuy rate instead of TLT
 - later to increase upside we can tax harvest via proxy substitution: replacing a loss-burdened equity with one of a similar or better profile to circuvent wash sale protocols and tax loss harvest, ike moving from XOM to CVX.
 - we can also direct index etfs, to understand the mathematical disconnect between top down risk on the market aggregated SPY and the cumulative risks of each of the underlying equities (the bottom up risk), so following trends between equities within an index and the index gives us precursor to macro level volatility.
 - the plan is gonna hneed to be sequential, starting with purely delta-1 plays to manage risk and prove IC. the second being adding proxy sub and TLH. the third would introduct VRP harvesting only on the highest conviction trades.
+
+- all in all, we want to create the framework to test our model on with everthing we would need for all of these features that we would deploy later
+- we need to build a enough interesting & meaninful correlations within the data for the decision tree models to thrive and give exelent SHAP values as a great black box breaking capiabilitiy. 

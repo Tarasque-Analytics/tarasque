@@ -90,11 +90,22 @@ Swap 10/20yr treasury constant maturtuy rate instead of TLT
 - our basis for the equity backtest would include recognizing that there is a range of downside priced in, guiding how it uses the wedge.
 - the IC measurement i wrote about earlier is a single continous predictive signal against a continous taget, i.e., does the wedge predict return. adding directional conditions will help our sharpe ratio - our strategy is now similar to a "Dynamic Defensive Equity Overlay"
 - our plan is to strip the options execution to protect from options market related issues like liquidity vacuums and other risks, a sacrifice of yeild for survival and value. 
-- to do this were gonna need four classifications: steady market with significant z score = sell. Bilateral uncetainty with a high z score and a flat skew: neutral risk profile = hold. panic conditions of high wedge and high percentile skew = buy the dip. High wedge and low skew = sell for profits
-- this makes any strategy a systematic, rules based engine designed to make equity weights dynamic, avoiding risk, while harvesting from behavioral panice.
+- to do this were gonna need four classifications: steady market with significant z score = sell. Bilateral uncetainty with a high z score and a flat skew: neutral risk profile = hold. panic conditions of high wedge and high percentile skew = buy the dip. High wedge and low skew = sell for profits.
+- this makes any strategy a systematic, rules based engine designed to make equity weights dynamic, avoiding risk, while harvesting from behavioral panic.
 - later to increase upside we can tax harvest via proxy substitution: replacing a loss-burdened equity with one of a similar or better profile to circuvent wash sale protocols and tax loss harvest, ike moving from XOM to CVX.
 - we can also direct index etfs, to understand the mathematical disconnect between top down risk on the market aggregated SPY and the cumulative risks of each of the underlying equities (the bottom up risk), so following trends between equities within an index and the index gives us precursor to macro level volatility.
-- the plan is gonna hneed to be sequential, starting with purely delta-1 plays to manage risk and prove IC. the second being adding proxy sub and TLH. the third would introduct VRP harvesting only on the highest conviction trades.
+- the plan is gonna need to be sequential, starting with purely delta-1 plays to manage risk and prove IC. the second being adding proxy sub and TLH. the third would introduct VRP harvesting only on the highest conviction trades.
 
 - all in all, we want to create the framework to test our model on with everthing we would need for all of these features that we would deploy later
 - we need to build a enough interesting & meaninful correlations within the data for the decision tree models to thrive and give exelent SHAP values as a great black box breaking capiabilitiy. 
+
+
+
+- quantitative engine with the core objective of isolating the idiosyncratic volatility risk premium (as a metric of fear or uncertainty) using an additional insurance wedge characteristic (IV for +25 OTM calls, and IV for -25 OTM puts) for a directional index.
+- to do this we use fred indicies like SPX, VIX, DXY, CL=F, ICEBOFA, Treasury maturities, etc
+- we deploy adaptive heteroskedasticity filters, as a pseudo-vif, dynamically expanding and contracting the z-score demonimator of the wedge based on the velocity of volatility forcing the model to demand a higher threshold of proof during structural market crashes (to avoid catching falling knives)
+- we adjust the data structure imporance by implementing exponential sample weighting, low weight in the begining, high towards recency, so the model remembers but doesnt try to use it too much.
+- using Point-In-Time, WFA, and proper alignment we prevent LAB.
+- we evaluate our model with the Mincer Zarnowize to make sure models are working properly / follow real changes.
+- quintile spread to see if there is any difference between model asigned risk and model assigned calm in terms of their returns.
+- our anticipated strategies is akin to a dynamic defensive equity overlay, we are using the derivatives market as a constant information feed to trade the underlying equities reducing drawdown and risk.

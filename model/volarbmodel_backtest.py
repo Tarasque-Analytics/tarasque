@@ -144,7 +144,7 @@ class DataIngestion:
         
         self.factor_data = [
              "VIXY", "HYG", "USO"
-             "TLT", "UUP", "SPY"
+             "TLT", "UUP", "SPY", #rolling inflation breakevens
         ]
 
     def fetch_risk_free_rate(self):
@@ -509,7 +509,7 @@ class VolArbModel:
         return {
             "horizon": horizon,
             "anchor_model": model_name,
-            "base_value_log": float(base_value),
+            "base_value_log": float(base_value)
             "shap_values": top_impacts
         }
 

@@ -53,10 +53,6 @@ export default function WedgeDistribution() {
     plugins: {
       legend: {
         display: false,
-        // position: "top" as const,
-        // labels: {
-        //     font: { size: 12 },
-        // },
       },
       title: {
         display: false,
@@ -72,6 +68,14 @@ export default function WedgeDistribution() {
       x: {
         ticks: {
           font: { size: 10 },
+          stepSize: 10,
+          maxTicksLimit: 11,
+          callback: function(value: string | number, index: number) {
+            if (typeof value === 'number' && value % 10 === 0) {
+              return value;
+            }
+            return '';
+          }, // Show only every 10th label 
         },
       },
     },
@@ -100,14 +104,6 @@ export default function WedgeDistribution() {
   );
 }
 
-// TEMPORARY
-function gaussianRandom(mean = 0, stdev = 1) {
-  let u = 0, v = 0;
-  while(u === 0) u = Math.random();
-  while(v === 0) v = Math.random();
-  const z0 = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
-  return z0 * stdev + mean;
-}
 
 // Gamma function approximation (Lanczos approximation)
 function gammaFunction(z: number): number {
@@ -138,7 +134,7 @@ function gammaFunction(z: number): number {
   return Math.sqrt(2 * Math.PI) * Math.pow(t, z + 0.5) * Math.exp(-t) * x;
 }
 
-// Gamma distribution PDF (Probability Density Function)
+// TEMPORARY ONLY FOR DEMO 
 function gammaDistribution(x: number, shape: number, scale: number) {
   if (x <= 0) return 0;
   const numerator = Math.pow(x, shape - 1) * Math.exp(-x / scale);
@@ -146,7 +142,7 @@ function gammaDistribution(x: number, shape: number, scale: number) {
   return numerator / denominator;
 }
 
-// Normal distribution PDF (Probability Density Function)
+// TEMPORARY ONLY FOR DEMO 
 function normalDistribution(x: number, mean: number, stdev: number) {
   const numerator = Math.exp(-((x - mean) ** 2) / (2 * stdev ** 2));
   const denominator = stdev * Math.sqrt(2 * Math.PI);
@@ -157,10 +153,9 @@ function getSector(disType: boolean) {
   console.log("Sector")
   let data = null;
   if (disType === WEDGE) {  
-    // Scale x-axis (0-100) to a reasonable range for normal distribution
-    data = X_AXIS.map(x => normalDistribution(x, 50, 15) * 100); // Mean=50, StDev=15, scaled for visibility
+    data = X_AXIS.map(x => normalDistribution(x, 50, 15) * 100); // TODO: replace with real wedge distribution once model and database are set up
   } else {
-    data = X_AXIS.map(x => gammaDistribution(x, 2, 15) * 100); // Gamma distribution: shape=2, scale=15, scaled for visibility
+    data = X_AXIS.map(x => gammaDistribution(x, 2, 15) * 100); // TODO: replace with real gamma distribution once model and database are set up
   }
   return {
       labels: X_AXIS,
@@ -183,9 +178,9 @@ function getSubSector(disType: boolean) {
   console.log("Sub-Sector")
   let data = null;
   if (disType === WEDGE) {  
-    data = X_AXIS.map(x => normalDistribution(x, 50, 15) * 100); // Mean=50, StDev=15, scaled for visibility
+    data = X_AXIS.map(x => normalDistribution(x, 50, 15) * 100); // TODO: replace with real wedge distribution once model and database are set up
   } else {
-    data = X_AXIS.map(x => gammaDistribution(x, 2, 15) * 100); // Gamma distribution: shape=2, scale=15, scaled for visibility
+    data = X_AXIS.map(x => gammaDistribution(x, 2, 15) * 100); // TODO: replace with real wedge distribution once model and database are set up
   }
   return {
       labels: X_AXIS,
@@ -208,9 +203,9 @@ function getMktSector(disType: boolean) {
   console.log("Mkt Sub-Sector")
   let data = null;
   if (disType === WEDGE) {  
-    data = X_AXIS.map(x => normalDistribution(x, 50, 15) * 100); // Mean=50, StDev=15, scaled for visibility
+    data = X_AXIS.map(x => normalDistribution(x, 50, 15) * 100); // TODO: replace with real wedge distribution once model and database are set up
   } else {
-    data = X_AXIS.map(x => gammaDistribution(x, 2, 15) * 100); // Gamma distribution: shape=2, scale=15, scaled for visibility
+    data = X_AXIS.map(x => gammaDistribution(x, 2, 15) * 100); // TODO: replace with real wedge distribution once model and database are set up
   }
   return {
       labels: X_AXIS,
@@ -233,9 +228,9 @@ function getMarket(disType: boolean) {
   console.log("Market")
   let data = null;
   if (disType === WEDGE) {  
-    data = X_AXIS.map(x => normalDistribution(x, 50, 15) * 100); // Mean=50, StDev=15, scaled for visibility
+    data = X_AXIS.map(x => normalDistribution(x, 50, 15) * 100); // TODO: replace with real wedge distribution once model and database are set up
   } else {
-    data = X_AXIS.map(x => gammaDistribution(x, 2, 15) * 100); // Gamma distribution: shape=2, scale=15, scaled for visibility
+    data = X_AXIS.map(x => gammaDistribution(x, 2, 15) * 100); // TODO: replace with real wedge distribution once model and database are set up
   }
   return {
       labels: X_AXIS,

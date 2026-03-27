@@ -35,6 +35,7 @@ export default function PortfolioPieChart() {
   };
 
   const options: ChartOptions<"doughnut"> = {
+    // radius: "50%",
     cutout: "70%",
     plugins: {
       legend: {

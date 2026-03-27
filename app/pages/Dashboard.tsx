@@ -23,23 +23,23 @@ export default function Dashboard() {
       {isLoading ? (
         <div className="loading-placeholder" />
       ) : (
-        <div className="grid grid-cols-6">
+        <div className="grid grid-cols-4">
           {/* Left Column */}
-          <div className="col-start-1 col-span-2 p-2">
+          <div className="col-start-1 col-span-1 p-2">
             <div className="dashboard-section">
               <DashboardLeft />
             </div>
           </div>
 
           {/* Center Column */}
-          <div className="col-start-3 col-span-3 p-2">
+          <div className="col-start-2 col-span-2 p-2">
             <div className="dashboard-section">
               <DetailedAnalysis />
             </div>
           </div>
 
           {/* Right Column */}
-          <div className="col-start-6 col-span-1 row-span-3 p-2">
+          <div className="col-start-4 col-span-1 row-span-3 p-2">
             <div className="dashboard-section">
               <HedgingInfo />
             </div>

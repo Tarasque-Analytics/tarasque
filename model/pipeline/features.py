@@ -93,10 +93,10 @@ class FeatureBuilder:
         # 13. Targets (backtest :373-375)
         df = self._add_targets(df)
 
-        # Clean up: drop rows where the shortest horizon target is NaN
-        # (they'll be NaN at the tail due to forward shift)
-        min_h = min(self.mc.horizons)
-        df = df.dropna(subset=[f"y_{min_h}"])
+        # Drop rows where ANY target is NaN (tail rows that lack enough future
+        # data for the longer horizons, e.g. last 126 rows for y_126).
+        target_cols = [f"y_{h}" for h in self.mc.horizons if f"y_{h}" in df.columns]
+        df = df.dropna(subset=target_cols)
 
         return df
 
@@ -137,6 +137,10 @@ class FeatureBuilder:
         for c in ["open", "high", "low", "close"]:
             if c in ohlcv.columns:
                 ohlcv[c] = ohlcv[c].abs()
+
+        # CRSP msenames join can produce duplicate (date, ticker) rows when
+        # name-date ranges overlap for the same permno. Keep the last record.
+        ohlcv = ohlcv.drop_duplicates(subset=["date", "ticker"], keep="last")
 
         closes = ohlcv.pivot(index="date", columns="ticker", values="close").ffill()
         highs = ohlcv.pivot(index="date", columns="ticker", values="high").ffill()
@@ -318,9 +322,12 @@ class FeatureBuilder:
         # Reindex to match df dates, forward-fill
         fred = fred.reindex(df.index, method="ffill")
 
-        # Yield curve slope
-        if "treasury_10y" in fred.columns and "treasury_2y" in fred.columns:
-            df["macro_yield_curve_slope"] = fred["treasury_10y"] - fred["treasury_2y"]
+        # Yield curve slope: prefer 10y-2y; fall back to 10y-3mo (^IRX proxy)
+        if "treasury_10y" in fred.columns:
+            if "treasury_2y" in fred.columns:
+                df["macro_yield_curve_slope"] = fred["treasury_10y"] - fred["treasury_2y"]
+            elif "treasury_3mo" in fred.columns:
+                df["macro_yield_curve_slope"] = fred["treasury_10y"] - fred["treasury_3mo"]
 
         # HY spread level and momentum
         if "hy_spread" in fred.columns:

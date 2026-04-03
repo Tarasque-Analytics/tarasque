@@ -101,3 +101,4 @@ for web app displays:
 - shap implementation: force plot 
 -shows where prediction started (mean or last value) and shows whats pushing it higher or lower using red and blue and where it lands. 
 -horizonal so mught need a different place
+

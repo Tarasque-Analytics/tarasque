@@ -67,6 +67,15 @@ class BacktestEngine:
         predictors = builder.get_predictor_columns(feature_df)
         step = self.bc.step_days
 
+        # Drop features that are entirely NaN across the full window
+        # (e.g. FRED macro features when WRDS subscription is unavailable).
+        valid_predictors = [c for c in predictors if feature_df[c].notna().any()]
+        dropped = set(predictors) - set(valid_predictors)
+        if dropped:
+            print(f"[BACKTEST] Dropping {len(dropped)} all-NaN feature(s): "
+                  f"{sorted(dropped)}")
+        predictors = valid_predictors
+
         results: List[BacktestResult] = []
 
         for h in self.mc.horizons:
@@ -100,8 +109,19 @@ class BacktestEngine:
                     continue
 
                 X_tr = train[predictors]
-                y_tr_dict = {h: train[target_col]}
+                # Pass all horizon targets — train_wfa trains all horizons in one pass.
+                y_tr_dict = {
+                    hh: train[f"y_{hh}"]
+                    for hh in self.mc.horizons
+                    if f"y_{hh}" in train.columns
+                }
                 X_te = test[predictors]
+
+                # Impute remaining NaN (rolling burn-in, sparse IV gaps).
+                # ffill within window, bfill for leading NaN, then median fallback.
+                train_medians = X_tr.median()
+                X_tr = X_tr.ffill().bfill().fillna(train_medians)
+                X_te = X_te.ffill().bfill().fillna(train_medians)
 
                 # Train a fresh model for this window
                 model = EnsembleVolModel(self.mc)

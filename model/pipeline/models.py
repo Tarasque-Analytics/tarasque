@@ -144,6 +144,15 @@ class EnsembleVolModel:
                 X_tr, X_te = X.iloc[tr_idx], X.iloc[te_idx]
                 y_tr, y_te = y.iloc[tr_idx], y.iloc[te_idx]
 
+                # Drop NaN targets (safety net for horizon tail rows)
+                tr_valid = y_tr.notna()
+                te_valid = y_te.notna()
+                X_tr, y_tr = X_tr[tr_valid], y_tr[tr_valid]
+                X_te, y_te = X_te[te_valid], y_te[te_valid]
+
+                if len(y_tr) == 0 or len(y_te) == 0:
+                    continue
+
                 # Strict OOS scaling (backtest :407-409)
                 fold_scaler = StandardScaler()
                 X_tr_s = fold_scaler.fit_transform(X_tr)
@@ -151,8 +160,9 @@ class EnsembleVolModel:
 
                 for name in model_names:
                     self.models[h][name].fit(X_tr_s, y_tr)
-                    preds_lin = np.exp(self.models[h][name].predict(X_te_s))
-                    y_te_lin = np.exp(y_te)
+                    log_preds = np.clip(self.models[h][name].predict(X_te_s), -5, 5)
+                    preds_lin = np.exp(log_preds)
+                    y_te_lin = np.exp(np.clip(y_te.values, -5, 5))
                     rmse = np.sqrt(mean_squared_error(y_te_lin, preds_lin))
                     errors[name].append(rmse)
 
@@ -217,7 +227,7 @@ class EnsembleVolModel:
                 self.models[h][name].predict(feat_df)[0] * self.weights[h][name]
                 for name in self.weights[h]
             )
-            curve[h] = float(np.exp(blended_log))
+            curve[h] = float(np.exp(np.clip(blended_log, -5, 5)))
 
         return curve
 

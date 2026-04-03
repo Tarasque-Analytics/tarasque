@@ -86,3 +86,35 @@ for web app displays:
 -script that maps future days to accurately place on future chart
 -will need upkeep for past macro event plotting
 -subgraph was a simple moving average, we will need either the raw daily wedge + st dev bands or alternatively an exponentially weighted moving average (ewma)
+
+- Mincer-Zarnowitz (MZ) regression
+A test on whether the volatility forecasts are unbiased and market-efficient. IE., does the model systematically undershoot or overshoot the real, realized volatility.
+
+Its actually a very simple ordinary least squares regression, RV = alpha + beta*E(RV)+e(i)
+
+for validity, alpha must not be statistically dissimilar from 0, and beta must not be statistically disimilar from 1 - also r^2 will hover below 0.30 and above 0.15 so dont worry.
+
+- Asymmetric QLIKE Loss Function
+Logic: standard, or basic spec ML models equally punish absolute errors equally, ergo +5 and -5 are weighted the same way, volatility however is predicted differently, in this context underassesing risk is catastrophic, while overestimating risk is opportunity cost. Our Spec of QLIKE Loss will punish underestimation greater.
+
+- event capture rate metric
+Strategy will inevitably be defensive equity, we must then test if the model can recognize conditions for entry and/or exit
+
+To do this we need to define the event (i.e., when RV spikes +2stdevs above rolling mean (quarterly?)) figure out if risk was sitting where it belonged - high percentile, if it was there it captured future risk, if not, shucks.
+
+Success is not "do we predict everything" because thats not how anything works, as long as we can capture some, say one third, its successful in my book.
+
+- Information Coeficient and quartile spread testing
+A test of the predictive power of the wedge scores - do they actually help predict risk.
+
+How to:
+-Spearman Rank Correlation (IX): rank universe from riskiest to least risky via z score, then rank by 21 day return, regress to find any correlative power.
+
+-Quintile spread: bucket the universe into 5 risk related categories, track average returns of each bucket.
+
+Success:
+IC btwn 0.03-0.06
+Spread: riskiest must underperform least-risky over time.
+
+- Volarbear Plans -> Tarasque RAAD (Risk and Analytics Dashboard) Execution
+ 

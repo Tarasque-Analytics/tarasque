@@ -509,7 +509,7 @@ class VolArbModel:
         return {
             "horizon": horizon,
             "anchor_model": model_name,
-            "base_value_log": float(base_value)
+            "base_value_log": float(base_value),
             "shap_values": top_impacts
         }
 
@@ -615,7 +615,7 @@ def run_analysis(ticker, lookback=1200):
         for feature, impact in shap_payload['shap_values'].items():
             # Force a '+' sign for positive numbers to make directional impact obvious
             sign = "+" if impact > 0 else ""
-        print(f"{feature:<25} | Impact: {sign}{impact:.4f}")
+            print(f"{feature:<25} | Impact: {sign}{impact:.4f}")
         
         print("-" * 45 + "\n")
     # 5. FAIR VOL & WEDGE

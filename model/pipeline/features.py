@@ -93,10 +93,10 @@ class FeatureBuilder:
         # 13. Targets (backtest :373-375)
         df = self._add_targets(df)
 
-        # Clean up: drop rows where the shortest horizon target is NaN
-        # (they'll be NaN at the tail due to forward shift)
-        min_h = min(self.mc.horizons)
-        df = df.dropna(subset=[f"y_{min_h}"])
+        # Drop rows where ANY target is NaN (tail rows that lack enough future
+        # data for the longer horizons, e.g. last 126 rows for y_126).
+        target_cols = [f"y_{h}" for h in self.mc.horizons if f"y_{h}" in df.columns]
+        df = df.dropna(subset=target_cols)
 
         return df
 
@@ -137,6 +137,10 @@ class FeatureBuilder:
         for c in ["open", "high", "low", "close"]:
             if c in ohlcv.columns:
                 ohlcv[c] = ohlcv[c].abs()
+
+        # CRSP msenames join can produce duplicate (date, ticker) rows when
+        # name-date ranges overlap for the same permno. Keep the last record.
+        ohlcv = ohlcv.drop_duplicates(subset=["date", "ticker"], keep="last")
 
         closes = ohlcv.pivot(index="date", columns="ticker", values="close").ffill()
         highs = ohlcv.pivot(index="date", columns="ticker", values="high").ffill()
@@ -280,23 +284,26 @@ class FeatureBuilder:
         vs = vs.set_index("date")
 
         # ATM IV: delta=50, 30 DTE
+        # ffill limit=5: allow up to 5 missing trading days (e.g. holidays,
+        # thin option markets).  Beyond that, leave NaN so the backtest
+        # imputation handles it rather than carrying stale values for months.
         atm_30 = vs[(vs["days"] == 30) & (vs["delta"] == 50)]["impl_volatility"]
         atm_30 = atm_30.groupby(atm_30.index).first()
-        df["iv_atm_30d"] = atm_30.reindex(df.index).ffill()
+        df["iv_atm_30d"] = atm_30.reindex(df.index).ffill(limit=5)
 
         # Put-call skew: IV(delta=-25) - IV(delta=25) at 30 DTE
         put_25 = vs[(vs["days"] == 30) & (vs["delta"] == -25)]["impl_volatility"]
         put_25 = put_25.groupby(put_25.index).first()
         call_25 = vs[(vs["days"] == 30) & (vs["delta"] == 25)]["impl_volatility"]
         call_25 = call_25.groupby(call_25.index).first()
-        skew = put_25.reindex(df.index).ffill() - call_25.reindex(df.index).ffill()
+        skew = put_25.reindex(df.index).ffill(limit=5) - call_25.reindex(df.index).ffill(limit=5)
         df["put_call_skew_30d"] = skew
 
         # Term structure slope: IV(91 DTE) - IV(30 DTE) at delta=50
         atm_91 = vs[(vs["days"] == 91) & (vs["delta"] == 50)]["impl_volatility"]
         atm_91 = atm_91.groupby(atm_91.index).first()
         df["term_structure_slope"] = (
-            atm_91.reindex(df.index).ffill() - df["iv_atm_30d"]
+            atm_91.reindex(df.index).ffill(limit=5) - df["iv_atm_30d"]
         )
 
         # VRP wedge: market IV - model RV
@@ -318,9 +325,12 @@ class FeatureBuilder:
         # Reindex to match df dates, forward-fill
         fred = fred.reindex(df.index, method="ffill")
 
-        # Yield curve slope
-        if "treasury_10y" in fred.columns and "treasury_2y" in fred.columns:
-            df["macro_yield_curve_slope"] = fred["treasury_10y"] - fred["treasury_2y"]
+        # Yield curve slope: prefer 10y-2y; fall back to 10y-3mo (^IRX proxy)
+        if "treasury_10y" in fred.columns:
+            if "treasury_2y" in fred.columns:
+                df["macro_yield_curve_slope"] = fred["treasury_10y"] - fred["treasury_2y"]
+            elif "treasury_3mo" in fred.columns:
+                df["macro_yield_curve_slope"] = fred["treasury_10y"] - fred["treasury_3mo"]
 
         # HY spread level and momentum
         if "hy_spread" in fred.columns:
@@ -411,8 +421,20 @@ class FeatureBuilder:
     # ═══════════════════════════════════════════════════════════════════
 
     def _add_targets(self, df):
-        """Forward-looking RV targets at each horizon (log-transformed)."""
+        """
+        Forward-looking RV targets at each horizon (log-transformed).
+
+        Uses rv_{h}d.shift(-h) so the target window [t+1, t+h] has zero
+        sample overlap with rv_21d[t] = [t-20, t].  The old rolling().mean()
+        approach produced targets that shared 20/21 days with the primary
+        feature, inflating in-sample R².
+        """
         for h in self.mc.horizons:
-            raw_target = df["rv_TARGET"].rolling(h).mean().shift(-h)
+            col = f"rv_{h}d"
+            if col not in df.columns:
+                # Fallback: shouldn't happen if rv_windows includes all horizons
+                raw_target = df["rv_TARGET"].shift(-h)
+            else:
+                raw_target = df[col].shift(-h)
             df[f"y_{h}"] = np.log(raw_target + 1e-9)
         return df

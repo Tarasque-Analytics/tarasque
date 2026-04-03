@@ -87,6 +87,22 @@ for web app displays:
 -will need upkeep for past macro event plotting
 -subgraph was a simple moving average, we will need either the raw daily wedge + st dev bands or alternatively an exponentially weighted moving average (ewma)
 
+- SHAP values
+-how the model has made a specific prediction
+-how each feature has coontributed to a prediction +/-
+-better than feature importance for a specific preiction because it shows direction, amount, and change in probability of a positive prediction.
+-starts with average e(f(x)), and shows how the model got to the actual prediction f(x) with values & direction.
+-feature value in context of other features
+-works with log odds like pribit
+-can be plotted with force plots, means shap plot, p swarm plots and dependence plots.
+-helps with debugging of "incorrect predictions", and where there is a disconnect between capiability in-sample and in regards to new data
+-can be used to find hidden patterns like interactions and alinear functions
+
+- shap implementation: force plot 
+-shows where prediction started (mean or last value) and shows whats pushing it higher or lower using red and blue and where it lands. 
+-horizonal so mught need a different place
+
+
 - Mincer-Zarnowitz (MZ) regression
 A test on whether the volatility forecasts are unbiased and market-efficient. IE., does the model systematically undershoot or overshoot the real, realized volatility.
 

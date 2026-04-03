@@ -39,22 +39,50 @@ class DataConfig:
         os.getenv("TARASQUE_BASE_DIR", "D:/Tarasque_DB")
     ))
 
-    start_date: str = "2021-01-01"
+    start_date: str = "2014-01-01"
     end_date: str = "today"  # resolved at query time
 
     # ── Target universe ──────────────────────────────────────────────────
+    # 30 tickers across all 11 GICS sectors; all have dense OptionMetrics
+    # vsurfd coverage.  Original 10 kept first for continuity.
     tickers: List[str] = field(default_factory=lambda: [
-        "AAPL", "MSFT", "AMZN", "META", "GOOGL",
-        "MS", "XOM", "CVX", "JNJ", "CAT",
+        # Mini-run (3 tickers — remove comment and restore full list for prod)
+        "AAPL", "JNJ", "XOM",
+        # Full 30-ticker universe — uncomment when ready for prod run
+        # Tech (XLK)
+        # "AAPL", "MSFT", "NVDA", "AMD", "ORCL",
+        # Comm Services (XLC)
+        # "GOOGL", "META", "NFLX",
+        # Consumer Discretionary (XLY)
+        # "AMZN", "TSLA", "HD", "MCD",
+        # Consumer Staples (XLP)
+        # "PG", "KO",
+        # Financials (XLF)
+        # "MS", "JPM", "GS", "BAC",
+        # Health Care (XLV)
+        # "JNJ", "LLY", "ABBV",
+        # Industrials (XLI)
+        # "CAT", "HON", "BA",
+        # Energy (XLE)
+        # "XOM", "CVX", "COP",
+        # Materials (XLB)
+        # "LIN",
+        # Utilities (XLU)
+        # "NEE",
+        # Real Estate (XLRE)
+        # "AMT",
     ])
 
     # ── Factor ETFs ──────────────────────────────────────────────────────
     # ALL ETFs queried from WRDS (stored for future phases).
+    # Must include ALL 11 GICS sector ETFs from SECTOR_ETF_MAP so that
+    # corr_sector_21d / sector_wedge features don't silently fall back to SPY.
     all_factor_etfs: List[str] = field(default_factory=lambda: [
         "SPY", "VIXY", "HYG", "USO", "TLT", "UUP",        # Core 6
         "XLK", "XLF", "XLE", "XLV", "XLP", "QQQ",          # Sector + broad
+        "XLI", "XLB", "XLY", "XLU", "XLRE", "XLC",         # Remaining GICS sectors
         "IEI", "IEF", "GLD", "IWM", "EEM", "MCHI",         # Rates / intl
-        "IYR", "XLC",                                        # Real estate / comms
+        "IYR",                                               # Real estate (legacy)
     ])
 
     # Initial 6 used for model features (Phase 1 — avoids multicollinearity).
@@ -89,8 +117,8 @@ class ModelConfig:
 
     horizons: List[int] = field(default_factory=lambda: [21, 63, 126])
 
-    # Garman-Klass RV windows
-    rv_windows: List[int] = field(default_factory=lambda: [5, 10, 21, 63])
+    # Garman-Klass RV windows — 126 needed for clean H=126 target (no overlap)
+    rv_windows: List[int] = field(default_factory=lambda: [5, 10, 21, 63, 126])
 
     # Walk-forward analysis
     wfa_splits: int = 5

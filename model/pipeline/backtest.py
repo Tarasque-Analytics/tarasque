@@ -67,6 +67,15 @@ class BacktestEngine:
         predictors = builder.get_predictor_columns(feature_df)
         step = self.bc.step_days
 
+        # Drop features that are entirely NaN across the full window
+        # (e.g. FRED macro features when WRDS subscription is unavailable).
+        valid_predictors = [c for c in predictors if feature_df[c].notna().any()]
+        dropped = set(predictors) - set(valid_predictors)
+        if dropped:
+            print(f"[BACKTEST] Dropping {len(dropped)} all-NaN feature(s): "
+                  f"{sorted(dropped)}")
+        predictors = valid_predictors
+
         results: List[BacktestResult] = []
 
         for h in self.mc.horizons:
@@ -100,8 +109,19 @@ class BacktestEngine:
                     continue
 
                 X_tr = train[predictors]
-                y_tr_dict = {h: train[target_col]}
+                # Pass all horizon targets — train_wfa trains all horizons in one pass.
+                y_tr_dict = {
+                    hh: train[f"y_{hh}"]
+                    for hh in self.mc.horizons
+                    if f"y_{hh}" in train.columns
+                }
                 X_te = test[predictors]
+
+                # Impute remaining NaN (rolling burn-in, sparse IV gaps).
+                # ffill within window, bfill for leading NaN, then median fallback.
+                train_medians = X_tr.median()
+                X_tr = X_tr.ffill().bfill().fillna(train_medians)
+                X_te = X_te.ffill().bfill().fillna(train_medians)
 
                 # Train a fresh model for this window
                 model = EnsembleVolModel(self.mc)
@@ -129,6 +149,25 @@ class BacktestEngine:
                 continue
 
             pred_df = pd.DataFrame(all_preds)
+
+            # Also pull in the vrp_wedge value at each prediction date
+            # so the analysis scripts have it without rebuilding features.
+            if "vrp_wedge" in feature_df.columns:
+                pred_df = pred_df.merge(
+                    feature_df[["vrp_wedge"]].rename_axis("date").reset_index(),
+                    on="date", how="left",
+                )
+            if "put_call_skew_30d" in feature_df.columns:
+                pred_df = pred_df.merge(
+                    feature_df[["put_call_skew_30d"]].rename_axis("date").reset_index(),
+                    on="date", how="left",
+                )
+
+            # Save per-ticker/horizon predictions for analysis scripts
+            self.bc.results_dir.mkdir(parents=True, exist_ok=True)
+            pred_path = self.bc.results_dir / f"predictions_{ticker}_H{h}.csv"
+            pred_df.to_csv(pred_path, index=False)
+
             metrics = self._compute_metrics(pred_df, feature_df, h)
 
             print(f"  [RESULT] RMSE={metrics['rmse']:.4f} | "
@@ -151,12 +190,22 @@ class BacktestEngine:
         model_names: Optional[List[str]] = None,
     ) -> pd.DataFrame:
         """Run backtest across all configured tickers. Returns combined metrics."""
+        import time
         builder = FeatureBuilder(self.dc, self.mc)
         all_metrics: list[dict] = []
 
-        for ticker in self.dc.tickers:
+        n_total = len(self.dc.tickers)
+        sweep_start = time.time()
+
+        for ticker_idx, ticker in enumerate(self.dc.tickers):
+            elapsed = time.time() - sweep_start
+            pct = ticker_idx / n_total * 100
+            eta_str = ""
+            if ticker_idx > 0:
+                eta_sec = elapsed / ticker_idx * (n_total - ticker_idx)
+                eta_str = f"  ETA ~{eta_sec/60:.0f}m"
             print(f"\n{'='*50}")
-            print(f"  BACKTEST: {ticker}")
+            print(f"  BACKTEST: {ticker}  [{ticker_idx+1}/{n_total}  {pct:.0f}%{eta_str}]")
             print(f"{'='*50}")
 
             try:
@@ -176,11 +225,32 @@ class BacktestEngine:
 
         if all_metrics:
             summary = pd.DataFrame(all_metrics)
-            # Save results
             self.bc.results_dir.mkdir(parents=True, exist_ok=True)
+
+            # ── Aggregate metrics ─────────────────────────────────────
             out_path = self.bc.results_dir / "backtest_results.csv"
             summary.to_csv(out_path, index=False)
             print(f"\n[BACKTEST] Results saved to {out_path}")
+
+            # ── Per-prediction data ───────────────────────────────────
+            # Needed by vrp_analysis.py and residual_analysis.py.
+            all_pred_frames = []
+            for ticker in self.dc.tickers:
+                for h in self.mc.horizons:
+                    pred_path = (
+                        self.bc.results_dir / f"predictions_{ticker}_H{h}.csv"
+                    )
+                    if pred_path.exists():
+                        df = pd.read_csv(pred_path)
+                        df["ticker"] = ticker
+                        df["horizon"] = h
+                        all_pred_frames.append(df)
+            if all_pred_frames:
+                combined_preds = pd.concat(all_pred_frames, ignore_index=True)
+                combined_path = self.bc.results_dir / "all_predictions.csv"
+                combined_preds.to_csv(combined_path, index=False)
+                print(f"[BACKTEST] Combined predictions saved to {combined_path}")
+
             return summary
 
         return pd.DataFrame()

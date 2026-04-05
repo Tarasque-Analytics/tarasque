@@ -39,38 +39,15 @@ class DataConfig:
         os.getenv("TARASQUE_BASE_DIR", "D:/Tarasque_DB")
     ))
 
-    start_date: str = "2014-01-01"
+    start_date: str = "2011-01-01"
     end_date: str = "today"  # resolved at query time
 
     # ── Target universe ──────────────────────────────────────────────────
     # 30 tickers across all 11 GICS sectors; all have dense OptionMetrics
     # vsurfd coverage.  Original 10 kept first for continuity.
     tickers: List[str] = field(default_factory=lambda: [
-        # Mini-run (3 tickers — remove comment and restore full list for prod)
-        "AAPL", "JNJ", "XOM",
-        # Full 30-ticker universe — uncomment when ready for prod run
-        # Tech (XLK)
-        # "AAPL", "MSFT", "NVDA", "AMD", "ORCL",
-        # Comm Services (XLC)
-        # "GOOGL", "META", "NFLX",
-        # Consumer Discretionary (XLY)
-        # "AMZN", "TSLA", "HD", "MCD",
-        # Consumer Staples (XLP)
-        # "PG", "KO",
-        # Financials (XLF)
-        # "MS", "JPM", "GS", "BAC",
-        # Health Care (XLV)
-        # "JNJ", "LLY", "ABBV",
-        # Industrials (XLI)
-        # "CAT", "HON", "BA",
-        # Energy (XLE)
-        # "XOM", "CVX", "COP",
-        # Materials (XLB)
-        # "LIN",
-        # Utilities (XLU)
-        # "NEE",
-        # Real Estate (XLRE)
-        # "AMT",
+        # v4 resume — remaining 6 tickers after OOM kill
+        "MRK", "NEE", "WMT", "CAT", "MS", "LIN",
     ])
 
     # ── Factor ETFs ──────────────────────────────────────────────────────
@@ -140,7 +117,7 @@ class ModelConfig:
     rf_params: Dict = field(default_factory=lambda: {
         "n_estimators": 100,
         "min_samples_leaf": 5,
-        "n_jobs": -1,
+        "n_jobs": 4,   # capped from -1 to limit concurrent RAM usage (OOM fix)
     })
 
     # ── GARCH ────────────────────────────────────────────────────────────

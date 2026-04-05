@@ -98,7 +98,7 @@ class EnsembleVolModel:
             "XGB": xgb.XGBRegressor(**self.config.xgb_params),
             "RF": RandomForestRegressor(**self.config.rf_params),
             "LassoCV": LassoCV(
-                cv=TimeSeriesSplit(n_splits=3), max_iter=10000,
+                cv=TimeSeriesSplit(n_splits=3), max_iter=10000, n_jobs=1,
             ),
         }
 

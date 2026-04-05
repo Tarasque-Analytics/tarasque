@@ -119,9 +119,12 @@ class BacktestEngine:
 
                 # Impute remaining NaN (rolling burn-in, sparse IV gaps).
                 # ffill within window, bfill for leading NaN, then median fallback.
+                # Final fillna(0): catches columns that are entirely NaN within this
+                # window (e.g. zscore needs 252d burn-in; early folds have no valid
+                # median to fill from).
                 train_medians = X_tr.median()
-                X_tr = X_tr.ffill().bfill().fillna(train_medians)
-                X_te = X_te.ffill().bfill().fillna(train_medians)
+                X_tr = X_tr.ffill().bfill().fillna(train_medians).fillna(0)
+                X_te = X_te.ffill().bfill().fillna(train_medians).fillna(0)
 
                 # Train a fresh model for this window
                 model = EnsembleVolModel(self.mc)

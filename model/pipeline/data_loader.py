@@ -354,6 +354,12 @@ class WRDSLoader:
                     "BAMLH0A0HYM2": "hy_spread",
                     "T5YIE":        "breakeven_5y",
                     "DTWEXBGS":     "dollar_index",
+                    # 5yr/5yr forward inflation expectation: what the bond market
+                    # expects inflation to be in years 5-10. Strips near-term noise.
+                    # Separates deflationary collapse (2008/2020 shock) from structural
+                    # inflation regimes (2022). Genuinely uncorrelated with HY spread
+                    # and yield curve at turning points.
+                    "T5YIFR":       "inflation_forward_5y5y",
                 }
                 for series_id, label in fred_series.items():
                     try:
@@ -668,7 +674,8 @@ def append_recent_data(
         recent = cont.fetch_recent_ohlcv(config.tickers, since_date=last_date)
         if not recent.empty:
             combined = pd.concat([ohlcv, recent], ignore_index=True)
-            combined["date"] = pd.to_datetime(combined["date"])
+            # Normalize to tz-naive UTC dates — Alpaca returns tz-aware, CRSP is tz-naive.
+            combined["date"] = pd.to_datetime(combined["date"], utc=True).dt.tz_localize(None)
             combined = combined.drop_duplicates(
                 subset=["date", "ticker"], keep="last",
             )

@@ -199,17 +199,40 @@ class FeatureBuilder:
         return df
 
     def _add_factor_returns(self, df, closes):
-        """Log returns for the initial 6 factor ETFs."""
+        """Log returns and 21d momentum for the initial 6 factor ETFs."""
         for etf in self.dc.initial_factor_etfs:
             if etf in closes.columns:
                 df[f"ret_{etf}"] = np.log(closes[etf] / closes[etf].shift(1))
+                # 21d momentum: sustained trend context — is TLT in a grind or a spike?
+                df[f"mom21_{etf}"] = np.log(closes[etf] / closes[etf].shift(21))
         return df
 
     def _add_vol_dynamics(self, df):
-        """Vol trend, velocity, vol-of-vol (backtest :377-379)."""
-        df["vol_trend"] = df["rv_TARGET"] / (df["rv_TARGET"].rolling(63).mean() + 1e-9)
-        df["vol_vel"] = df["rv_TARGET"].diff(5).abs()
-        df["vol_of_vol"] = df["rv_TARGET"].rolling(21).std()
+        """Vol trend, velocity, vol-of-vol, regime z-score, 21d change.
+
+        New features (2026-04-03) motivated by residual analysis:
+          vol_regime_zscore — how many std-devs above/below 252d mean is current
+                              vol? Addresses ACF=0.96: model persistently wrong in
+                              extreme regimes (COVID, 2018Q4) because it lacks
+                              explicit regime context.
+          vol_chg_21d       — signed 21-day change in rv_21d. Captures the slow
+                              drift into/out of vol regimes (AR(1) persistence).
+                              Different from vol_vel which is .diff(5).abs().
+        """
+        rv = df["rv_TARGET"]
+
+        df["vol_trend"]  = rv / (rv.rolling(63).mean() + 1e-9)
+        df["vol_vel"]    = rv.diff(5).abs()
+        df["vol_of_vol"] = rv.rolling(21).std()
+
+        # regime z-score: where in the historical vol distribution are we?
+        rv_mean_252 = rv.rolling(252).mean()
+        rv_std_252  = rv.rolling(252).std()
+        df["vol_regime_zscore"] = (rv - rv_mean_252) / (rv_std_252 + 1e-9)
+
+        # signed 21d vol momentum (direction + magnitude of regime drift)
+        df["vol_chg_21d"] = rv - rv.shift(21)
+
         return df
 
     def _add_event_features(self, df, ticker, raw_data):
@@ -298,6 +321,9 @@ class FeatureBuilder:
         call_25 = call_25.groupby(call_25.index).first()
         skew = put_25.reindex(df.index).ffill(limit=5) - call_25.reindex(df.index).ffill(limit=5)
         df["put_call_skew_30d"] = skew
+        # bilateral skew: VRP analysis showed U-shape — both tails of skew
+        # (extreme put buying AND extreme call buying) precede elevated RV.
+        df["put_call_abs_skew_30d"] = skew.abs()
 
         # Term structure slope: IV(91 DTE) - IV(30 DTE) at delta=50
         atm_91 = vs[(vs["days"] == 91) & (vs["delta"] == 50)]["impl_volatility"]
@@ -340,6 +366,27 @@ class FeatureBuilder:
         # Breakeven inflation
         if "breakeven_5y" in fred.columns:
             df["macro_breakeven_5y"] = fred["breakeven_5y"]
+
+        # 5yr/5yr forward inflation expectation (T5YIFR)
+        # Captures structural inflation regime independent of near-term noise.
+        # High + rising = market pricing persistent inflation (risk-off for equities,
+        # elevated vol). Low + falling = deflationary fear (2020-shock style).
+        # More informative than breakeven_5y for distinguishing regime *type*.
+        if "inflation_forward_5y5y" in fred.columns:
+            infl = fred["inflation_forward_5y5y"]
+            df["macro_inflation_fwd_5y5y"] = infl
+            # 21d momentum: directional shift in long-run inflation view
+            df["macro_inflation_fwd_chg_21d"] = infl.diff(21)
+            # bilateral shock magnitude: rising OR falling fast = regime transition uncertainty
+            df["macro_inflation_fwd_abs_chg_21d"] = infl.diff(21).abs()
+            # slower drift: captures structural regime shifts without 21d noise
+            df["macro_inflation_fwd_chg_63d"] = infl.diff(63)
+            # zscore: "living with inflation" — level relative to recent 252d norm.
+            # After 18mo at 2.8%, zscore returns toward 0 even as level stays elevated,
+            # telling the model the market has repriced around this level.
+            infl_mean = infl.rolling(252).mean()
+            infl_std  = infl.rolling(252).std()
+            df["macro_inflation_fwd_zscore"] = (infl - infl_mean) / (infl_std + 1e-9)
 
         # Dollar index returns
         if "dollar_index" in fred.columns:

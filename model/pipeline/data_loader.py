@@ -455,11 +455,12 @@ class ParquetStore:
             )
         print(f"[STORE] Saved {len(df):,} rows -> {path}")
 
-    def load(self, data_type: str) -> pd.DataFrame:
+    def load(self, data_type: str, tickers: list = None) -> pd.DataFrame:
         path = self._path(data_type)
         if not path.exists():
             return pd.DataFrame()
-        return pd.read_parquet(path, engine="pyarrow")
+        filters = [("ticker", "in", tickers)] if tickers else None
+        return pd.read_parquet(path, engine="pyarrow", filters=filters)
 
     def exists(self, data_type: str) -> bool:
         path = self._path(data_type)
@@ -600,7 +601,7 @@ def fetch_dataset(
             df = loader.fetch_crsp_daily()
             if not df.empty:
                 store.save(df, "ohlcv", partition_cols=["ticker"])
-        result["ohlcv"] = store.load("ohlcv")
+        result["ohlcv"] = store.load("ohlcv", tickers=config.tickers)
 
         # ── Vol surface ──────────────────────────────────────────────
         if include_options:
@@ -608,7 +609,7 @@ def fetch_dataset(
                 df = loader.fetch_vsurfd()
                 if not df.empty:
                     store.save(df, "vsurfd", partition_cols=["ticker"])
-            result["vsurfd"] = store.load("vsurfd")
+            result["vsurfd"] = store.load("vsurfd", tickers=config.tickers)
 
         # ── FRED macro ───────────────────────────────────────────────
         if include_macro:

@@ -7,11 +7,13 @@ Metrics:
     QLIKE             — asymmetric quasi-likelihood loss (summary_march16.md:26)
     Event capture     — % of 2σ events where model spiked first (summary_march16.md:27)
 """
+import time as _time
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from sklearn.linear_model import LinearRegression
+from .models import EnsembleVolModel as _EnsembleVolModel
 
 from .config import DataConfig, ModelConfig, BacktestConfig
 from .features import FeatureBuilder
@@ -182,6 +184,14 @@ class BacktestEngine:
                 ticker=ticker, horizon=h,
                 predictions=pred_df, metrics=metrics,
             ))
+
+        # Print model timing breakdown for this ticker
+        prof = _EnsembleVolModel._profile
+        if prof:
+            total = sum(prof.values())
+            parts = "  |  ".join(f"{k}: {v:.1f}s ({100*v/total:.0f}%)" for k,v in sorted(prof.items()))
+            print(f"  [PROFILE] {ticker} model fit time — {parts}  |  total: {total:.1f}s")
+            _EnsembleVolModel._profile.clear()
 
         return results
 

@@ -46,8 +46,8 @@ class DataConfig:
     # 30 tickers across all 11 GICS sectors; all have dense OptionMetrics
     # vsurfd coverage.  Original 10 kept first for continuity.
     tickers: List[str] = field(default_factory=lambda: [
-        # v4 resume — remaining 6 tickers after OOM kill
-        "MRK", "NEE", "WMT", "CAT", "MS", "LIN",
+        # n_alphas=20 benchmark — single ticker
+        "JPM",
     ])
 
     # ── Factor ETFs ──────────────────────────────────────────────────────
@@ -112,12 +112,11 @@ class ModelConfig:
         "n_jobs": -1,
     })
 
-    # ── Random Forest (from volarbmodel_backtest.py:365) ─────────────────
-    # min_samples_leaf=5 for small dataset; bump to 50 when full DB is in place
+    # ── Random Forest ─────────────────────────────────────────────────────
     rf_params: Dict = field(default_factory=lambda: {
         "n_estimators": 100,
         "min_samples_leaf": 5,
-        "n_jobs": 4,   # capped from -1 to limit concurrent RAM usage (OOM fix)
+        "n_jobs": -1,
     })
 
     # ── GARCH ────────────────────────────────────────────────────────────
@@ -134,7 +133,7 @@ class BacktestConfig:
 
     window_type: str = "expanding"       # "expanding" or "rolling"
     rolling_window_days: int = 756       # 3 years if rolling
-    step_days: int = 25                  # retrain every N trading days
+    step_days: int = 25                  # retrain every ~1.25mo
 
     metrics: List[str] = field(default_factory=lambda: [
         "rmse", "mincer_zarnowitz", "qlike", "event_capture",

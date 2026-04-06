@@ -6,6 +6,7 @@ Ported from volarbmodel_backtest.py:
     VolArbModel      (:352-466)
     SHAP explanation  (:469-514)
 """
+import time
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Tuple
@@ -78,6 +79,8 @@ class EnsembleVolModel:
     Additions: minimum weight floor, model_names ablation parameter.
     """
 
+    _profile: Dict[str, float] = {}   # class-level timing accumulator
+
     def __init__(self, config: ModelConfig):
         self.config = config
         self.horizons = config.horizons
@@ -99,6 +102,7 @@ class EnsembleVolModel:
             "RF": RandomForestRegressor(**self.config.rf_params),
             "LassoCV": LassoCV(
                 cv=TimeSeriesSplit(n_splits=3), max_iter=10000, n_jobs=1,
+                alphas=20,  # 20-point grid (default 100); sklearn 1.7+ uses alphas= not n_alphas=
             ),
         }
 
@@ -159,7 +163,9 @@ class EnsembleVolModel:
                 X_te_s = fold_scaler.transform(X_te)
 
                 for name in model_names:
+                    _t = time.perf_counter()
                     self.models[h][name].fit(X_tr_s, y_tr)
+                    self.__class__._profile[name] = self.__class__._profile.get(name, 0) + (time.perf_counter() - _t)
                     log_preds = np.clip(self.models[h][name].predict(X_te_s), -5, 5)
                     preds_lin = np.exp(log_preds)
                     y_te_lin = np.exp(np.clip(y_te.values, -5, 5))

@@ -25,20 +25,19 @@ backend/htmlcov/
 backend/*.log
 
 # Supabase
-<<<<<<< HEAD
 supabase/.branches
 supabase/.temp
-=======
-.branches
-.temp
->>>>>>> refs/remotes/origin/new_database
 
 # dotenvx
 .env.keys
 .env.local
-<<<<<<< HEAD
 .env.*.local
 .env*.local
-=======
-.env.*.local
->>>>>>> refs/remotes/origin/new_database
+
+# Model pipeline — credentials and large data
+model/.env
+data_cache/
+__pycache__/
+*.pyc
+
+.claude

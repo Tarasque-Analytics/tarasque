@@ -46,8 +46,9 @@ class DataConfig:
     # 30 tickers across all 11 GICS sectors; all have dense OptionMetrics
     # vsurfd coverage.  Original 10 kept first for continuity.
     tickers: List[str] = field(default_factory=lambda: [
-        # n_alphas=20 benchmark — single ticker
-        "JPM",
+        "JPM",    # Financials (GICS 40)
+        "AAPL",   # Tech (GICS 45)
+        "XOM",    # Energy (GICS 10)
     ])
 
     # ── Factor ETFs ──────────────────────────────────────────────────────
@@ -110,6 +111,8 @@ class ModelConfig:
         "colsample_bytree": 0.8,
         "reg_lambda": 1.0,
         "n_jobs": -1,
+        "device": "cuda",       # GPU if available; auto-fallback in models.py
+        "tree_method": "hist",  # Required for GPU mode
     })
 
     # ── Random Forest ─────────────────────────────────────────────────────
@@ -134,6 +137,11 @@ class BacktestConfig:
     window_type: str = "expanding"       # "expanding" or "rolling"
     rolling_window_days: int = 756       # 3 years if rolling
     step_days: int = 25                  # retrain every ~1.25mo
+
+    # Ticker-level parallelism: number of tickers to process simultaneously.
+    # Set to 1 for sequential (original behavior). On a 16-core machine,
+    # 4 is a good default — leaves cores for model-internal n_jobs=-1.
+    parallel_tickers: int = 4
 
     metrics: List[str] = field(default_factory=lambda: [
         "rmse", "mincer_zarnowitz", "qlike", "event_capture",

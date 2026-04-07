@@ -443,16 +443,23 @@ Same 5-ticker set: AAPL, XOM, JPM, JNJ, NVDA. 43 features total. Archived to res
 
 ## Next Actions (in priority order)
 
-### 0. FIRST BOOT on 5950X — config changes
+### 0. HARDWARE STATUS (2026-04-06)
+5950X online. RF n_jobs=-1 restored. LassoCV alphas=20 (sklearn 1.7+ param, was n_alphas — deprecated/silently ignored).
+Arctic Liquid Freezer III 280 confirmed good: 67°C at 100% sustained load (settled after first heat cycle).
+2070 Super NOT YET installed — add CUDA when it arrives:
 ```python
-# config.py — restore full parallelism
-rf_params: "n_jobs": -1        # was capped to 4 for RAM on i7
-xgb_params: "device": "cuda"   # add GPU acceleration
-xgb_params: "tree_method": "hist"
+xgb_params: "device": "cuda", "tree_method": "hist"
 ```
-Then re-run v4 resume if WMT/CAT/MS/LIN didn't finish, archive to results/v4_etf_momentum/.
+**True speed baseline (2011 data, full settings, alphas=20):** CAT run in progress at session end — check results for clean timing.
+Target: -30% from 31 min baseline = under ~22 min/ticker.
+If alphas=20 doesn't hit -30%, next lever is **parallel ticker processing** (multiprocessing in run.py, 4 tickers × 8 threads = ~4x throughput, zero model quality change).
 
-### 1. IMPLEMENT — Exponential Sample Weighting
+### 1. COMPLETE — v4 remaining tickers
+CAT run in progress at session end. Still needed: WMT, MS, LIN, MRK (full horizons).
+Archive to results/v4_etf_momentum/ when all 16 done.
+Config currently set to "CAT" — restore 16-ticker list when ready for full run.
+
+### 2. IMPLEMENT — Exponential Sample Weighting
 Addresses the COVID/2018/2025 regime bias. The ACF=0.96 finding means the model remembers recent errors — exponential weighting reinforces this appropriately by making recent regimes matter more.
 
 ```python
@@ -533,4 +540,4 @@ When installed: add to config.py xgb_params for GTX 1070 acceleration (~15% addi
 | 2026-04-04 (session 1) | NVDA stress test (AI boom OOS failure 2024). BA stress test (737 MAX inversion, chronic distress). PG softball. T5YIFR (5yr/5yr forward inflation) added to FRED fetch + macro features. FRED cache rebuilt after accidental wipe. Exponential weighting designed (not yet implemented). Archived pre-T5YIFR BA/PG results to results/v1_no_t5yifr/. Kicked off v2 BA/PG run. |
 | 2026-04-04 (session 2) | v2 completed. BA beta fixed (0.483->0.916 at H=21), QLIKE down ~80-96% universally. Ran 5-ticker expansion (AAPL/XOM/JPM/JNJ/NVDA). Identified two systematic beta clusters: underforecast (XOM/NVDA/BA) vs overforecast (AAPL/JPM/JNJ/PG). H=21 portfolio-level beta=1.007. NVDA massively improved vs prior stress test. Added 3 new inflation features (abs_chg_21d, chg_63d, zscore) to address beta drift hypothesis. Archived v2 to results/v2_t5yifr/. v3 run complete — hypothesis partially confirmed (JPM/AAPL beta drift closed) but features over-corrected on XOM/NVDA (R2 regression). Features are blunt — dampening inflation globally rather than selectively. Archived v3 to results/v3_inflation_zscore/. |
 | 2026-04-05 | v4 launched: 49 features (added mom21_ for 6 ETFs), data from 2011, 16-ticker cross-sector run. OOM killed mid-run (RF n_jobs=-1 spawning 8 workers x full matrix). Fix: RF n_jobs=4, LassoCV n_jobs=1. Resumed remaining 6 tickers. 11 tickers complete at session end. Key findings: XOM R2 recovered (0.415->0.495), BA H=63/126 best calibration ever, new overforecast cluster confirmed (AMZN/GOOGL/NEE beta 0.526-0.657). H=21 portfolio avg beta=0.901, R2=0.346 (strong recovery from v3 dip). Leo building new PC (5950X + 2070 Super) — restore n_jobs=-1, add CUDA device on new machine. |
-| 2026-04-06 | New PC online (5950X + Arctic Liquid Freezer III 280). RF restored to n_jobs=-1. Speed benchmarking: true baseline with 2011 data = 31 min/ticker (not 13 min — that was old 2014-start cache). n_alphas parameter deprecated in sklearn 1.7, silently ignored — fixed to alphas=20 (correct param). alphas=20 benchmark in progress at session end, clean isolated run needed for final timing. CPU temps 80-81C at 100% load — healthy, install confirmed good. LassoCV n_jobs=1 and alphas=20 in place. Next: complete alphas=20 isolated benchmark, then implement parallel ticker processing if -30% target not met. |
+| 2026-04-06 | New PC online (5950X + Arctic Liquid Freezer III 280). RF restored to n_jobs=-1. Speed benchmarking: true baseline (2011 data, full settings) = 31 min/ticker. n_alphas deprecated in sklearn 1.7 — silently ignored entire previous benchmark. Fixed to alphas=20. Temps settled to 67C after first heat cycle (was 80-81C initially — paste seated). CAT run in progress at session end (first clean alphas=20 benchmark + new ticker). Remaining v4 tickers: WMT, MS, LIN, MRK. Parallel ticker processing identified as next speed lever (zero quality cost, ~4x throughput). Discussed VRP skew findings: energy names (XOM R2=0.275) strong, NVDA/AMD flat. Three beta clusters fully documented. IC/quintile spread test identified as next validation milestone. |

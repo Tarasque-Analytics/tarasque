@@ -1,44 +1,54 @@
+# OS / editor
 .DS_Store
-/node_modules/
+Thumbs.db
+.vscode/
 
-# React Router
-/.react-router/
-/build/
+# Frontend / Node
+node_modules/
+.react-router/
+build/
+dist/
+*.tsbuildinfo
 
-# Python Backend
-backend/__pycache__/
-backend/*.py[cod]
-backend/*$py.class
-backend/*.so
-backend/.Python
-backend/venv/
-backend/.venv/
-backend/ENV/
-backend/env/
-backend/*.egg-info/
-backend/.installed.cfg
-backend/*.egg
-backend/.pytest_cache/
-backend/.mypy_cache/
-backend/.coverage
-backend/htmlcov/
-backend/*.log
+# Python cache and bytecode (recursive)
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.pyre/
 
-# Supabase
-<<<<<<< HEAD
+# Python env and build artifacts
+.Python
+.venv/
+venv/
+ENV/
+env/
+**/*.so
+**/*.egg-info/
+**/*.egg
+.installed.cfg
+pip-wheel-metadata/
+htmlcov/
+.coverage
+.coverage.*
+*.log
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!**/.env.example
+.env.keys
+
+# Supabase local state
 supabase/.branches
 supabase/.temp
-=======
-.branches
-.temp
->>>>>>> refs/remotes/origin/new_database
 
-# dotenvx
-.env.keys
-.env.local
-<<<<<<< HEAD
-.env.*.local
-.env*.local
-=======
-.env.*.local
->>>>>>> refs/remotes/origin/new_database
+# Model pipeline artifacts
+model/.env
+data_cache/

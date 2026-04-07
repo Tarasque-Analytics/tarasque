@@ -21,7 +21,7 @@ Leo's instruction: *"you should be adding information to this file to give conte
 
 Quantitative volatility forecasting engine. Core objective: isolate the **Volatility Risk Premium (VRP)** wedge (IV - RV) as a fear/uncertainty signal, use it as a dynamic defensive equity overlay. Predicts **Garman-Klass Realized Volatility** using XGBoost/RF/LassoCV ensemble stabilized by GARCH(1,1).
 
-**Owner:** Leo DiPietro — econ/stats student, CS is not primary. Hand-hold on implementation details. Graduating soon, WRDS access expires in ~1.5 months.
+**Owner:** Leo DiPietro — econ/stats student, CS is not primary. Hand-hold on implementation details. Graduating soon, WRDS access expires in ~1.5 months wants to learn while we work, teach concepts, explain why we do things, and never lie or appease him, he wants to know when he is wrong or out of touch.
 **Stack:** Python pipeline → Supabase (PostgreSQL) → FastAPI/Uvicorn → React frontend (SWEs handling backend/frontend).
 
 ---

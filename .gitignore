@@ -39,5 +39,16 @@ model/.env
 data_cache/
 __pycache__/
 *.pyc
+model/**/__pycache__/
+model/**/*.pyc
+
+# Pipeline generated outputs (regenerated each run — not tracked)
+# Versioned run archives (v1_no_t5yifr/, v2_t5yifr/, etc.) ARE tracked.
+model/pipeline/results/predictions_*.csv
+model/pipeline/results/all_predictions.csv
+model/pipeline/results/backtest_results.csv
+model/pipeline/results/resid_*.csv
+model/pipeline/results/vrp_*.csv
+model/pipeline/results/payloads/
 
 .claude

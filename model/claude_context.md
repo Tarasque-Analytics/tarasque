@@ -62,9 +62,9 @@ volarbmodel/
 | Item | Value |
 |---|---|
 | TARASQUE_BASE_DIR | `D:/Tarasque_DB` (set in model/.env) |
-| WRDS_USERNAME | `ldip9` (set in model/.env — no pgpass.conf on this PC) |
-| WRDS_PASSWORD | `GabeNorbert1108!` (set in model/.env) |
-| FRED_API_KEY | `3733cf9cba7d39c8c6d07537d4a4b441` (set in model/.env) |
+| WRDS_USERNAME | set in model/.env — see model/.env.example |
+| WRDS_PASSWORD | set in model/.env — see model/.env.example |
+| FRED_API_KEY | set in model/.env — free key at fred.stlouisfed.org |
 | Alpaca keys | Paper trading account — in model/.env |
 
 **Run data pull:**

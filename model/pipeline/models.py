@@ -96,12 +96,33 @@ class EnsembleVolModel:
             self.weights[h] = {"XGB": 0.33, "RF": 0.33, "LassoCV": 0.33}
             self.rmse_scores[h] = 0.0
 
+    _gpu_checked: bool = False
+    _gpu_available: bool = False
+
     def _init_models(self) -> Dict[str, object]:
+        xgb_params = dict(self.config.xgb_params)
+
+        # One-time GPU availability check with fallback to CPU
+        if xgb_params.get("device") == "cuda" and not self.__class__._gpu_checked:
+            self.__class__._gpu_checked = True
+            try:
+                test = xgb.XGBRegressor(device="cuda", tree_method="hist",
+                                        n_estimators=1, verbosity=0)
+                test.fit([[0]], [0])
+                self.__class__._gpu_available = True
+                print("[MODEL] XGBoost CUDA GPU acceleration enabled")
+            except Exception:
+                self.__class__._gpu_available = False
+                print("[MODEL] CUDA not available -- XGBoost using CPU")
+
+        if xgb_params.get("device") == "cuda" and not self.__class__._gpu_available:
+            xgb_params["device"] = "cpu"
+
         return {
-            "XGB": xgb.XGBRegressor(**self.config.xgb_params),
+            "XGB": xgb.XGBRegressor(**xgb_params),
             "RF": RandomForestRegressor(**self.config.rf_params),
             "LassoCV": LassoCV(
-                cv=TimeSeriesSplit(n_splits=3), max_iter=10000, n_jobs=1,
+                cv=TimeSeriesSplit(n_splits=3), max_iter=10000, n_jobs=-1,
                 alphas=20,  # 20-point grid (default 100); sklearn 1.7+ uses alphas= not n_alphas=
             ),
         }
@@ -236,6 +257,26 @@ class EnsembleVolModel:
             curve[h] = float(np.exp(np.clip(blended_log, -5, 5)))
 
         return curve
+
+    def predict_curve_batch(
+        self, features: pd.DataFrame,
+    ) -> Dict[int, np.ndarray]:
+        """
+        Batch prediction for multiple rows at once.
+
+        Returns {horizon: array of annualised vol forecasts} with one value per row.
+        """
+        feat_s = self.final_scaler.transform(features)
+        feat_df = pd.DataFrame(feat_s, columns=features.columns)
+
+        curves: Dict[int, np.ndarray] = {}
+        for h in self.horizons:
+            blended_log = sum(
+                self.models[h][name].predict(feat_df) * self.weights[h][name]
+                for name in self.weights[h]
+            )
+            curves[h] = np.exp(np.clip(blended_log, -5, 5))
+        return curves
 
     # ── SHAP Explainability (backtest :469-514) ───────────────────────
 

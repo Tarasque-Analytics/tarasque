@@ -7,17 +7,53 @@ Metrics:
     QLIKE             — asymmetric quasi-likelihood loss (summary_march16.md:26)
     Event capture     — % of 2σ events where model spiked first (summary_march16.md:27)
 """
+import os
 import time as _time
 import numpy as np
 import pandas as pd
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from sklearn.linear_model import LinearRegression
 from .models import EnsembleVolModel as _EnsembleVolModel
 
 from .config import DataConfig, ModelConfig, BacktestConfig
 from .features import FeatureBuilder
 from .models import EnsembleVolModel
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TOP-LEVEL WORKER (must be picklable for ProcessPoolExecutor)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _backtest_one_ticker(
+    ticker: str,
+    raw_data: Dict[str, pd.DataFrame],
+    dc: DataConfig,
+    mc: ModelConfig,
+    bc: BacktestConfig,
+    model_names: Optional[List[str]],
+) -> Tuple[str, List[dict], Optional[str]]:
+    """
+    Run backtest for a single ticker in a worker process.
+
+    Returns (ticker, metrics_rows, error_msg).
+    error_msg is None on success.
+    """
+    try:
+        engine = BacktestEngine(dc, mc, bc)
+        builder = FeatureBuilder(dc, mc)
+        feature_df = builder.build(ticker, raw_data)
+        results = engine.run_single_ticker(ticker, feature_df, model_names=model_names)
+
+        rows = []
+        for r in results:
+            row = {"ticker": ticker, "horizon": r.horizon}
+            row.update(r.metrics)
+            rows.append(row)
+        return (ticker, rows, None)
+    except Exception as e:
+        return (ticker, [], str(e))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -132,18 +168,17 @@ class BacktestEngine:
                 model = EnsembleVolModel(self.mc)
                 model.train_wfa(X_tr, y_tr_dict, splits=3, model_names=model_names)
 
-                # Predict each test row
-                for idx in X_te.index:
-                    row = X_te.loc[[idx]]
-                    try:
-                        pred_curve = model.predict_curve(row)
+                # Batch-predict all test rows at once
+                try:
+                    pred_curves = model.predict_curve_batch(X_te)
+                    for i, idx in enumerate(X_te.index):
                         all_preds.append({
                             "date": idx,
                             "y_true": float(np.exp(feature_df.loc[idx, target_col])),
-                            "y_pred": pred_curve[h],
+                            "y_pred": float(pred_curves[h][i]),
                         })
-                    except Exception:
-                        continue
+                except Exception:
+                    pass
 
                 # Progress
                 if (t_idx + 1) % 10 == 0:
@@ -204,37 +239,16 @@ class BacktestEngine:
     ) -> pd.DataFrame:
         """Run backtest across all configured tickers. Returns combined metrics."""
         import time
-        builder = FeatureBuilder(self.dc, self.mc)
         all_metrics: list[dict] = []
 
         n_total = len(self.dc.tickers)
         sweep_start = time.time()
+        n_workers = self.bc.parallel_tickers
 
-        for ticker_idx, ticker in enumerate(self.dc.tickers):
-            elapsed = time.time() - sweep_start
-            pct = ticker_idx / n_total * 100
-            eta_str = ""
-            if ticker_idx > 0:
-                eta_sec = elapsed / ticker_idx * (n_total - ticker_idx)
-                eta_str = f"  ETA ~{eta_sec/60:.0f}m"
-            print(f"\n{'='*50}")
-            print(f"  BACKTEST: {ticker}  [{ticker_idx+1}/{n_total}  {pct:.0f}%{eta_str}]")
-            print(f"{'='*50}")
-
-            try:
-                feature_df = builder.build(ticker, raw_data)
-            except Exception as e:
-                print(f"[ERROR] Feature build failed for {ticker}: {e}")
-                continue
-
-            results = self.run_single_ticker(
-                ticker, feature_df, model_names=model_names,
-            )
-
-            for r in results:
-                row = {"ticker": ticker, "horizon": r.horizon}
-                row.update(r.metrics)
-                all_metrics.append(row)
+        if n_workers > 1 and n_total > 1:
+            all_metrics = self._run_parallel(raw_data, model_names, n_workers)
+        else:
+            all_metrics = self._run_sequential(raw_data, model_names)
 
         if all_metrics:
             summary = pd.DataFrame(all_metrics)
@@ -264,9 +278,213 @@ class BacktestEngine:
                 combined_preds.to_csv(combined_path, index=False)
                 print(f"[BACKTEST] Combined predictions saved to {combined_path}")
 
+            # ── Generate standardized JSON output ─────────────────────
+            self._generate_json_output(raw_data, all_metrics)
+
             return summary
 
         return pd.DataFrame()
+
+    # ── Sequential / Parallel execution ─────────────────────────────
+
+    def _run_sequential(
+        self,
+        raw_data: Dict[str, pd.DataFrame],
+        model_names: Optional[List[str]],
+    ) -> list[dict]:
+        """Original sequential ticker loop."""
+        import time
+        builder = FeatureBuilder(self.dc, self.mc)
+        all_metrics: list[dict] = []
+        n_total = len(self.dc.tickers)
+        sweep_start = time.time()
+
+        for ticker_idx, ticker in enumerate(self.dc.tickers):
+            elapsed = time.time() - sweep_start
+            pct = ticker_idx / n_total * 100
+            eta_str = ""
+            if ticker_idx > 0:
+                eta_sec = elapsed / ticker_idx * (n_total - ticker_idx)
+                eta_str = f"  ETA ~{eta_sec/60:.0f}m"
+            print(f"\n{'='*50}")
+            print(f"  BACKTEST: {ticker}  [{ticker_idx+1}/{n_total}  {pct:.0f}%{eta_str}]")
+            print(f"{'='*50}")
+
+            try:
+                feature_df = builder.build(ticker, raw_data)
+            except Exception as e:
+                print(f"[ERROR] Feature build failed for {ticker}: {e}")
+                continue
+
+            results = self.run_single_ticker(
+                ticker, feature_df, model_names=model_names,
+            )
+
+            for r in results:
+                row = {"ticker": ticker, "horizon": r.horizon}
+                row.update(r.metrics)
+                all_metrics.append(row)
+
+        return all_metrics
+
+    def _run_parallel(
+        self,
+        raw_data: Dict[str, pd.DataFrame],
+        model_names: Optional[List[str]],
+        n_workers: int,
+    ) -> list[dict]:
+        """Parallel ticker processing via ProcessPoolExecutor."""
+        import time
+        all_metrics: list[dict] = []
+        n_total = len(self.dc.tickers)
+        completed = 0
+        sweep_start = time.time()
+
+        # Cap workers to available cores / 4 (leave room for model-internal parallelism)
+        max_safe = max(1, (os.cpu_count() or 4) // 4)
+        n_workers = min(n_workers, n_total, max_safe)
+
+        print(f"\n[BACKTEST] Parallel sweep: {n_total} tickers, {n_workers} workers")
+
+        with ProcessPoolExecutor(max_workers=n_workers) as executor:
+            futures = {
+                executor.submit(
+                    _backtest_one_ticker,
+                    ticker, raw_data,
+                    self.dc, self.mc, self.bc, model_names,
+                ): ticker
+                for ticker in self.dc.tickers
+            }
+
+            for future in as_completed(futures):
+                ticker = futures[future]
+                completed += 1
+                elapsed = time.time() - sweep_start
+
+                try:
+                    ticker_name, rows, error_msg = future.result()
+                except Exception as e:
+                    print(f"\n[ERROR] {ticker} worker crashed: {e}")
+                    continue
+
+                if error_msg:
+                    print(f"\n[ERROR] {ticker} failed: {error_msg}")
+                    continue
+
+                eta_str = ""
+                if completed > 0 and completed < n_total:
+                    eta_sec = elapsed / completed * (n_total - completed)
+                    eta_str = f"  ETA ~{eta_sec/60:.0f}m"
+
+                print(f"\n{'='*50}")
+                print(f"  DONE: {ticker_name}  [{completed}/{n_total}{eta_str}]")
+                for r in rows:
+                    print(f"    H={r['horizon']}: RMSE={r['rmse']:.4f} | "
+                          f"MZ_beta={r['mz_beta']:.3f} | R2={r['mz_r2']:.3f}")
+                print(f"{'='*50}")
+
+                all_metrics.extend(rows)
+
+        return all_metrics
+
+    # ── JSON output generation ─────────────────────────────────────
+
+    def _generate_json_output(
+        self,
+        raw_data: Dict[str, pd.DataFrame],
+        all_metrics: list[dict],
+    ):
+        """
+        Generate standardized JSON output for frontend consumption.
+
+        Reads back per-ticker prediction CSVs and feature data to produce:
+          - {TICKER}_Payload.json for each ticker
+          - market_overview.json for the macro landing page
+          - metrics_summary.json for internal monitoring
+        """
+        from .output import write_ticker_payload, write_market_overview, write_metrics_summary
+
+        payload_dir = self.bc.results_dir / "payloads"
+        builder = FeatureBuilder(self.dc, self.mc)
+
+        # Build sector map from compustat_meta if available
+        sector_map: Dict[str, str] = {}
+        if "compustat_meta" in raw_data and raw_data["compustat_meta"] is not None:
+            meta_df = raw_data["compustat_meta"]
+            if "tic" in meta_df.columns and "gsector" in meta_df.columns:
+                for _, row in meta_df.iterrows():
+                    sector_map[row["tic"]] = str(row["gsector"])
+
+        # Collect per-ticker data for payloads
+        ticker_payloads: Dict[str, dict] = {}
+        all_predictions: Dict[str, Dict[int, pd.DataFrame]] = {}
+
+        # Build metrics lookup: {(ticker, horizon): metrics_dict}
+        metrics_by_th = {}
+        for m in all_metrics:
+            key = (m["ticker"], m["horizon"])
+            metrics_by_th[key] = m
+
+        for ticker in self.dc.tickers:
+            # Load predictions from saved CSVs
+            predictions: Dict[int, pd.DataFrame] = {}
+            ticker_metrics: Dict[int, Dict[str, float]] = {}
+            for h in self.mc.horizons:
+                pred_path = self.bc.results_dir / f"predictions_{ticker}_H{h}.csv"
+                if pred_path.exists():
+                    predictions[h] = pd.read_csv(pred_path)
+                if (ticker, h) in metrics_by_th:
+                    ticker_metrics[h] = metrics_by_th[(ticker, h)]
+
+            if not predictions:
+                continue
+
+            all_predictions[ticker] = predictions
+
+            # Build feature_df for this ticker to extract latest values
+            try:
+                feature_df = builder.build(ticker, raw_data)
+            except Exception as e:
+                print(f"[OUTPUT] Skipping {ticker} payload — feature build failed: {e}")
+                continue
+
+            # Placeholder weights (actual weights aren't preserved across runs;
+            # we'd need to retrain to get them — use equal weights as default)
+            weights: Dict[int, Dict[str, float]] = {
+                h: {"XGB": 0.33, "RF": 0.33, "LassoCV": 0.33}
+                for h in predictions.keys()
+            }
+
+            write_ticker_payload(
+                ticker=ticker,
+                predictions=predictions,
+                feature_df=feature_df,
+                metrics=ticker_metrics,
+                weights=weights,
+                sector_code=sector_map.get(ticker),
+                output_dir=payload_dir,
+            )
+
+            # Read back the payload for market overview aggregation
+            payload_path = payload_dir / f"{ticker}_Payload.json"
+            if payload_path.exists():
+                import json
+                with open(payload_path) as f:
+                    ticker_payloads[ticker] = json.load(f)
+
+        # Write market overview
+        if ticker_payloads:
+            write_market_overview(
+                ticker_payloads=ticker_payloads,
+                all_predictions=all_predictions,
+                sector_map=sector_map,
+                output_dir=payload_dir,
+            )
+
+        # Write metrics summary
+        write_metrics_summary(all_metrics, payload_dir)
+
+        print(f"\n[OUTPUT] All JSON payloads written to {payload_dir}")
 
     # ── Metrics ───────────────────────────────────────────────────────
 

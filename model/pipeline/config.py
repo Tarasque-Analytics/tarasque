@@ -46,8 +46,12 @@ class DataConfig:
     # 30 tickers across all 11 GICS sectors; all have dense OptionMetrics
     # vsurfd coverage.  Original 10 kept first for continuity.
     tickers: List[str] = field(default_factory=lambda: [
-        # n_alphas=20 benchmark — single ticker
-        "JPM",
+        # Remaining 30 from qualified 89-ticker universe
+        "ADBE", "AEP",  "AMAT", "AMD",  "AMGN", "AMT",
+        "BLK",  "CCI",  "CL",   "CRM",  "CSCO", "CVS",
+        "D",    "DOW",  "DUK",  "EQIX", "F",    "GM",
+        "LOW",  "MO",   "MU",   "NOC",  "ORCL", "SO",
+        "SPG",  "TGT",  "TMO",  "UPS",  "USB",  "VZ",
     ])
 
     # ── Factor ETFs ──────────────────────────────────────────────────────
@@ -110,6 +114,8 @@ class ModelConfig:
         "colsample_bytree": 0.8,
         "reg_lambda": 1.0,
         "n_jobs": -1,
+        "device": "cuda",       # GPU if available; auto-fallback in models.py
+        "tree_method": "hist",  # Required for GPU mode
     })
 
     # ── Random Forest ─────────────────────────────────────────────────────
@@ -126,6 +132,14 @@ class ModelConfig:
     # Floor prevents a single model from dominating the blend.
     min_ensemble_weight: float = 0.10
 
+    # ── Exponential sample weighting ─────────────────────────────────────
+    # Downweights older training rows so recent regimes matter more.
+    # w_i = exp(lambda * i) where i=0 is oldest row, i=N-1 is most recent.
+    # lambda=0.0 disables (uniform weights). lambda=0.15 ~ halves weight
+    # every ~5 years (1260 trading days). Applies to XGB and RF only
+    # (LassoCV has no sample_weight support).
+    exp_weight_lambda: float = 0.0
+
 
 @dataclass
 class BacktestConfig:
@@ -134,6 +148,11 @@ class BacktestConfig:
     window_type: str = "expanding"       # "expanding" or "rolling"
     rolling_window_days: int = 756       # 3 years if rolling
     step_days: int = 25                  # retrain every ~1.25mo
+
+    # Ticker-level parallelism: number of tickers to process simultaneously.
+    # Set to 1 for sequential (original behavior). On a 16-core machine,
+    # 4 is a good default — leaves cores for model-internal n_jobs=-1.
+    parallel_tickers: int = 4
 
     metrics: List[str] = field(default_factory=lambda: [
         "rmse", "mincer_zarnowitz", "qlike", "event_capture",

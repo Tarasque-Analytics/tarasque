@@ -424,16 +424,20 @@ Same 5-ticker set: AAPL, XOM, JPM, JNJ, NVDA. 43 features total. Archived to res
 
 ```
 [##########] Data pipeline (WRDS pull, Parquet cache)           100%  COMPLETE
-[##########] Feature engineering (39 features, all FRED active) 100%  COMPLETE — T5YIFR added Apr 4
+[##########] Feature engineering (49 features v4)               100%  COMPLETE — ETF momentum added Apr 5
 [##########] Walk-forward backtest engine                        100%  COMPLETE
 [##########] Lookahead bias audit & fix                          100%  FIXED
 [##########] IV staleness fix                                    100%  FIXED
 [##########] VRP bilateral uncertainty analysis                  100%  COMPLETE
 [##########] Residual systematic analysis                        100%  COMPLETE
-[##########] Feature v2 (5 new features total)                  100%  COMPLETE
-[##########] 5yr/5yr forward inflation feature (T5YIFR)         100%  COMPLETE — wired + cache rebuilt
-[----------] v0.3 full 30-ticker prod backtest                    0%   Waiting on 5950X CPU
-[----------] Exponential sample weighting                         0%   Designed, not implemented (see below)
+[##########] 94-ticker full corpus backtest                      100%  COMPLETE — Apr 7/8 overnight runs
+[##########] Full stat sheet (v4_stat_sheet_full.csv)           100%  COMPLETE — 279 rows, 93 tickers x 3H
+[##########] Beta/calibration visualizations                     100%  COMPLETE — 3 chart sets
+[##########] WRDS universe discovery (454 qualified)             100%  COMPLETE — wrds_qualified_universe.csv
+[##########] Exp sample weighting infra                         100%  COMPLETE but DISABLED (lambda=0.0)
+[----------] MZ post-hoc calibration overlay                     0%   Designed — rolling OOS alpha/beta correction
+[----------] IC/quintile spread validation                        0%   Not yet — key monetization test
+[----------] Pull 119 new WRDS tickers                           0%   Identified, not pulled
 [----------] Supabase write layer (db.py)                        0%   SWEs blocked — highest external dependency
 [----------] Backend API endpoints                               0%   SWEs handling
 [----------] Frontend web app                                    0%   SWEs handling
@@ -542,3 +546,4 @@ When installed: add to config.py xgb_params for GTX 1070 acceleration (~15% addi
 | 2026-04-05 | v4 launched: 49 features (added mom21_ for 6 ETFs), data from 2011, 16-ticker cross-sector run. OOM killed mid-run (RF n_jobs=-1 spawning 8 workers x full matrix). Fix: RF n_jobs=4, LassoCV n_jobs=1. Resumed remaining 6 tickers. 11 tickers complete at session end. Key findings: XOM R2 recovered (0.415->0.495), BA H=63/126 best calibration ever, new overforecast cluster confirmed (AMZN/GOOGL/NEE beta 0.526-0.657). H=21 portfolio avg beta=0.901, R2=0.346 (strong recovery from v3 dip). Leo building new PC (5950X + 2070 Super) — restore n_jobs=-1, add CUDA device on new machine. |
 | 2026-04-06 (Leo) | New PC online (5950X + Arctic Liquid Freezer III 280). RF restored to n_jobs=-1. Speed benchmarking: true baseline with 2011 data = 31 min/ticker. n_alphas deprecated in sklearn 1.7 — fixed to alphas=20 (correct param). CPU temps settled to 67C after first heat cycle. **CAT completed (first clean alphas=20 + parallel pipeline benchmark):** H=21 alpha=0.023 beta=0.941 R²=0.393 QLIKE=0.0255; H=63 alpha=0.015 beta=1.008 R²=0.302 QLIKE=0.0263 — best-calibrated ticker yet (H=63 beta essentially 1.0). LassoCV only 7% of runtime after Caleb parallel impl; alphas=20 optimization largely irrelevant now. Speed with parallel pipeline: ~73min wall/3 tickers vs old ~60 min/ticker on i7. Remaining v4 tickers: WMT, MS, LIN, MRK, CAT(H126), NEE(H63/H126). |
 | 2026-04-06 (Caleb, claude-opus-4-6) | **Major pipeline overhaul — parallelism, GPU, output standardization.** New dev (Caleb Solomon). Changes: (1) LassoCV n_jobs=-1; (2) Ticker-level multiprocessing via ProcessPoolExecutor with parallel_tickers=4; (3) XGBoost CUDA device with auto-fallback to CPU; (4) predict_curve_batch() vectorized; (5) New output.py: {TICKER}_Payload.json, market_overview.json, metrics_summary.json; (6) .env relative path fix; (7) .gitignore cleanup. 3-ticker validation (JPM/AAPL/XOM): H=21 avg beta=1.054, R²=0.338. Timing: ~73min wall for 3 tickers parallel (XGB 56%, RF 37%, LassoCV 7%). |
+| 2026-04-07/08 (Leo, claude-sonnet-4-6) | **WRDS universe discovery + 48-ticker run + 30-ticker overnight = 94-ticker full corpus.** (1) Resolved claude_context.md merge conflict keeping both entries. (2) Completed 48-ticker batch run overnight; ~14.7 min effective throughput/ticker via parallel_tickers=4. (3) Discovered WRDS universe: 454 qualified tickers (CRSP shrcd 10/11, avg_dv>=100M, OptionMetrics vsurfd 200+ days), 89 in local DB, 119 new pullable. Saved wrds_qualified_universe.csv. (4) Built 64-ticker stat sheet; generated 3 rounds of beta visualizations (beta_over_time.png, beta_events.png, beta_signal_detection.png). (5) **Key finding**: exp-weighted MZ diagnostic (lambda=0.003, half-life ~1yr) shows 100%/99%/99% calibration at H=21/63/126 in current regime — full-history H=126 beta drift of 1.19 is COVID/2022-era artifact in training tail, not a structural flaw. (6) **Beta-delta signal**: market-avg beta-delta z-score fires before 56% of 3-sigma SPY events (30-day lead window); ROC curve clearly above diagonal. (7) Tested exp sample weighting (lambda=0.0006): JPM H=126 beta worsened. Reverted to lambda=0.0. Infrastructure kept in ModelConfig + models.py but disabled. (8) Completed 30-ticker overnight run (ADBE/AEP/AMAT/AMD/AMGN/AMT/BLK/CCI/CL/CRM/CSCO/CVS/D/DOW/DUK/EQIX/F/GM/LOW/MO/MU/NOC/ORCL/SO/SPG/TGT/TMO/UPS/USB/VZ). (9) Final full corpus: 94 tickers, 282 prediction files. Full stat sheet: H=21 mean beta=0.995 R²=0.349 (78% calibrated); EW-beta 100% calibrated across all horizons. Beta-delta signal updated to 90-ticker basis: 56% sensitivity unchanged. |

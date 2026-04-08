@@ -46,12 +46,9 @@ class DataConfig:
     # 30 tickers across all 11 GICS sectors; all have dense OptionMetrics
     # vsurfd coverage.  Original 10 kept first for continuity.
     tickers: List[str] = field(default_factory=lambda: [
-        # Remaining 30 from qualified 89-ticker universe
-        "ADBE", "AEP",  "AMAT", "AMD",  "AMGN", "AMT",
-        "BLK",  "CCI",  "CL",   "CRM",  "CSCO", "CVS",
-        "D",    "DOW",  "DUK",  "EQIX", "F",    "GM",
-        "LOW",  "MO",   "MU",   "NOC",  "ORCL", "SO",
-        "SPG",  "TGT",  "TMO",  "UPS",  "USB",  "VZ",
+        "JPM",    # Financials (GICS 40)
+        "AAPL",   # Tech (GICS 45)
+        "XOM",    # Energy (GICS 10)
     ])
 
     # ── Factor ETFs ──────────────────────────────────────────────────────
@@ -131,14 +128,6 @@ class ModelConfig:
     # ── Ensemble ─────────────────────────────────────────────────────────
     # Floor prevents a single model from dominating the blend.
     min_ensemble_weight: float = 0.10
-
-    # ── Exponential sample weighting ─────────────────────────────────────
-    # Downweights older training rows so recent regimes matter more.
-    # w_i = exp(lambda * i) where i=0 is oldest row, i=N-1 is most recent.
-    # lambda=0.0 disables (uniform weights). lambda=0.15 ~ halves weight
-    # every ~5 years (1260 trading days). Applies to XGB and RF only
-    # (LassoCV has no sample_weight support).
-    exp_weight_lambda: float = 0.0
 
 
 @dataclass

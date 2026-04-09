@@ -12,9 +12,11 @@ Usage (from project root):
     python -m model.pipeline.batch_backtest --dry-run          # show batches without running
 """
 import argparse
+import json
 import os
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 # ── Tickers already tested (v1-v4 + 2026-04-06 session) ──────────────
@@ -107,6 +109,31 @@ def run_batch(batch_idx, tickers, total_batches):
     return results
 
 
+PROGRESS_FILE = Path(__file__).resolve().parent / "results" / "monitoring" / "progress.json"
+
+
+def write_progress(start_time: str, current_batch: int, total_batches: int,
+                   completed: list, failed: list, elapsed_sec: float):
+    """Write progress.json for the monitor to read."""
+    PROGRESS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    remaining = 0.0
+    if current_batch > 0 and current_batch < total_batches:
+        per_batch = elapsed_sec / current_batch
+        remaining = per_batch * (total_batches - current_batch) / 3600
+
+    data = {
+        "start_time": start_time,
+        "current_batch": current_batch,
+        "total_batches": total_batches,
+        "tickers_completed": completed,
+        "tickers_failed": failed,
+        "elapsed_hours": round(elapsed_sec / 3600, 2),
+        "estimated_remaining_hours": round(remaining, 2),
+    }
+    with open(PROGRESS_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Overnight batch backtest for untested tickers",
@@ -143,13 +170,32 @@ def main():
 
     print(f"\nStarting from batch {args.start_batch + 1}...")
     overall_start = time.time()
+    start_time_str = datetime.now(timezone.utc).isoformat()
+    tickers_completed = []
+    tickers_failed = []
+
+    # Write initial progress
+    write_progress(start_time_str, args.start_batch, len(batches),
+                   tickers_completed, tickers_failed, 0.0)
 
     for i in range(args.start_batch, len(batches)):
-        run_batch(i, batches[i], len(batches))
+        result = run_batch(i, batches[i], len(batches))
+        elapsed = time.time() - overall_start
+
+        if result is not None and not result.empty:
+            tickers_completed.extend(batches[i])
+        else:
+            tickers_failed.extend(batches[i])
+
+        write_progress(start_time_str, i + 1, len(batches),
+                       tickers_completed, tickers_failed, elapsed)
 
     total_time = time.time() - overall_start
     print(f"\n{'='*60}")
     print(f"  ALL BATCHES COMPLETE — {total_time/3600:.1f} hours total")
+    print(f"  Completed: {len(tickers_completed)} tickers")
+    if tickers_failed:
+        print(f"  Failed:    {len(tickers_failed)} tickers — {', '.join(tickers_failed)}")
     print(f"{'='*60}")
 
 

@@ -1,10 +1,10 @@
 === Volarbmodel Batch Monitor ===
-Updated: 2026-04-09 20:51:48 UTC
+Updated: 2026-04-09 20:53:39 UTC
 
 --- Resources ---
 RAM:  2.4 / 15.5 GB  (16%)
 CPU:  0%
-GPU:  3%   VRAM: 1850 / 8192 MB
+GPU:  2%   VRAM: 1868 / 8192 MB
 
 --- Batch Progress ---
 Batch:    27 / 27

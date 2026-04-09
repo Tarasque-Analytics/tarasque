@@ -125,6 +125,9 @@ class ModelConfig:
     # ── GARCH ────────────────────────────────────────────────────────────
     garch_dist: str = "skewt"
 
+    # Exponential recency weighting — lambda=0 disables (uniform weights).
+    exp_weight_lambda: float = 0.0
+
     # ── Ensemble ─────────────────────────────────────────────────────────
     # Floor prevents a single model from dominating the blend.
     min_ensemble_weight: float = 0.10

@@ -106,6 +106,16 @@ class FeatureBuilder:
 
         Mirrors the backtest's predictor selection logic (:382-384) but
         extended for new feature prefixes.
+
+        Explicit exclusions (VIF analysis 2026-04-08):
+          rv_TARGET          — literal alias for rv_21d (VIF=inf)
+          rv_5d, rv_10d      — mechanically correlated with rv_21d (VIF 11-17);
+                               ewma_vol captures short-window signal more cleanly
+          iv_atm_30d         — contained inside vrp_wedge (VIF=121); vrp_wedge is
+                               the economically meaningful quantity (relative to RV)
+          vol_trend          — rv_21d / rolling_mean(rv_21d); redundant with
+                               vol_regime_zscore which is the standardised version
+          put_call_abs_skew  — r=0.92 with put_call_skew_30d; signed skew sufficient
         """
         exclude_prefixes = ("y_", "close_")
         include_prefixes = (
@@ -113,8 +123,19 @@ class FeatureBuilder:
             "put_call_", "term_", "vrp_", "macro_", "beta_",
             "res_", "price_", "corr_", "sector_", "ewma_",
         )
+        exclude_exact = {
+            "rv_TARGET",           # literal alias for rv_21d (VIF=inf)
+            "rv_5d",               # redundant with ewma_vol at short window (VIF=11)
+            "rv_10d",              # redundant with rv_21d (VIF=17, Spearman r=0.93)
+            "rv_63d",              # middle rv window, explained by rv_21d + rv_126d (VIF=18)
+            "iv_atm_30d",          # contained inside vrp_wedge (VIF=121)
+            "vol_trend",           # ratio form of vol_regime_zscore (VIF=10.5)
+            "put_call_abs_skew_30d",  # r=0.92 with put_call_skew_30d
+        }
         cols = []
         for c in df.columns:
+            if c in exclude_exact:
+                continue
             if any(c.startswith(p) for p in exclude_prefixes):
                 continue
             if any(c.startswith(p) for p in include_prefixes):

@@ -601,7 +601,7 @@ def fetch_dataset(
             df = loader.fetch_crsp_daily()
             if not df.empty:
                 store.save(df, "ohlcv", partition_cols=["ticker"])
-        result["ohlcv"] = store.load("ohlcv", tickers=config.tickers)
+        result["ohlcv"] = store.load("ohlcv", tickers=config.tickers + config.all_factor_etfs)
 
         # ── Vol surface ──────────────────────────────────────────────
         if include_options:

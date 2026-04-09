@@ -121,7 +121,7 @@ class FeatureBuilder:
         include_prefixes = (
             "ret_", "rv_", "vol_", "tech_", "event_", "iv_",
             "put_call_", "term_", "vrp_", "macro_", "beta_",
-            "res_", "price_", "corr_", "sector_", "ewma_",
+            "res_", "price_", "corr_", "sector_", "ewma_", "mom21_",
         )
         exclude_exact = {
             "rv_TARGET",           # literal alias for rv_21d (VIF=inf)
@@ -203,12 +203,7 @@ class FeatureBuilder:
         rs = gain / (loss + 1e-9)
         df["tech_RSI"] = 100 - (100 / (1 + rs))
 
-        # ATR normalised (backtest :233-237)
-        tr1 = highs[ticker] - lows[ticker]
-        tr2 = (highs[ticker] - close.shift(1)).abs()
-        tr3 = (lows[ticker] - close.shift(1)).abs()
-        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        df["tech_ATR"] = tr.rolling(14).mean() / close
+        # ATR dropped — Spearman=0.949 with rv_21d, redundant for tree and Lasso models
 
         # MACD histogram (new)
         ema12 = close.ewm(span=12).mean()

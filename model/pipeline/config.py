@@ -46,9 +46,12 @@ class DataConfig:
     # 30 tickers across all 11 GICS sectors; all have dense OptionMetrics
     # vsurfd coverage.  Original 10 kept first for continuity.
     tickers: List[str] = field(default_factory=lambda: [
-        "JPM",    # Financials (GICS 40)
-        "AAPL",   # Tech (GICS 45)
-        "XOM",    # Energy (GICS 10)
+        "AAPL",   # Tech — mild underforecast (H=21 beta=1.212)
+        "JPM",    # Financials — H=126 beta=1.431, worst in sector
+        "XOM",    # Energy — well-calibrated control (H=21 beta=0.892)
+        "NVDA",   # Tech — high vol, AI-boom regime sensitivity
+        "IBM",    # Tech — consistent underforecast all horizons (beta 1.26-1.37)
+        "PEP",    # Staples — worst H=126 beta in sector (1.573)
     ])
 
     # ── Factor ETFs ──────────────────────────────────────────────────────

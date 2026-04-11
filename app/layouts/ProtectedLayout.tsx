@@ -23,6 +23,7 @@ export default function ProtectedLayout() {
     //  navigate("/login");
       console.log("User not authenticated, redirecting to login...");
       setIsLoggedin(false);
+      navigate('/login');
     }
     else {
       console.log("User authenticated");  
@@ -33,24 +34,14 @@ export default function ProtectedLayout() {
   checkAuth();
 }, []);
   
-  // Remove later to navigate to login page instead of showing not authenticated message
-    if (!isLoggedin) {
-    return(
-      <div className="flex items-center justify-center min-h-screen bg-gray-100">
-        <div className="bg-white p-8 rounded-lg shadow-lg w-96">
-          <h1 className="text-2xl font-bold text-center mb-6">Not Authenticated</h1>
-        </div>
-      </div>
 
-    );
-  }
-    else if (isLoggedin) {
+
         return (
     <div className="protected-layout">
       <Navbar />
       <Outlet />
     </div>
   );
-    }
+    
   }
 

@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Pie } from "react-chartjs-2";
+import { Doughnut } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 import { usePortfolioData } from "~/context/PortfolioDataContext";
 import { getCurrentPrices } from "./portfolio_utils";
@@ -34,23 +34,22 @@ export default function PortfolioPieChart() {
     ],
   };
 
-  const options: ChartOptions<"pie"> = {
+  const options: ChartOptions<"doughnut"> = {
+    // radius: "50%",
+    cutout: "70%",
     plugins: {
       legend: {
         display: false,
         position: "bottom",
       },
-      title: {
-        display: true,
-        text: "Portfolio Allocation",
-      },
     },
   };
 
   return (
-    <div className="flex justify-center items-center">
+    <div className="flex flex-col justify-center items-center">
+      <h2 className="dashboard-section-title">Positions</h2>
       <div className="w-full aspect-square">
-        <Pie data={chartData} options={options} />
+        <Doughnut data={chartData} options={options} />
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import PortfolioOverview from "../components/dashboard/portfolio_overview";
+import DashboardLeft from "../components/dashboard/dashboard_left";
 import HedgingInfo from "../components/dashboard/hedging_info";
 import SectorView from "../components/dashboard/sector_view";
 import DetailedAnalysis from "../components/dashboard/detailed_analysis";
@@ -23,27 +23,29 @@ export default function Dashboard() {
       {isLoading ? (
         <div className="loading-placeholder" />
       ) : (
-        <div className="grid grid-cols-6">
+        <div className="grid grid-cols-4">
           {/* Left Column */}
           <div className="col-start-1 col-span-1 p-2">
             <div className="dashboard-section">
-              <PortfolioOverview />
+              <DashboardLeft />
             </div>
           </div>
 
           {/* Center Column */}
-          <div className="col-start-2 col-span-3 p-2">
-            <div className="pb-2">
+          <div className="col-start-2 col-span-2 p-2">
+            <div className="dashboard-section">
               <DetailedAnalysis />
-            </div>
-            <div className="pt-2">
-              <HedgingInfo />
             </div>
           </div>
 
           {/* Right Column */}
-          <div className="col-start-5 col-span-2 row-span-3 p-2">
-            <SectorView />
+          <div className="col-start-4 col-span-1 row-span-3 p-2">
+            <div className="dashboard-section">
+              <HedgingInfo />
+            </div>
+            <div className="dashboard-section">
+              <SectorView />
+            </div>
           </div>
         </div>
       )}

@@ -144,7 +144,7 @@ class DataIngestion:
         
         self.factor_data = [
              "VIXY", "HYG", "USO"
-             "TLT", "UUP", "SPY"
+             "TLT", "UUP", "SPY", #rolling inflation breakevens
         ]
 
     def fetch_risk_free_rate(self):
@@ -615,7 +615,7 @@ def run_analysis(ticker, lookback=1200):
         for feature, impact in shap_payload['shap_values'].items():
             # Force a '+' sign for positive numbers to make directional impact obvious
             sign = "+" if impact > 0 else ""
-        print(f"{feature:<25} | Impact: {sign}{impact:.4f}")
+            print(f"{feature:<25} | Impact: {sign}{impact:.4f}")
         
         print("-" * 45 + "\n")
     # 5. FAIR VOL & WEDGE
@@ -831,6 +831,6 @@ def run_analysis(ticker, lookback=1200):
     print(f"\n[SUCCESS] Dashboard generated at {fname}")
 
 if __name__ == "__main__":
-    run_analysis("CVX")
+    run_analysis("NNE")
 
   

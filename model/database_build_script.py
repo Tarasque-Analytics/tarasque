@@ -37,25 +37,18 @@ while current < end:
     # --- 4. THE OPTIMIZED SQL QUERY ---
     # We force the WRDS servers to filter the garbage before it hits your network
     sql_query = f"""
-        SELECT 
-            secid, 
-            date, 
-            exdate, 
-            cp_flag, 
-            strike_price / 1000.0 AS strike, 
-            best_bid, 
-            best_offer, 
-            volume, 
-            open_interest, 
-            impl_volatility, 
-            delta
-        FROM optionm.opprcd
-        WHERE date >= '{start_str}' 
-          AND date < '{end_str}'
-          AND volume > 0
-          AND abs(delta) > 0.05
-          AND impl_volatility IS NOT NULL
-    """
+            SELECT 
+                secid, 
+                date, 
+                days, 
+                delta, 
+                impl_volatility
+            FROM optionm.vsurfd
+            WHERE date >= '{start_str}' 
+            AND date < '{end_str}'
+            AND days = 30 
+            AND delta IN (50, 25, -25)
+        """
     
     try:
         # Execute query and load directly into RAM

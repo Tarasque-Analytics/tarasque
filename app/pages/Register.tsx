@@ -1,7 +1,9 @@
-import { Link } from "react-router";
+import { Link, Navigate } from "react-router";
 import { useState, useEffect } from "react";
-import { supabase } from "supabaseClient";
+import { supabase } from "../supabaseClient";
+import { useNavigate } from "react-router";
 export default function Register() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -16,11 +18,16 @@ export default function Register() {
     e.preventDefault();
     setIsLoading(true);
     console.log("Register attempt:", { email, password });
-    const { data, error } =await supabase.from('stonks').insert({ name: email, is_complete: true });
-      if (error) {
+    const { data, error } =await supabase.auth.signUp({
+      email,
+      password,
+    });
+    if (error) {
         console.error("Registration error:", error);
       }
     setIsLoading(false);
+    navigate("/login");
+
   };
 
   useEffect(() => {

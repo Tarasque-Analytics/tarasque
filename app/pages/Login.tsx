@@ -1,15 +1,15 @@
 import React, { useState } from "react";
-
+import { supabase } from "../supabaseClient";
 export default function Login() {
   const [email, setEmail] = useState("user@example.com");
   const [password, setPassword] = useState("password123");
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     // Handle login logic here
-    console.log("Login attempt:", { email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     setIsLoading(false);
   };
 

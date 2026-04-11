@@ -5,7 +5,8 @@ import {
   Scripts,
   ScrollRestoration,
 } from "react-router";
-import { useState, useEffect } from "react";
+import { useNavigate } from "react-router";
+import { useEffect } from "react";
 import { supabase } from "./supabaseClient";
 
 import type { Route } from "./+types/root";
@@ -45,19 +46,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  // useEffect(() => {
-  //   const getUser = async () => {
-  //     const { data: { user } } = await supabase.auth.getUser();
-  //   };
-  //   getUser();
-  // });
-  // const { data } = supabase.auth.onAuthStateChange((event, session) => {
-  //     if (event === "SIGNED_IN") {
-  //       console.log("User signed in:", session?.user);
-  //     } else if (event === "SIGNED_OUT") { 
-      
-  //     }
-  // });
+  const navigate = useNavigate();
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT") {
+        navigate("/login");
+      }
+  
+  
+});});
+
+
+
   return <Outlet />;
 }
 

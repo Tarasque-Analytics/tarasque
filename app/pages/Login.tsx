@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { supabase } from "../supabaseClient";
+import { useNavigate } from "react-router";
 export default function Login() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState("user@example.com");
   const [password, setPassword] = useState("password123");
   const [isLoading, setIsLoading] = useState(false);
@@ -11,6 +13,9 @@ export default function Login() {
     // Handle login logic here
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     setIsLoading(false);
+
+    // Temporary? maybe? Should work assuming protectedlayout code works.
+    navigate("/dashboard");
   };
 
   return (

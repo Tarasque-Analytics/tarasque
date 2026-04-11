@@ -18,7 +18,7 @@ export default function ProtectedLayout() {
   useEffect (() => { 
     const checkAuth = async () => {
     const { data, error } = await supabase.auth.getUser();
-    if (!error || data.user) {
+    if (error || !data.user) {
     //   // Redirect to login page if not authenticated
     //  navigate("/login");
       console.log("User not authenticated, redirecting to login...");

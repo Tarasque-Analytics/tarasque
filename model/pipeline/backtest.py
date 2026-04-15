@@ -127,6 +127,7 @@ class BacktestEngine:
             test_starts = all_dates[::step]
 
             all_preds: list[dict] = []
+            weights_history: list[dict] = []  # Track ensemble weights per WF step
 
             print(f"[BACKTEST] {ticker} H={h}: {len(test_starts)} walk-forward steps "
                   f"({len(predictors)} features, min_train={min_train})")
@@ -168,15 +169,27 @@ class BacktestEngine:
                 model = EnsembleVolModel(self.mc)
                 model.train_wfa(X_tr, y_tr_dict, splits=3, model_names=model_names)
 
-                # Batch-predict all test rows at once
+                # Batch-predict all test rows at once (with per-model detail)
                 try:
-                    pred_curves = model.predict_curve_batch(X_te)
+                    pred_curves, per_model_curves = model.predict_curve_batch_detailed(X_te)
                     for i, idx in enumerate(X_te.index):
-                        all_preds.append({
+                        row = {
                             "date": idx,
                             "y_true": float(np.exp(feature_df.loc[idx, target_col])),
                             "y_pred": float(pred_curves[h][i]),
-                        })
+                        }
+                        # Per-model predictions
+                        for mname in per_model_curves.get(h, {}):
+                            row[f"pred_{mname}"] = float(per_model_curves[h][mname][i])
+                        all_preds.append(row)
+
+                    # Track weights for this WF step
+                    weights_history.append({
+                        "step": t_idx,
+                        "date": str(t_date)[:10],
+                        **{f"w_{k}": v for k, v in model.weights[h].items()},
+                        **{f"cv_rmse_{k}": v for k, v in model.cv_rmse.get(h, {}).items()},
+                    })
                 except Exception:
                     pass
 
@@ -208,7 +221,20 @@ class BacktestEngine:
             pred_path = self.bc.results_dir / f"predictions_{ticker}_H{h}.csv"
             pred_df.to_csv(pred_path, index=False)
 
+            # Save weights history for this ticker/horizon
+            if weights_history:
+                wh_df = pd.DataFrame(weights_history)
+                wh_path = self.bc.results_dir / f"weights_history_{ticker}_H{h}.csv"
+                wh_df.to_csv(wh_path, index=False)
+
             metrics = self._compute_metrics(pred_df, feature_df, h)
+
+            # Store actual ensemble weights in metrics for JSON output
+            if weights_history:
+                last_w = weights_history[-1]
+                for key in ["w_XGB", "w_RF", "w_LassoCV"]:
+                    if key in last_w:
+                        metrics[key] = last_w[key]
 
             print(f"  [RESULT] RMSE={metrics['rmse']:.4f} | "
                   f"MZ_beta={metrics['mz_beta']:.3f} | "
@@ -448,12 +474,15 @@ class BacktestEngine:
                 print(f"[OUTPUT] Skipping {ticker} payload — feature build failed: {e}")
                 continue
 
-            # Placeholder weights (actual weights aren't preserved across runs;
-            # we'd need to retrain to get them — use equal weights as default)
-            weights: Dict[int, Dict[str, float]] = {
-                h: {"XGB": 0.33, "RF": 0.33, "LassoCV": 0.33}
-                for h in predictions.keys()
-            }
+            # Extract actual ensemble weights from metrics (stored during WF run)
+            weights: Dict[int, Dict[str, float]] = {}
+            for h in predictions.keys():
+                m = metrics_by_th.get((ticker, h), {})
+                weights[h] = {
+                    "XGB": m.get("w_XGB", 0.33),
+                    "RF": m.get("w_RF", 0.33),
+                    "LassoCV": m.get("w_LassoCV", 0.33),
+                }
 
             write_ticker_payload(
                 ticker=ticker,
@@ -525,6 +554,13 @@ class BacktestEngine:
         metrics["event_capture_rate"] = self._event_capture_rate(
             pred_df, feature_df, horizon,
         )
+
+        # 5. Pinball (quantile) loss at τ = 0.10, 0.50, 0.90
+        for tau in [0.10, 0.50, 0.90]:
+            diff = y_true - y_pred
+            metrics[f"pinball_{int(tau*100)}"] = float(
+                np.mean(np.maximum(tau * diff, (tau - 1) * diff))
+            )
 
         metrics["n_predictions"] = len(y_true)
 

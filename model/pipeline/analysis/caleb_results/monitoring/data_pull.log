@@ -1,0 +1,248 @@
+Target: 97 tickers
+Cache dir: C:\Users\Caleb Solomon\Documents\GitHub\volarbmodel\data_cache
+
+[OHLCV] 28 cached, 94 missing: ADBE, AXP, C, DOW, NEE, IBM, NFLX, DIS, AVGO, BA...
+[OHLCV] Pulling 94 tickers from CRSP...
+[CRSP] Fetching daily stock data for 119 symbols...
+[WRDS] Connecting to PostgreSQL...
+[WRDS] Using credentials from .env (no pgpass.conf found)
+Loading library list...
+Done
+[WRDS] Connection established.
+  [2011-01] 2,139 rows
+  [2011-02] 2,033 rows
+  [2011-03] 2,469 rows
+  [2011-04] 2,180 rows
+  [2011-05] 2,289 rows
+  [2011-06] 2,398 rows
+  [2011-07] 2,200 rows
+  [2011-08] 2,530 rows
+  [2011-09] 2,310 rows
+  [2011-10] 2,310 rows
+  [2011-11] 2,310 rows
+  [2011-12] 2,310 rows
+  [2012-01] 2,200 rows
+  [2012-02] 2,200 rows
+  [2012-03] 2,420 rows
+  [2012-04] 2,200 rows
+  [2012-05] 2,442 rows
+  [2012-06] 2,331 rows
+  [2012-07] 2,331 rows
+  [2012-08] 2,553 rows
+  [2012-09] 2,109 rows
+  [2012-10] 2,331 rows
+  [2012-11] 2,331 rows
+  [2012-12] 2,220 rows
+  [2013-01] 2,352 rows
+  [2013-02] 2,128 rows
+  [2013-03] 2,240 rows
+  [2013-04] 2,464 rows
+  [2013-05] 2,464 rows
+  [2013-06] 2,240 rows
+  [2013-07] 2,465 rows
+  [2013-08] 2,486 rows
+  [2013-09] 2,260 rows
+  [2013-10] 2,599 rows
+  [2013-11] 2,260 rows
+  [2013-12] 2,373 rows
+  [2014-01] 2,373 rows
+  [2014-02] 2,147 rows
+  [2014-03] 2,373 rows
+  [2014-04] 2,392 rows
+  [2014-05] 2,394 rows
+  [2014-06] 2,394 rows
+  [2014-07] 2,508 rows
+  [2014-08] 2,394 rows
+  [2014-09] 2,394 rows
+  [2014-10] 2,622 rows
+  [2014-11] 2,166 rows
+  [2014-12] 2,501 rows
+  [2015-01] 2,260 rows
+  [2015-02] 2,147 rows
+  [2015-03] 2,486 rows
+  [2015-04] 2,373 rows
+  [2015-05] 2,260 rows
+  [2015-06] 2,486 rows
+  [2015-07] 2,486 rows
+  [2015-08] 2,373 rows
+  [2015-09] 2,373 rows
+  [2015-10] 2,503 rows
+  [2015-11] 2,280 rows
+  [2015-12] 2,508 rows
+  [2016-01] 2,166 rows
+  [2016-02] 2,280 rows
+  [2016-03] 2,508 rows
+  [2016-04] 2,394 rows
+  [2016-05] 2,394 rows
+  [2016-06] 2,508 rows
+  [2016-07] 2,280 rows
+  [2016-08] 2,622 rows
+  [2016-09] 2,394 rows
+  [2016-10] 2,394 rows
+  [2016-11] 2,394 rows
+  [2016-12] 2,394 rows
+  [2017-01] 2,280 rows
+  [2017-02] 2,166 rows
+  [2017-03] 2,622 rows
+  [2017-04] 2,166 rows
+  [2017-05] 2,508 rows
+  [2017-06] 2,508 rows
+  [2017-07] 2,280 rows
+  [2017-08] 2,622 rows
+  [2017-09] 2,260 rows
+  [2017-10] 2,486 rows
+  [2017-11] 2,373 rows
+  [2017-12] 2,260 rows
+  [2018-01] 2,373 rows
+  [2018-02] 2,149 rows
+  [2018-03] 2,394 rows
+  [2018-04] 2,394 rows
+  [2018-05] 2,508 rows
+  [2018-06] 2,403 rows
+  [2018-07] 2,415 rows
+  [2018-08] 2,645 rows
+  [2018-09] 2,185 rows
+  [2018-10] 2,646 rows
+  [2018-11] 2,436 rows
+  [2018-12] 2,204 rows
+  [2019-01] 2,436 rows
+  [2019-02] 2,204 rows
+  [2019-03] 2,436 rows
+  [2019-04] 2,456 rows
+  [2019-05] 2,574 rows
+  [2019-06] 2,340 rows
+  [2019-07] 2,574 rows
+  [2019-08] 2,574 rows
+  [2019-09] 2,340 rows
+  [2019-10] 2,691 rows
+  [2019-11] 2,340 rows
+  [2019-12] 2,457 rows
+  [2020-01] 2,457 rows
+  [2020-02] 2,223 rows
+  [2020-03] 2,574 rows
+  [2020-04] 2,476 rows
+  [2020-05] 2,360 rows
+  [2020-06] 2,596 rows
+  [2020-07] 2,596 rows
+  [2020-08] 2,478 rows
+  [2020-09] 2,478 rows
+  [2020-10] 2,596 rows
+  [2020-11] 2,360 rows
+  [2020-12] 2,596 rows
+  [2021-01] 2,242 rows
+  [2021-02] 2,242 rows
+  [2021-03] 2,714 rows
+  [2021-04] 2,478 rows
+  [2021-05] 2,360 rows
+  [2021-06] 2,597 rows
+  [2021-07] 2,499 rows
+  [2021-08] 2,618 rows
+  [2021-09] 2,499 rows
+  [2021-10] 2,499 rows
+  [2021-11] 2,499 rows
+  [2021-12] 2,618 rows
+  [2022-01] 2,379 rows
+  [2022-02] 2,242 rows
+  [2022-03] 2,714 rows
+  [2022-04] 2,360 rows
+  [2022-05] 2,478 rows
+  [2022-06] 2,493 rows
+  [2022-07] 2,380 rows
+  [2022-08] 2,737 rows
+  [2022-09] 2,499 rows
+  [2022-10] 2,499 rows
+  [2022-11] 2,499 rows
+  [2022-12] 2,499 rows
+  [2023-01] 2,380 rows
+  [2023-02] 2,261 rows
+  [2023-03] 2,737 rows
+  [2023-04] 2,261 rows
+  [2023-05] 2,618 rows
+  [2023-06] 2,499 rows
+  [2023-07] 2,380 rows
+  [2023-08] 2,737 rows
+  [2023-09] 2,380 rows
+  [2023-10] 2,618 rows
+  [2023-11] 2,499 rows
+  [2023-12] 2,380 rows
+  [2024-01] 2,499 rows
+  [2024-02] 2,380 rows
+  [2024-03] 2,380 rows
+  [2024-04] 2,618 rows
+  [2024-05] 2,618 rows
+  [2024-06] 2,261 rows
+  [2024-07] 2,618 rows
+  [2024-08] 2,618 rows
+  [2024-09] 2,380 rows
+  [2024-10] 2,737 rows
+  [2024-11] 2,380 rows
+  [2024-12] 2,499 rows
+  [2025-01] no data
+  [2025-02] no data
+  [2025-03] no data
+  [2025-04] no data
+  [2025-05] no data
+  [2025-06] no data
+  [2025-07] no data
+  [2025-08] no data
+  [2025-09] no data
+  [2025-10] no data
+  [2025-11] no data
+  [2025-12] no data
+  [2026-01] no data
+  [2026-02] no data
+  [2026-03] no data
+  [2026-04] no data
+[OHLCV] Appended 405,275 rows for 119 tickers
+[VSURFD] 3 cached, 94 missing: ADBE, AXP, C, DOW, NEE, IBM, NFLX, DIS, AVGO, BA...
+[VSURFD] Pulling 94 tickers from WRDS (this is the slow part)...
+[OPTIONM] Mapping tickers to SECIDs...
+[OPTIONM] Fetching vol surface for 131 SECIDs (years=2011-2026, days=[30, 60, 91, 182], deltas=[10, 25, 50, -25, -10])...
+  [vsurfd2011] 458,220 rows
+  [vsurfd2012] 462,320 rows
+  [vsurfd2013] 478,800 rows
+  [vsurfd2014] 478,660 rows
+  [vsurfd2015] 473,760 rows
+  [vsurfd2016] 473,760 rows
+  [vsurfd2017] 470,220 rows
+  [vsurfd2018] 466,840 rows
+  [vsurfd2019] 472,500 rows
+  [vsurfd2020] 475,640 rows
+  [vsurfd2021] 480,460 rows
+  [vsurfd2022] 481,920 rows
+  [vsurfd2023] 480,000 rows
+  [vsurfd2024] 483,840 rows
+  [vsurfd2025] 316,800 rows
+  [vsurfd2026] ERROR: (psycopg2.errors.UndefinedTable) relation "optionm.vsurfd2026" does not exist
+LINE 3:                 FROM optionm.vsurfd2026
+                             ^
+
+[SQL: 
+                SELECT secid, date, days, delta, impl_volatility
+                FROM optionm.vsurfd2026
+                WHERE secid IN (160586, 100972, 101062, 101368, 101610, 101121, 101508, 5008, 101444, 101310, 101164, 101822, 125977, 139322, 101375, 102265, 5086, 101966, 6766, 102004, 109182, 102219, 102235, 102349, 5191, 103049, 102796, 5197, 103545, 103157, 103198, 6280, 103360, 108969, 103466, 103422, 121592, 103042, 102583, 102968, 103912, 134049, 134347, 137095, 137933, 208207, 208583, 103736, 103879, 129651, 103936, 213561, 103979, 104059, 104415, 104939, 105002, 105003, 104635, 105169, 105243, 105175, 144671, 121812, 105329, 105759, 5459, 105785, 106276, 106203, 106566, 103125, 106983, 109143, 114649, 106967, 107010, 107045, 107318, 107478, 154402, 216158, 107616, 108965, 148257, 107430, 6598, 107589, 107704, 107525, 107544, 104560, 108130, 115422, 108161, 108231, 108321, 108505, 108385, 108893, 108948, 109224, 7652, 100906, 109248, 109091, 135403, 5691, 152875, 109348, 109484, 111459, 110472, 109965, 109956, 110337, 110188, 204223, 100930, 109775, 110810, 110991, 143439, 110972, 111469, 111434, 104866, 111306, 111668, 111953, 111860)
+                    AND days IN (30, 60, 91, 182)
+                    AND delta IN (10, 25, 50, -25, -10)
+                ORDER BY secid, date, days, delta
+            ]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+[VSURFD] Appended 37,069,380 rows for 94 tickers
+[COMPUSTAT] Pulling GICS sectors for 97 tickers...
+[COMPUSTAT] Fetching GICS sector codes...
+[STORE] Saved 97 rows -> data_cache\compustat_meta
+[COMPUSTAT] Saved 97 rows
+
+[FRED/EVENTS] Checking non-ticker data...
+
+==================================================
+  DATA PULL COMPLETE — Cache summary:
+==================================================
+  ohlcv               : 122 tickers
+  vsurfd              : 97 tickers
+  compustat_meta      : 97 rows
+  fred                : 4,033 rows
+  events/earnings     : 183 rows
+  crsp_index          : 3,522 rows
+
+You can now run the batch backtest:
+  python -m model.pipeline.batch_backtest

@@ -52,9 +52,11 @@ export default function App() {
       if (event === "SIGNED_OUT") {
         navigate("/login");
       }
-  
-  
-});});
+});
+return () => {
+  data.subscription.unsubscribe();
+};
+}, [navigate]);
 
 
 

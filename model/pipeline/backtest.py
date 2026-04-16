@@ -115,6 +115,14 @@ class BacktestEngine:
         predictors = valid_predictors
 
         results: List[BacktestResult] = []
+        # Lasso tracking: accumulate fold-level records across all steps.
+        # Only collect on first horizon pass — train_wfa() trains all horizons
+        # internally, so subsequent outer-loop passes would triple-count.
+        ticker_lasso_records: list[dict] = []
+        # XGB importance: {horizon: np.ndarray summed across steps}
+        xgb_imp_sum: Dict[int, np.ndarray] = {}
+        xgb_imp_count: Dict[int, int] = {}
+        _first_h = self.mc.horizons[0] if self.mc.horizons else None
 
         for h in self.mc.horizons:
             target_col = f"y_{h}"
@@ -168,6 +176,22 @@ class BacktestEngine:
                 model = EnsembleVolModel(self.mc)
                 model.train_wfa(X_tr, y_tr_dict, splits=3, model_names=model_names)
 
+                # Capture Lasso records on first horizon pass only
+                if h == _first_h and model.lasso_log:
+                    for rec in model.lasso_log:
+                        ticker_lasso_records.append({**rec, "step": t_idx})
+
+                # Accumulate XGB feature importances across steps (all horizons)
+                for hh in self.mc.horizons:
+                    xgb_model = model.models[hh].get("XGB")
+                    if xgb_model is not None and hasattr(xgb_model, "feature_importances_"):
+                        imp = xgb_model.feature_importances_
+                        if hh not in xgb_imp_sum:
+                            xgb_imp_sum[hh] = np.zeros(len(imp))
+                            xgb_imp_count[hh] = 0
+                        xgb_imp_sum[hh] += imp
+                        xgb_imp_count[hh] += 1
+
                 # Batch-predict all test rows at once
                 try:
                     pred_curves = model.predict_curve_batch(X_te)
@@ -220,6 +244,14 @@ class BacktestEngine:
                 predictions=pred_df, metrics=metrics,
             ))
 
+        # Write Lasso tracking summary
+        if ticker_lasso_records:
+            self._write_lasso_summary(ticker, predictors, ticker_lasso_records)
+
+        # Write XGB importance summary
+        if xgb_imp_sum:
+            self._write_xgb_importance(ticker, predictors, xgb_imp_sum, xgb_imp_count)
+
         # Print model timing breakdown for this ticker
         prof = _EnsembleVolModel._profile
         if prof:
@@ -229,6 +261,82 @@ class BacktestEngine:
             _EnsembleVolModel._profile.clear()
 
         return results
+
+    # ── Lasso summary ─────────────────────────────────────────────────
+
+    def _write_lasso_summary(
+        self,
+        ticker: str,
+        feature_names: List[str],
+        records: list,
+    ) -> None:
+        """
+        Aggregate per-fold Lasso records into a per-feature summary CSV.
+
+        Columns: ticker, horizon, feature, inclusion_freq, mean_abs_coef,
+                 mean_lambda, n_fits
+        """
+        rows = []
+        for rec in records:
+            for i, fname in enumerate(feature_names):
+                rows.append({
+                    "ticker": ticker,
+                    "horizon": rec["horizon"],
+                    "stage": rec["stage"],
+                    "step": rec["step"],
+                    "fold": rec["fold"],
+                    "alpha": rec["alpha"],
+                    "feature": fname,
+                    "coef": rec["coefs"][i] if i < len(rec["coefs"]) else 0.0,
+                })
+        if not rows:
+            return
+        import pandas as _pd
+        df = _pd.DataFrame(rows)
+        summary = (
+            df.groupby(["feature", "horizon"])
+            .agg(
+                inclusion_freq=("coef", lambda x: (x != 0).mean()),
+                mean_abs_coef=("coef", lambda x: x.abs().mean()),
+                mean_lambda=("alpha", "mean"),
+                n_fits=("coef", "count"),
+            )
+            .reset_index()
+        )
+        summary.insert(0, "ticker", ticker)
+        summary.sort_values(["horizon", "inclusion_freq"], ascending=[True, False], inplace=True)
+        self.bc.results_dir.mkdir(parents=True, exist_ok=True)
+        out_path = self.bc.results_dir / f"lasso_tracking_{ticker}.csv"
+        summary.to_csv(out_path, index=False)
+        print(f"  [LASSO] Tracking saved -> {out_path.name}")
+
+    def _write_xgb_importance(
+        self,
+        ticker: str,
+        feature_names: List[str],
+        imp_sum: Dict[int, np.ndarray],
+        imp_count: Dict[int, int],
+    ) -> None:
+        """Write mean XGB feature importances (averaged across WFA steps) to CSV."""
+        import pandas as _pd
+        rows = []
+        for h, total in imp_sum.items():
+            mean_imp = total / max(imp_count[h], 1)
+            for i, fname in enumerate(feature_names):
+                rows.append({
+                    "ticker": ticker,
+                    "horizon": h,
+                    "feature": fname,
+                    "mean_importance": float(mean_imp[i]) if i < len(mean_imp) else 0.0,
+                })
+        if not rows:
+            return
+        df = _pd.DataFrame(rows)
+        df.sort_values(["horizon", "mean_importance"], ascending=[True, False], inplace=True)
+        self.bc.results_dir.mkdir(parents=True, exist_ok=True)
+        out_path = self.bc.results_dir / f"xgb_importance_{ticker}.csv"
+        df.to_csv(out_path, index=False)
+        print(f"  [XGB] Importance saved -> {out_path.name}")
 
     # ── Sector sweep ──────────────────────────────────────────────────
 
@@ -340,7 +448,8 @@ class BacktestEngine:
         completed = 0
         sweep_start = time.time()
 
-        # Cap workers to available cores / 4 (leave room for model-internal parallelism)
+        # Cap workers to cpu_count / 4 — each worker runs RF/LassoCV with n_jobs=4,
+        # so total CPU threads = n_workers × 4 ≤ cpu_count. XGB uses CUDA independently.
         max_safe = max(1, (os.cpu_count() or 4) // 4)
         n_workers = min(n_workers, n_total, max_safe)
 

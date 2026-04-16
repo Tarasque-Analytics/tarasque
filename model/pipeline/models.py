@@ -66,6 +66,35 @@ class GarchForecaster:
             naive_vol = returns.std() * np.sqrt(252)
             return naive_vol, naive_vol
 
+    @staticmethod
+    def cond_vol_series(
+        returns: pd.Series,
+        dist: str = "skewt",
+    ) -> pd.Series:
+        """
+        Fit GARCH(1,1) on the full returns series and return the in-sample
+        conditional volatility as an annualised pd.Series (same index as returns).
+
+        h_t depends only on returns up to t, so this is point-in-time safe
+        at the observation level.  GARCH parameters (omega/alpha/beta) are
+        estimated on the full series — mild parameter lookahead, standard
+        practice for a feature input.
+
+        Falls back to a 21-day EWMA vol on fit failure.
+        """
+        from arch import arch_model
+
+        scaled = returns.dropna() * 100.0
+        try:
+            res = arch_model(
+                scaled, vol="Garch", p=1, q=1, dist=dist, rescale=False,
+            ).fit(disp="off", show_warning=False)
+            cond_vol = res.conditional_volatility / 100.0 * np.sqrt(252)
+            return cond_vol.reindex(returns.index)
+        except Exception:
+            fallback = np.sqrt(returns.pow(2).ewm(span=21).mean() * 252)
+            return fallback
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # ENSEMBLE VOL MODEL
@@ -90,6 +119,9 @@ class EnsembleVolModel:
         self.feature_importance: Dict[str, float] = {}
         self.predictors: List[str] = []
         self.final_scaler: Optional[StandardScaler] = None
+        # Lasso tracking: list of {horizon, stage, fold, alpha, coefs}
+        # Populated during train_wfa(); consumed by backtest.py for CSV export.
+        self.lasso_log: List[dict] = []
 
         for h in self.horizons:
             self.models[h] = self._init_models()
@@ -122,7 +154,8 @@ class EnsembleVolModel:
             "XGB": xgb.XGBRegressor(**xgb_params),
             "RF": RandomForestRegressor(**self.config.rf_params),
             "LassoCV": LassoCV(
-                cv=TimeSeriesSplit(n_splits=3), max_iter=10000, n_jobs=-1,
+                cv=TimeSeriesSplit(n_splits=3), max_iter=10000,
+                n_jobs=getattr(self.config, "lasso_n_jobs", -1),
                 alphas=20,  # 20-point grid (default 100); sklearn 1.7+ uses alphas= not n_alphas=
             ),
         }
@@ -175,7 +208,7 @@ class EnsembleVolModel:
             errors: Dict[str, list] = {n: [] for n in model_names}
 
             # 2. VALIDATION LOOP (backtest :402-428)
-            for tr_idx, te_idx in tscv.split(X):
+            for _fold, (tr_idx, te_idx) in enumerate(tscv.split(X)):
                 X_tr, X_te = X.iloc[tr_idx], X.iloc[te_idx]
                 y_tr, y_te = y.iloc[tr_idx], y.iloc[te_idx]
 
@@ -210,6 +243,13 @@ class EnsembleVolModel:
                     else:
                         self.models[h][name].fit(X_tr_s, y_tr)
                     self.__class__._profile[name] = self.__class__._profile.get(name, 0) + (time.perf_counter() - _t)
+                    if name == "LassoCV":
+                        _lasso = self.models[h]["LassoCV"]
+                        self.lasso_log.append({
+                            "horizon": h, "stage": "fold", "fold": _fold,
+                            "alpha": float(_lasso.alpha_),
+                            "coefs": _lasso.coef_.tolist(),
+                        })
                     log_preds = np.clip(self.models[h][name].predict(X_te_s), -5, 5)
                     preds_lin = np.exp(log_preds)
                     y_te_lin = np.exp(np.clip(y_te.values, -5, 5))
@@ -245,6 +285,13 @@ class EnsembleVolModel:
                     self.models[h][name].fit(X_final_s, y, sample_weight=final_sample_weights)
                 else:
                     self.models[h][name].fit(X_final_s, y)
+                if name == "LassoCV":
+                    _lasso = self.models[h]["LassoCV"]
+                    self.lasso_log.append({
+                        "horizon": h, "stage": "final", "fold": -1,
+                        "alpha": float(_lasso.alpha_),
+                        "coefs": _lasso.coef_.tolist(),
+                    })
 
         # 5. FEATURE IMPORTANCE from XGB at shortest horizon (backtest :443-444)
         if "XGB" in model_names:

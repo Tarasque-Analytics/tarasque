@@ -322,10 +322,42 @@ For tree-based models (XGBoost/RF), pure multicollinearity doesn't destabilize t
 
 **v2 key finding**: Two systematic clusters — underforecast (XOM, NVDA, BA: beta <1) vs overforecast (AAPL, JPM, JNJ, PG: beta >1). H=21 average beta=1.007 (near-perfect at portfolio level). QLIKE improved ~80-96% vs v1 universally.
 
-### v4 (+ ETF 21d momentum for 6 core ETFs + 2011 data start) — IN PROGRESS
-16-ticker cross-sector sweep: BA, PG, AAPL, XOM, JPM, GS, C, CVX, AMZN, GOOGL, MRK, NEE, WMT, CAT, MS, LIN
-49 features total. Data from 2011 (pre-2014 = context seed only). First predictions ~late 2016.
-Archived to results/v4_etf_momentum/ when complete.
+### v4 (+ ETF 21d momentum for 6 core ETFs + 2011 data start) — COMPLETE (94 tickers)
+Full corpus: 94 tickers (90 clean, 4 flagged: GE breakup, META late, RTX merger, GOOGL class split).
+H=21 portfolio avg beta=0.995, median=0.990, 70/90 (78%) well-calibrated [0.85-1.15].
+EW-weighted (recent regime): 90/90 (100%) calibrated — COVID/2022 tail artifacts explain full-history drift.
+**CRITICAL BUG FOUND POST-FACTO:** AMZN H=63 beta=0.204 was attributed to "mega-cap liquidity buffers" but was actually stock split contamination — see v6.
+
+### v6 (split fix + GARCH feature + lasso/XGB tracking) — VALIDATED 2026-04-10
+6-ticker sample: AAPL, AMZN, JPM, XOM, BA, D
+
+**Three changes:**
+1. Split-adjusted prices: `_pivot_ohlcv()` reconstructs adj_closes from CRSP `ret` column. Eliminates phantom vol spikes on split dates.
+2. `garch_cond_vol` as predictor: GARCH(1,1)-skewt conditional vol fit once per ticker on adj_returns, fed as feature. Lasso selects it mostly at H=63/126 (collinear with ewma_vol at H=21).
+3. Lasso tracking + XGB importance CSVs written per ticker.
+
+**Key validation results (v6 vs v4):**
+| Ticker | H=21 beta v4 | H=21 beta v6 | Change |
+|--------|-------------|-------------|--------|
+| AMZN H=63 | 0.204 (contaminated) | 0.942 | FIXED — split contamination confirmed |
+| BA | 0.834 | 1.018 | Improved |
+| D | — | 1.024 | Clean |
+| JPM | 1.022 | 1.084 | Stable |
+| XOM | 0.827 | 0.898 | Improved |
+| AAPL | 1.108 | 1.125 | Stable |
+
+**R² are strong:** H=21 0.27-0.51, H=63 0.25-0.49, H=126 0.38-0.57. AMZN H=63 R²=0.441 (was 0.125 in v4).
+
+**Feature rankings (Lasso, 6-ticker avg):**
+- H=21: ewma_vol (0.744) > iv_atm_z_score (0.701) > macro_hy_spread (0.454)
+- H=63: iv_atm_z_score (0.492) > price_regime (0.469) > mom21_USO (0.386)
+- H=126: macro_yield_curve_slope (0.511) > beta_spy (0.411) > price_regime (0.384)
+- Raw ETF returns (ret_*) almost never selected. Momentum versions are far more useful.
+- garch_cond_vol: rank 28/43 at H=63, near-zero at H=21. Not hurting, not leading.
+
+**rv_21d:** Re-added at end of session. Was dropped via VIF=10.6 but is the strongest H=21 predictor. Lasso handles collinearity. Now 44 features total.
+
+**XGB importance tracking:** Added `_write_xgb_importance()` to backtest.py. Will write `xgb_importance_{TICKER}.csv` on next run.
 
 **Hypothesis**: ETF 21d momentum gives the model trend context it was missing. A one-day VIXY spike looks identical to a sustained grind in returns-only. Momentum distinguishes them.
 
@@ -424,102 +456,60 @@ Same 5-ticker set: AAPL, XOM, JPM, JNJ, NVDA. 43 features total. Archived to res
 
 ```
 [##########] Data pipeline (WRDS pull, Parquet cache)           100%  COMPLETE
-[##########] Feature engineering (39 features, all FRED active) 100%  COMPLETE — T5YIFR added Apr 4
+[##########] Feature engineering (44 features active)           100%  COMPLETE — rv_21d re-added v6
 [##########] Walk-forward backtest engine                        100%  COMPLETE
 [##########] Lookahead bias audit & fix                          100%  FIXED
 [##########] IV staleness fix                                    100%  FIXED
 [##########] VRP bilateral uncertainty analysis                  100%  COMPLETE
 [##########] Residual systematic analysis                        100%  COMPLETE
-[##########] Feature v2 (5 new features total)                  100%  COMPLETE
-[##########] 5yr/5yr forward inflation feature (T5YIFR)         100%  COMPLETE — wired + cache rebuilt
-[----------] v0.3 full 30-ticker prod backtest                    0%   Waiting on 5950X CPU
-[----------] Exponential sample weighting                         0%   Designed, not implemented (see below)
-[----------] Supabase write layer (db.py)                        0%   SWEs blocked — highest external dependency
+[##########] Stock split contamination fix                       100%  FIXED in v6
+[##########] Lasso tracking export                               100%  COMPLETE
+[##########] XGB importance export                               100%  COMPLETE (untested, next run)
+[----------] Full 90-ticker corpus re-run (v6)                    0%   NEXT — reset config tickers
+[----------] IC demeaned cross-sectional signal                   0%   After full run
+[----------] MZ calibration overlay (rolling OOS correction)      0%   After full run
+[----------] SHAP cross-ticker analysis                           0%   Deferred
+[----------] Supabase write layer (db.py)                        0%   SWEs blocked
 [----------] Backend API endpoints                               0%   SWEs handling
 [----------] Frontend web app                                    0%   SWEs handling
 ```
 
 ---
 
-## Next Actions (in priority order)
+## Next Actions (in priority order, as of 2026-04-10)
 
-### 0. FIRST BOOT on 5950X — config changes
-```python
-# config.py — restore full parallelism
-rf_params: "n_jobs": -1        # was capped to 4 for RAM on i7
-xgb_params: "device": "cuda"   # add GPU acceleration
-xgb_params: "tree_method": "hist"
+### 0. IMMEDIATE — Quick 2-ticker test after restart
+Verify rv_21d re-add works and 44 features load cleanly:
+```bash
+python -m model.pipeline --mode backtest --tickers AAPL JPM
 ```
-Then re-run v4 resume if WMT/CAT/MS/LIN didn't finish, archive to results/v4_etf_momentum/.
+Confirm feature count in log output. Expect H=21 beta to improve slightly for JPM vs v6 result (1.084).
 
-### 1. IMPLEMENT — Exponential Sample Weighting
-Addresses the COVID/2018/2025 regime bias. The ACF=0.96 finding means the model remembers recent errors — exponential weighting reinforces this appropriately by making recent regimes matter more.
-
-```python
-# In backtest.py, inside the WFA loop, before fitting:
-# age = (train_end_date - train_dates).dt.days / 365.25
-# sample_weight = np.exp(-0.15 * age)  # half-life ~4.6 years
-# Pass to XGBoost: model.fit(X, y, sample_weight=sw)
-# Pass to RF: model.fit(X, y, sample_weight=sw)
-# LassoCV does NOT support sample_weight — leave as is
+### 1. FULL CORPUS RUN — v6 with rv_21d
+Reset config.py tickers to full universe. Wipe stale predictions first:
+```bash
+rm model/pipeline/results/predictions_*.csv model/pipeline/results/all_predictions.csv model/pipeline/results/backtest_results.csv model/pipeline/results/lasso_tracking_*.csv model/pipeline/results/xgb_importance_*.csv
 ```
-lambda=0.15 gives: current year weight=1.0, 5yr ago=0.47, 10yr ago=0.22. 2014 data ~22% weight of 2024 — present but not dominant.
-
-### 2. DESIGN — v5 inflation feature pruning
-Drop `macro_inflation_fwd_chg_21d` and `macro_inflation_fwd_chg_63d` (redundant with zscore).
-Keep 3 orthogonal features: level, zscore, abs_chg_21d.
-Hypothesis: reduces overforecast on AMZN/GOOGL/NEE by removing correlated inflation signals competing for tree splits.
-Run same 16-ticker set, diff against v4.
-
-### 3. FINISH + COMPARE — v2 BA/PG A/B test (T5YIFR)
-BA/PG v2 run was interrupted. Results so far in results/ (BA H21+H63 only). v1 archived in results/v1_no_t5yifr/.
-
-**To finish:** re-run `python -m model.pipeline --mode backtest` (config is already set to BA, PG).
-
-**To compare after:** run this to diff v1 vs v2 metrics side by side:
-```python
-import pandas as pd
-v1 = pd.read_csv('model/pipeline/results/v1_no_t5yifr/backtest_results.csv')
-v2 = pd.read_csv('model/pipeline/results/backtest_results.csv')
-comp = v1.merge(v2, on=['ticker','horizon'], suffixes=('_v1','_v2'))
-comp['r2_delta'] = comp['mz_r2_v2'] - comp['mz_r2_v1']
-comp['rmse_delta'] = comp['rmse_v2'] - comp['rmse_v1']
-print(comp[['ticker','horizon','mz_r2_v1','mz_r2_v2','r2_delta','rmse_delta']].to_string())
+Then run overnight:
+```bash
+nohup python -m model.pipeline --mode backtest > /tmp/v6_full.log 2>&1 &
 ```
-Key thing to check: does T5YIFR improve BA 2022 specifically (H=126 R²=0.008 in v1 — structural inflation year, exactly what T5YIFR targets)?
 
-### 3. RESTORE + RUN — Full 30-ticker prod backtest
-- Set config.py tickers to full 30-ticker universe
-- Wipe results/ directory (stale files from test runs)
-- Run on new 5950X (~2.5hr estimate)
-- After run: execute both analysis scripts
+### 2. AFTER FULL RUN — Feature analysis
+Compare XGB importance vs Lasso inclusion frequency across all tickers. Disagreements between models are most informative. Do NOT change features until this analysis is done on the full corpus.
 
-### 3. BUILD — Supabase write layer (pipeline/db.py)
-SWEs are blocked. Tables needed:
-- `backtest_runs` — run metadata (timestamp, n_tickers, horizons, config)
-- `backtest_predictions` — per-ticker/horizon/date predictions (y_true, y_pred, vrp_wedge, skew)
-- `backtest_metrics` — summary stats (RMSE, MZ_alpha/beta/R2, QLIKE, event_capture)
+### 3. AFTER FULL RUN — IC demeaned
+Subtract per-ticker rolling predicted vol mean before cross-sectional ranking. Tests dynamic signal vs structural vol dispersion. Current raw IC=0.836 is dominated by structural component.
 
-Write after each ticker completes (not all at end). Use psycopg2 with upsert (ON CONFLICT DO UPDATE).
+### 4. AFTER FULL RUN — MZ calibration overlay
+Rolling OOS alpha+beta correction per ticker per horizon. Eliminates H=63/126 drift (beta 1.1-1.4) cleanly as post-processing, no model changes needed.
 
-### 4. DEFERRED — v0.3+
-- SVI interpolated IV surface (replace raw iv_atm_30d with smile-interpolated)
-- Markov regime switching overlay
-- Dynamic sector betas
-- IC / quintile spread calculation
-- Point-in-time dynamic universe (volume threshold)
-
----
-
-## Hardware Note
-
-Leo upgrading to **Ryzen 9 5950X** (16c/32t, Zen 3). Estimated full 30-ticker runtime: ~2.5hrs vs ~14hrs on current i7-7700.
-
-When installed: add to config.py xgb_params for GTX 1070 acceleration (~15% additional gain):
-```python
-"device": "cuda",
-"tree_method": "hist",
-```
+### Deferred (valid post-full-corpus)
+- Exponential sample weighting — infrastructure exists (exp_weight_lambda in ModelConfig), tested, disabled. lambda=0.0006 worsened JPM H=126. Revisit if full-corpus H=126 beta drift is worse than v4.
+- SHAP cross-ticker analysis — feature importance heatmap by sector
+- MZ calibration overlay — rolling OLS post-hoc correction
+- Supabase write layer — SWEs handling
+- SVI interpolated IV surface, Markov regime switching — long-term deferred
 
 ---
 
@@ -536,3 +526,4 @@ When installed: add to config.py xgb_params for GTX 1070 acceleration (~15% addi
 | 2026-04-06 (Leo) | New PC online (5950X + Arctic Liquid Freezer III 280). RF restored to n_jobs=-1. Speed benchmarking: true baseline with 2011 data = 31 min/ticker (not 13 min — that was old 2014-start cache). n_alphas parameter deprecated in sklearn 1.7, silently ignored — fixed to alphas=20 (correct param). alphas=20 benchmark in progress at session end, clean isolated run needed for final timing. CPU temps 80-81C at 100% load — healthy, install confirmed good. LassoCV n_jobs=1 and alphas=20 in place. Next: complete alphas=20 isolated benchmark, then implement parallel ticker processing if -30% target not met. |
 | 2026-04-09 (Leo, claude-sonnet-4-6) | **v5: Two critical feature bugs found + fixed. Full corpus invalid. 6-ticker validation.** Bug 1 (data_loader.py:604): store.load("ohlcv", tickers=config.tickers) didn't include ETFs — silently dropped all 12 ETF ret_*/mom21_* features + broke beta_spy/sector coupling (no SPY in closes). Fix: config.tickers + config.all_factor_etfs. Bug 2 (features.py:122): "mom21_" missing from include_prefixes in get_predictor_columns() — momentum features computed but never passed to models. Net: entire 94-ticker corpus ran with ~34 effective features instead of 46. ETF momentum (v4's entire rationale) was never used. Also dropped tech_ATR (Spearman=0.949 with rv_21d). Leo's laptop session added VIF exclusions to get_predictor_columns(): rv_5d, rv_10d, rv_63d, iv_atm_30d, vol_trend, put_call_abs_skew_30d. Feature count now 46, min_train=920. Also: IC analysis showed IC=0.836 but flagged as structural (characteristic vol ordering, not dynamic). Demeaned IC still needed. 6-ticker v5 validation (AAPL/JPM/XOM/NVDA/IBM/PEP): JPM best result (H=126 beta 1.431→1.253, H=21 1.082→0.992). XOM canary held (0.892→0.879). NVDA H=21 regressed (0.935→0.776, likely min_train effect). IBM/PEP results stale — not re-run. **CORPUS IS INVALID. Full 94-ticker re-run required before any further analytics.** Reset config.py tickers to full universe. |
 | 2026-04-06 (Caleb, claude-opus-4-6) | **Major pipeline overhaul — parallelism, GPU, output standardization.** New dev (Caleb Solomon) on WSL machine with NVIDIA GPU. Changes: (1) LassoCV n_jobs=1→-1 (parallelize CV folds); (2) Ticker-level multiprocessing via ProcessPoolExecutor in backtest.py with configurable parallel_tickers=4 in BacktestConfig; (3) XGBoost GPU acceleration — device="cuda", tree_method="hist" with auto-fallback to CPU if no GPU; (4) Vectorized prediction loop — predict_curve_batch() replaces row-by-row predict_curve(); (5) New output.py module producing frontend-aligned JSON: per-ticker {TICKER}_Payload.json (meta, vol_forecast_series, calibration), market_overview.json (regime, sector risk, treemap, GARCH calibration, sector history), metrics_summary.json; (6) Fixed .env to use relative path (data_cache) for cross-platform compat; (7) Fixed .gitignore merge conflicts, added model/.env and data_cache/ to gitignore; (8) Fixed NaN crash in output.py (iv_atm_30d NaN at end of sample). Data rebuilt from WRDS with all 6 FRED series. **3-ticker validation run (JPM/AAPL/XOM, 36 features, 120 WF steps):** H=21 portfolio avg beta=1.054, R²=0.338. XOM best (R²=0.437, beta=0.892). Timing: ~73min wall for 3 tickers parallel (XGB 56%, RF 37%, LassoCV 7%). GPU working but small dataset limits gains. Created batch_backtest.py for overnight runs of untested tickers. |
+| 2026-04-10 (Leo, claude-sonnet-4-6) | **v6: Stock split fix + GARCH feature + diagnostics.** (1) Split fix: _pivot_ohlcv() reconstructs adj_closes from CRSP ret column. log(prc/prc.shift(1)) was contaminated — AMZN June 2022 20:1 split injected ewma_vol=1425%. Now uses adj_closes for ewma_vol, RSI, MACD, ret_TARGET, factor returns. GK RV still uses raw H/L/O/C (intraday ratios, split-safe). (2) garch_cond_vol as feature: GARCH(1,1)-skewt conditional vol fit once per ticker on adj_returns. cond_vol_series() added to GarchForecaster. Fed as 43rd predictor. (3) Lasso tracking: lasso_tracking_{TICKER}.csv per ticker. (4) XGB importance tracking: xgb_importance_{TICKER}.csv per ticker (added end of session). (5) rv_21d re-added: was excluded via VIF=10.6 but is the strongest H=21 predictor — Lasso handles collinearity. 44 features now. (6) Date format fix: pd.to_datetime(format="mixed") to handle mixed string/timestamp[ns] parquet files. Data cache fix: JPM/XOM were missing from data_cache/ohlcv/ (env uses data_cache not D:/Tarasque_DB) — copied from D: drive. **v6 sample results (6 tickers):** Split fix validated — AMZN H=63 beta 0.204→0.942. BA H=21 beta 0.834→1.018. All canaries held. R² strong: XOM H=21=0.512, AMZN H=126=0.566. garch_cond_vol weakly selected by Lasso (rank 28/43 at H=63, near-zero at H=21, collinear with ewma_vol). Feature hierarchy: H=21 dominated by vol/IV features; H=126 dominated by macro (yield curve slope #1). All v6 code changes uncommitted. config.py still on 6-ticker sample — reset before full run. |

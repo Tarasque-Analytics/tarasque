@@ -43,15 +43,14 @@ class DataConfig:
     end_date: str = "today"  # resolved at query time
 
     # ── Target universe ──────────────────────────────────────────────────
-    # 30 tickers across all 11 GICS sectors; all have dense OptionMetrics
-    # vsurfd coverage.  Original 10 kept first for continuity.
+    # ── v6 sample run (split-fix + GARCH feature validation) ────────────
+    # 6 tickers chosen for diagnostic coverage:
+    #   AAPL, AMZN — split-fix validation (multiple large splits)
+    #   JPM, XOM   — stable v5 canaries for baseline comparison
+    #   BA         — best v5 beta improvement; confirm it holds with GARCH
+    #   D          — worst v5 regression; GARCH mean-reversion should help
     tickers: List[str] = field(default_factory=lambda: [
-        "AAPL",   # Tech — mild underforecast (H=21 beta=1.212)
-        "JPM",    # Financials — H=126 beta=1.431, worst in sector
-        "XOM",    # Energy — well-calibrated control (H=21 beta=0.892)
-        "NVDA",   # Tech — high vol, AI-boom regime sensitivity
-        "IBM",    # Tech — consistent underforecast all horizons (beta 1.26-1.37)
-        "PEP",    # Staples — worst H=126 beta in sector (1.573)
+        "AAPL", "AMZN", "JPM", "XOM", "BA", "D",
     ])
 
     # ── Factor ETFs ──────────────────────────────────────────────────────
@@ -113,17 +112,22 @@ class ModelConfig:
         "gamma": 0.1,
         "colsample_bytree": 0.8,
         "reg_lambda": 1.0,
-        "n_jobs": -1,
+        "n_jobs": 2,            # CUDA does the work; 2 CPU threads for coordination
         "device": "cuda",       # GPU if available; auto-fallback in models.py
         "tree_method": "hist",  # Required for GPU mode
     })
 
     # ── Random Forest ─────────────────────────────────────────────────────
+    # 5950X (32 logical): parallel_tickers=8 × n_jobs=4 = 32 CPU threads total
     rf_params: Dict = field(default_factory=lambda: {
         "n_estimators": 100,
         "min_samples_leaf": 5,
-        "n_jobs": -1,
+        "n_jobs": 4,
     })
+
+    # ── LassoCV ──────────────────────────────────────────────────────────
+    # Matches rf_params n_jobs so total CPU threads stay bounded.
+    lasso_n_jobs: int = 4
 
     # ── GARCH ────────────────────────────────────────────────────────────
     garch_dist: str = "skewt"
@@ -145,8 +149,8 @@ class BacktestConfig:
     step_days: int = 25                  # retrain every ~1.25mo
 
     # Ticker-level parallelism: number of tickers to process simultaneously.
-    # Set to 1 for sequential (original behavior). On a 16-core machine,
-    # 4 is a good default — leaves cores for model-internal n_jobs=-1.
+    # 5950X (32 logical) + GTX 1070: 4 workers keeps raw_data memory copies within 32GB.
+    # 4 workers × (RF n_jobs=4 + Lasso n_jobs=4) = 32 CPU threads. XGB uses GPU.
     parallel_tickers: int = 4
 
     metrics: List[str] = field(default_factory=lambda: [

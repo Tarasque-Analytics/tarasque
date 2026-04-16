@@ -15,8 +15,15 @@ from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LassoCV
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor as SklearnRF
 import xgboost as xgb
+
+# Try GPU-accelerated RF from cuML (RAPIDS); falls back to sklearn.
+try:
+    from cuml.ensemble import RandomForestRegressor as CumlRF
+    _CUML_AVAILABLE = True
+except ImportError:
+    _CUML_AVAILABLE = False
 
 from .config import ModelConfig
 
@@ -122,6 +129,8 @@ class EnsembleVolModel:
         # Lasso tracking: list of {horizon, stage, fold, alpha, coefs}
         # Populated during train_wfa(); consumed by backtest.py for CSV export.
         self.lasso_log: List[dict] = []
+        # Per-model RMSE from CV (for weight diagnostics)
+        self.cv_rmse: Dict[int, Dict[str, float]] = {}
 
         for h in self.horizons:
             self.models[h] = self._init_models()
@@ -130,6 +139,7 @@ class EnsembleVolModel:
 
     _gpu_checked: bool = False
     _gpu_available: bool = False
+    _cuml_rf: bool = False  # True if using cuML GPU-accelerated RF
 
     def _init_models(self) -> Dict[str, object]:
         xgb_params = dict(self.config.xgb_params)
@@ -147,12 +157,31 @@ class EnsembleVolModel:
                 self.__class__._gpu_available = False
                 print("[MODEL] CUDA not available -- XGBoost using CPU")
 
+            # cuML RF GPU check (one-time, paired with XGB GPU check)
+            if _CUML_AVAILABLE:
+                try:
+                    _test_rf = CumlRF(n_estimators=2)
+                    _test_rf.fit(np.array([[0.0, 1.0]], dtype=np.float32),
+                                 np.array([0.0], dtype=np.float32))
+                    self.__class__._cuml_rf = True
+                    print("[MODEL] cuML GPU Random Forest enabled")
+                except Exception as e:
+                    self.__class__._cuml_rf = False
+                    print(f"[MODEL] cuML RF not available ({e}) -- using sklearn RF")
+
         if xgb_params.get("device") == "cuda" and not self.__class__._gpu_available:
             xgb_params["device"] = "cpu"
 
+        # RF: use cuML GPU version if available, else sklearn CPU
+        if self.__class__._cuml_rf:
+            rf_params = {k: v for k, v in self.config.rf_params.items() if k != "n_jobs"}
+            rf = CumlRF(**rf_params)
+        else:
+            rf = SklearnRF(**self.config.rf_params)
+
         return {
             "XGB": xgb.XGBRegressor(**xgb_params),
-            "RF": RandomForestRegressor(**self.config.rf_params),
+            "RF": rf,
             "LassoCV": LassoCV(
                 cv=TimeSeriesSplit(n_splits=3), max_iter=10000,
                 n_jobs=getattr(self.config, "lasso_n_jobs", -1),
@@ -238,7 +267,9 @@ class EnsembleVolModel:
 
                 for name in model_names:
                     _t = time.perf_counter()
-                    if fold_sample_weights is not None and name in ("XGB", "RF"):
+                    # cuML RF doesn't support sample_weight; XGB always does
+                    sw_ok = name == "XGB" or (name == "RF" and not self.__class__._cuml_rf)
+                    if fold_sample_weights is not None and sw_ok:
                         self.models[h][name].fit(X_tr_s, y_tr, sample_weight=fold_sample_weights)
                     else:
                         self.models[h][name].fit(X_tr_s, y_tr)
@@ -258,6 +289,7 @@ class EnsembleVolModel:
 
             # 3. INVERSE-RMSE WEIGHTING (backtest :430-434)
             avg_rmse = {n: np.mean(e) for n, e in errors.items()}
+            self.cv_rmse[h] = dict(avg_rmse)
             inv_sum = sum(1.0 / v for v in avg_rmse.values() if v > 0)
 
             raw_weights = {}
@@ -281,7 +313,8 @@ class EnsembleVolModel:
 
             # 4. FINAL FIT on fully scaled data (backtest :437-440)
             for name in model_names:
-                if final_sample_weights is not None and name in ("XGB", "RF"):
+                sw_ok = name == "XGB" or (name == "RF" and not self.__class__._cuml_rf)
+                if final_sample_weights is not None and sw_ok:
                     self.models[h][name].fit(X_final_s, y, sample_weight=final_sample_weights)
                 else:
                     self.models[h][name].fit(X_final_s, y)
@@ -350,6 +383,38 @@ class EnsembleVolModel:
             )
             curves[h] = np.exp(np.clip(blended_log, -5, 5))
         return curves
+
+    def predict_curve_batch_detailed(
+        self, features: pd.DataFrame,
+    ) -> Tuple[Dict[int, np.ndarray], Dict[int, Dict[str, np.ndarray]]]:
+        """
+        Batch prediction returning both blended and per-model predictions.
+
+        Returns
+        -------
+        blended : {horizon: array of blended vol forecasts}
+        per_model : {horizon: {model_name: array of vol forecasts}}
+        """
+        feat_s = self.final_scaler.transform(features)
+        feat_df = pd.DataFrame(feat_s, columns=features.columns)
+
+        blended: Dict[int, np.ndarray] = {}
+        per_model: Dict[int, Dict[str, np.ndarray]] = {}
+
+        for h in self.horizons:
+            model_preds = {}
+            for name in self.weights[h]:
+                log_preds = np.clip(self.models[h][name].predict(feat_df), -5, 5)
+                model_preds[name] = np.exp(log_preds)
+
+            blended_log = sum(
+                np.log(np.clip(model_preds[name], 1e-8, None)) * self.weights[h][name]
+                for name in self.weights[h]
+            )
+            blended[h] = np.exp(np.clip(blended_log, -5, 5))
+            per_model[h] = model_preds
+
+        return blended, per_model
 
     # ── SHAP Explainability (backtest :469-514) ───────────────────────
 

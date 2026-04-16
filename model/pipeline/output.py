@@ -132,9 +132,10 @@ def write_ticker_payload(
             current = vrp_series.iloc[-1]
             vrp_pct_1y = float((trailing < current).mean())
 
-    # Ensemble weights from the shortest horizon
-    shortest_h = min(predictions.keys()) if predictions else 21
-    ens_weights = weights.get(shortest_h, {})
+    # Ensemble weights per horizon (e.g. {"H21": {...}, "H63": {...}, "H126": {...}})
+    ens_weights = {
+        f"H{h}": w for h, w in sorted(weights.items())
+    }
 
     # Risk tier
     rv_21_forecast = forecast_rv.get("21", garch_21d)

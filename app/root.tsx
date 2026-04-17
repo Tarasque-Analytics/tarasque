@@ -1,10 +1,4 @@
-import {
-  Links,
-  Meta,
-  Outlet,
-  Scripts,
-  ScrollRestoration,
-} from "react-router";
+import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
 import { useNavigate } from "react-router";
 import { useEffect } from "react";
 import { supabase } from "./supabaseClient";
@@ -52,13 +46,11 @@ export default function App() {
       if (event === "SIGNED_OUT") {
         navigate("/login");
       }
-});
-return () => {
-  data.subscription.unsubscribe();
-};
-}, [navigate]);
-
-
+    });
+    return () => {
+      data.subscription.unsubscribe();
+    };
+  }, [navigate]);
 
   return <Outlet />;
 }

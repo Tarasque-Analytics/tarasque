@@ -15,33 +15,28 @@ export default function ProtectedLayout() {
   const [isLoggedin, setIsLoggedin] = useState(false);
   // temporary condition to test protected routes, replace with actual auth check
   // TODO: add auth check here and redirect to login if not authenticated
-  useEffect (() => { 
+  useEffect(() => {
     const checkAuth = async () => {
-    const { data, error } = await supabase.auth.getUser();
-    if (error || !data.user) {
-    //   // Redirect to login page if not authenticated
-    //  navigate("/login");
-      console.log("User not authenticated, redirecting to login...");
-      setIsLoggedin(false);
-      navigate('/login');
-    }
-    else {
-      console.log("User authenticated");  
-      setIsLoggedin(true);
-    }
-    setLoading(false);
-  }
-  checkAuth();
-}, []);
-  
+      const { data, error } = await supabase.auth.getUser();
+      if (error || !data.user) {
+        //   // Redirect to login page if not authenticated
+        //  navigate("/login");
+        console.log("User not authenticated, redirecting to login...");
+        setIsLoggedin(false);
+        navigate("/login");
+      } else {
+        console.log("User authenticated");
+        setIsLoggedin(true);
+      }
+      setLoading(false);
+    };
+    checkAuth();
+  }, []);
 
-
-        return (
+  return (
     <div className="protected-layout">
       <Navbar />
       <Outlet />
     </div>
   );
-    
-  }
-
+}

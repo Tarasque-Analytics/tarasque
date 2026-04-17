@@ -16,7 +16,7 @@ import { useState } from "react";
 
 // left corner logo, centered company title, 3/4ths-centered searchbar, right corner profile icon
 export default function Navbar() {
-    const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false);
   const logout = async () => {
     const { error } = await supabase.auth.signOut();
   };
@@ -35,7 +35,6 @@ export default function Navbar() {
         <img src={VolarTitle} alt="Volarbear Title" className="h-12" />
       </div>
       <div className="flex items-center col-span-5 justify-end h-12">
-
         {/* temporary logout button for peace of mind, move elsewhere */}
         <button
           onClick={logout}

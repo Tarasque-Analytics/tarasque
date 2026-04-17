@@ -26,7 +26,7 @@ export default function UserIcon() {
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         aria-label="Open user menu"
-        className="bg-white flex h-12 items-center justify-center"
+        className="bg-white flex h-12 items-center justify-center cursor-pointer"
       >
         <img src={Icon} alt="User Icon" className="bg-white flex h-12" />
       </button>
@@ -38,7 +38,7 @@ export default function UserIcon() {
           <button
             type="button"
             onClick={logout}
-            className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition-colors w-full"
+            className="cursor-pointer bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition-colors w-full"
           >
             Logout
           </button>

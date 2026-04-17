@@ -1,10 +1,7 @@
-import {
-  Links,
-  Meta,
-  Outlet,
-  Scripts,
-  ScrollRestoration,
-} from "react-router";
+import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
+import { useNavigate } from "react-router";
+import { useEffect } from "react";
+import { supabase } from "./supabaseClient";
 
 import type { Route } from "./+types/root";
 import "./app.css";
@@ -43,6 +40,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT") {
+        navigate("/login");
+      }
+    });
+    return () => {
+      data.subscription.unsubscribe();
+    };
+  }, [navigate]);
+
   return <Outlet />;
 }
 

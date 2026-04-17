@@ -1,7 +1,9 @@
-import { Link } from "react-router";
+import { Link, Navigate } from "react-router";
 import { useState, useEffect } from "react";
-
+import { supabase } from "../supabaseClient";
+import { useNavigate } from "react-router";
 export default function Register() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -12,18 +14,24 @@ export default function Register() {
   const [hasSpecialChar, setHasSpecialChar] = useState(false);
   const [emailError, setEmailError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     console.log("Register attempt:", { email, password });
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+    if (error) {
+      console.error("Registration error:", error);
+    }
     setIsLoading(false);
+    navigate("/login");
   };
 
   useEffect(() => {
     const strengthOk = checkPasswordStrength(password);
-    setPasswordConfirmed(
-      password !== "" && password === reenterPassword && strengthOk,
-    );
+    setPasswordConfirmed(password !== "" && password === reenterPassword && strengthOk);
   }, [password, reenterPassword]);
 
   function validateEmail(em: string) {
@@ -41,8 +49,7 @@ export default function Register() {
       hasLower = hasLower || (char >= "a" && char <= "z");
       hasCapital = hasCapital || (char >= "A" && char <= "Z");
       hasNumber = hasNumber || (char >= "0" && char <= "9");
-      hasSpecial =
-        hasSpecial || "!@#$%^&*()_+-=[]{}|;':\"\\,.<>/?".includes(char);
+      hasSpecial = hasSpecial || "!@#$%^&*()_+-=[]{}|;':\"\\,.<>/?".includes(char);
     }
 
     setHasUpperLowerCase(hasCapital && hasLower);
@@ -59,9 +66,7 @@ export default function Register() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
             <input
               type="email"
               placeholder="Enter your email"
@@ -71,23 +76,17 @@ export default function Register() {
                 const v = e.target.value;
                 setEmail(v);
                 setEmailError(
-                  v === "" || validateEmail(v)
-                    ? ""
-                    : "Please enter a valid email address.",
+                  v === "" || validateEmail(v) ? "" : "Please enter a valid email address.",
                 );
               }}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
-            {emailError ? (
-              <p className="text-xs text-red-500 mt-1">{emailError}</p>
-            ) : null}
+            {emailError ? <p className="text-xs text-red-500 mt-1">{emailError}</p> : null}
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Password
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
             <input
               type="password"
               placeholder="Enter your password"
@@ -131,9 +130,7 @@ export default function Register() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Confirm Password
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
             <input
               type="password"
               placeholder="Confirm your password"
@@ -147,9 +144,7 @@ export default function Register() {
               password === reenterPassword ? (
                 <p className="text-xs text-green-600 mt-1">Passwords match</p>
               ) : (
-                <p className="text-xs text-red-500 mt-1">
-                  Passwords do not match
-                </p>
+                <p className="text-xs text-red-500 mt-1">Passwords do not match</p>
               )
             ) : null}
           </div>

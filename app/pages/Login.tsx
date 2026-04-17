@@ -1,20 +1,27 @@
 import React, { useState } from "react";
 import { supabase } from "../supabaseClient";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 export default function Login() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("user@example.com");
-  const [password, setPassword] = useState("password123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
     setIsLoading(true);
-    // Handle login logic here
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    
+    const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
     setIsLoading(false);
 
-    // Temporary? maybe? Should work assuming protectedlayout code works.
+    if (authError) {
+      setError("Incorrect email or password");
+      return;
+    }
+
+    // Login successful, redirect to home
     navigate("/dashboard");
   };
 
@@ -23,11 +30,15 @@ export default function Login() {
       <div className="bg-white p-8 rounded-lg shadow-lg w-96">
         <h1 className="text-2xl font-bold text-center mb-6">Login</h1>
 
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
             <input
               type="email"
               placeholder="Enter your email"
@@ -39,9 +50,7 @@ export default function Login() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Password
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
             <input
               type="password"
               placeholder="Enter your password"
@@ -59,6 +68,10 @@ export default function Login() {
           >
             {isLoading ? "Logging in..." : "Login"}
           </button>
+
+          <Link to="/Register" className="text-sm text-blue-500 hover:underline">
+            Don't have an account yet? Register here.
+          </Link>
         </form>
       </div>
     </div>

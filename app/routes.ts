@@ -10,10 +10,8 @@ export default [
   index("./routes/navigation.tsx"),
 
   // Auth routes
-  layout("./layouts/AuthLayout.tsx", [
-    route("login", "./routes/login.tsx"),
-    route("register", "./routes/register.tsx"),
-  ]),
+  route("login", "./routes/login.tsx"),
+  route("register", "./routes/register.tsx"),
 
   // Protected routes (auth req)
   layout("./layouts/ProtectedLayout.tsx", [

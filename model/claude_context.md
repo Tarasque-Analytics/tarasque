@@ -766,3 +766,91 @@ After corpus run + post-processing:
 | 2026-04-29 (Leo, claude-opus-4-6) | **Tier 0 audit sweep + Step A decomposition -- step_days=63 confirmed as sole cause of v8 R2 regression.** (1) **TS inversion fix (bug #28)**: added second H21-H63 pass in mz_overlay.py enforce_term_structure() after H63-H126 enforcement. Inversions 70.4%->51.1%, still above <10% target -- needs isotonic regression replacement. (2) **Coverage q15 calibration (coverage_check.py)**: per-ticker scalar offset to bring coverage to 0.85. All 91/91 tickers hit target. Average delta ~0.01 (1% ann vol). Outliers: TSLA/NFLX/AMD/CRM. Output: q15_coverage_offsets.csv. (3) **Signal strength full 91-ticker corpus**: pooled lift 3.45x at P80+ (248k obs). Replaces 3-ticker "5.4x" claim. Top: AMGN 60x, BA 31x, BMY 25x, SLB 15x, XOM 14x. Weak: NFLX 0.39x, SCHW 0.83x. (4) **VRP return conditional full corpus**: confirmed at scale. Hi-ret + hi-VRP = +6.8%/+7.6% fwd vol (5d/21d). Q1 median VRP=0.062 vs Q5=0.035. (5) **Unicode fix (bug #27)**: arrow chars in vrp_return_conditional.py crashed cp1252. (6) **MZ overlay re-run** with TS fix. (7) **Step A decomposition -- DEFINITIVE**: 6-ticker canary (AAPL/JPM/XOM/BA/AMZN/NVDA) with step_days=25 (current config) vs v8 step_days=63. **All 18/18 ticker-horizon combinations improved.** H=21 R2 0.279->0.391 (+0.112), beta 0.863->0.995 (near-perfect). H=63 R2 0.260->0.406, H=126 0.295->0.467. R2 exceeded v6 levels. Ensemble weights were NOT hardcoded (audit doc was wrong -- 0.33 was payload placeholder, actual predictions use inverse-RMSE from train_wfa()). step_days=25 already in config.py. **v9 = v8 + step_days=25, no architecture changes needed.** (8) Second 6-ticker smoke test (PG/GOOGL/CVX/C/NFLX/NEE) launched overnight. |
 | 2026-04-30 (Leo, claude-opus-4-6) | **v10 feature build + AAPL canary + deployment planning.** (1) **OI data pipeline built**: fetch_oi_25delta() in data_loader.py queries opprcd{YEAR} tables (NOT vsurfd -- audit plan was wrong about vsurfd having open_interest). SQL aggregates SUM(open_interest) and OI-weighted IV per (secid, date, cp_flag) with filters |delta| 0.20-0.30, DTE 20-40. Fixed SECID duplication bug in merge (drop_duplicates on secid before merge). AAPL test pull: 7,068 rows, 2011-2025. Saved to oi_25delta parquet. (2) **CPI/NFP calendar added to utils.py**: CPI_DATES (156 dates, ~13th of month, nearest weekday) and NFP_DATES (156 dates, first Friday). days_to_next_cpi() and days_to_next_nfp() functions. Programmatically generated 2014-2026, +/-2 day accuracy is negligible for 1/(days+1) gravity. (3) **5 new features in features.py**: event_cpi_gravity, event_nfp_gravity (in _add_event_features), oi_put_call_ratio_25d, fear_intensity_25d (skew x log(OI ratio)), oi_hedge_pressure_chg_5d (in new _add_oi_features method). get_predictor_columns updated with "oi_" and "fear_" prefixes. build() updated with step 9b for OI features. 50->55 total predictors. (4) **AAPL v10 canary**: neutral result -- H21 R2 +0.004, H63 +0.002, H126 -0.008. Expected for liquid mega-cap where IV skew already captures most OI signal. ElasticNet correctly shrinks new features near zero when unhelpful. No overfitting damage. (5) **Deployment plan formalized**: v9 is the deployment model (12-ticker validated). v10 is research-stage. Four-phase plan: (Phase 1) fix TS enforcement to isotonic + wire coverage offsets in mz_overlay.py, (Phase 2) full v9 91-ticker corpus run, (Phase 3) apply mz_overlay post-processing, (Phase 4) validate and deploy. Key insight: things that would embarrass are presentation-layer (inverted TS, systematic underprediction, aggressive vol floor), not model math. All fixable without retraining. |
 | 2026-04-11 to 2026-04-16 (Leo, claude-sonnet-4-6) | **v6 full corpus run, post-hoc audit, MZ overlay, benchmark comparison, OI/pinball discussion.** (1) **Full 97-ticker corpus run**: two-pass overnight via batch_backtest.py. First pass: 48 tickers, 17.8 hours (AAPL→WMT). Second pass: 49 remaining tickers, 13.6 hours. Both passes via ProcessPoolExecutor parallel_tickers=4. 291 prediction files generated (97 tickers × 3 horizons). (2) **Post-hoc validity audit (audit.py)**: 9-test suite run on full corpus. Key findings: 97/97 tickers beat naive persistence at H63/H126 (DM test); H21 R²=0.374, H63=0.319, H126=0.458 corpus mean; EW MZ betas 0.97-0.98 in current regime (COVID dominates flat OLS making it look 24% calibrated — EW correct); tail asymmetry -0.12 systematic underprediction of severe events (structural rolling-window lag, not worth patching separately); 64.8% term structure inversion rate pre-overlay (calibration drift artifact not real inversions). (3) **backtest_results.csv rebuild**: batch runner overwrites on each run — only had WMT. Rebuilt from 291 individual prediction files using rsplit('_H', 1) to correctly parse HD/HON names. 291 rows, all metrics recomputed. (4) **MZ overlay (mz_overlay.py)**: EW MZ calibration (lambda=0.003) + soft isotonic term structure enforcement (tol=5%). Beta cap at 2.0 prevents extreme corrections (VZ H126 raw=2.619, capped to 2.0). Write-back used merge-based approach to fix numpy.datetime64 vs pd.Timestamp dict-key mismatch bug. TS inversions reduced from 64.8% to 55.6%. Secondary violation bug identified (sequential H21-H63 then H63-H126 can create new H21>H63 inversions) — not yet fixed. (5) **Benchmark comparison (benchmark_models.py)**: HAR-RV (Corsi 2009) + GARCH(1,1) walk-forward vs ensemble. Ensemble lift over HAR: +0.135/+0.200/+0.432 mean ΔR² at H21/63/126. GARCH negative R² at all horizons (mean -0.33 to -1.20) — multi-step GARCH converges to unconditional mean from high-vol history, poor beyond daily. HAR gets 60% of ensemble signal at H21, collapses at longer horizons; ensemble IV/macro/event features provide the gap. (6) **OI differential discussion**: 25δ put vs call open interest as positioning signal (quantity vs price of protection). Mechanism: large put OI = market makers short gamma = vol amplification. vsurfd has no OI column — needs separate WRDS OptionMetrics pull before access expires. (7) **Pinball loss discussion**: tau=0.85/0.90 quantile regression to structurally address -0.12 tail underprediction. XGBoost supports `objective="reg:quantileerror"`. Would serve as "risk upper bound" signal alongside point forecast. (8) **VZ data quality**: H126 EW beta=2.619, calibrated vol 124% annualized — likely Frontier Communications 2024 acquisition artifact. Added EW_BETA_CAP=2.0 guard but needs investigation before production inclusion. |
+
+---
+
+## 20-Day Cadence Cutover (in-flight, runs Fri 2026-05-01)
+
+**Status:** code edits done Thu 2026-04-30. Data refresh + backtest + forecast scheduled for Fri 2026-05-01.
+
+**Why:** the pipeline used `step_days=25` for backtests and had no live-forecast persistence layer. Production needs a 4-week (20-BDay) retrain with daily inference between cycles. Database team also needs a clean per-ticker CSV with all horizons stacked + cleaned float precision (source data resolves to ~6 decimals; predictions were emitting 16-decimal repr with FP-subtraction artifacts on `put_call_skew_30d`).
+
+### What was changed Thu 2026-04-30 — code only
+
+All edits in `model/pipeline/`. Verified by `python3 -m model.pipeline --help`, feature_decay CLI parsing, save/load round-trip, and rounding helper smoke tests.
+
+| File | Change |
+|---|---|
+| `config.py` | `BacktestConfig.step_days` 25 → 20 |
+| `utils.py` | new `DECIMAL_PRECISION` dict (~105 keys), `round_for_output(df, schema=)`, `round_scalar`, `round_json_dict(payload, schema=)` |
+| `models.py` | `EnsembleVolModel.save(path)` / `.load(path)` (joblib); same on `QuantileVolModel`. Persists models, weights, predictors, final_scaler, config |
+| `run.py` | new `--mode forecast` + `--retrain` flag. Forecast mode calls `append_recent_data`, builds features, retrains-or-loads, writes `pipeline/results/forecasts/forecast_{run_date}.csv` (cols: ticker, cycle_start_date, window_end_date, forecast_h21/63/126). Aligns predictor columns to loaded model when retraining is skipped. Uses pandas BDay(20) for window_end_date |
+| `backtest.py` | per-ticker `predictions_{TICKER}.csv` long-form (all horizons stacked) replaces per-horizon files. New `lasso_detailed_{ticker}.csv` (raw per-step coefs) and `xgb_importance_steps_{ticker}.csv` (per-step XGB feature importance). Rounding applied at every CSV write. `_run_sector_sweep` and `_generate_json_output` updated to read per-ticker files |
+| `output.py` | `round_json_dict` applied to ticker payloads, market overview, metrics summary |
+| `analysis/feature_decay.py` | NEW (~330 LOC). Inputs: `lasso_detailed_*.csv`, `xgb_importance_steps_*.csv`. Outputs: `feature_decay_{ticker}.csv` + `feature_decay_summary.csv`. Metrics: rolling_inclusion_freq (8-step window), inclusion_drop_from_peak, sign_flip_rate, importance_slope (OLS) + p-value, decay_score [0,1] heuristic. CLI: `--ticker TICKER` or `--all` |
+| `analysis/audit.py` | loader `_load_all_predictions` rewritten to read `all_predictions.csv` (preferred) or per-ticker `predictions_*.csv` (fallback). Test 7 (vrp_nan_rate) loader updated to filter horizon in-memory. Rounding applied to 11 writes |
+| `analysis/mz_overlay.py` | loader rewritten for per-ticker schema. Rounding applied to 2 writes |
+| `analysis/benchmark_models.py` | loader rewritten. `STEP_DAYS` constant updated to 20. Rounding applied |
+| `analysis/{coverage_check,residual_analysis,vrp_analysis,hyperparam_search,signal_strength,vrp_return_conditional,overnight_runner}.py` | imports + rounding at writes; fallback loaders updated where they globbed `predictions_*_H*.csv` |
+
+**Schema for `predictions_{TICKER}.csv`** (database team handoff target, preferred col order):
+`date, y_true, y_pred, y_pred_q15, vrp_wedge, put_call_skew_30d, ticker, horizon`. Sorted by (horizon, date).
+
+**Aggregate `all_predictions.csv` is preserved** — still emitted by `_run_sector_sweep`, used by analysis scripts for cross-ticker work.
+
+### Runbook for Fri 2026-05-01
+
+In order. Do not skip steps.
+
+```
+python -m model.pipeline --mode refresh_data
+python -m model.pipeline --mode backtest --tickers AAPL
+python -m model.pipeline.analysis.feature_decay --ticker AAPL
+python -m model.pipeline --mode forecast --retrain --tickers AAPL
+```
+
+**Pre-checks before running:**
+- WRDS creds (`~/.pgpass` on Unix, `%APPDATA%/postgresql/pgpass.conf` on Windows). Falls back to FRED+yfinance+Alpaca if absent.
+- `.env` has `ALPACA_API_KEY`, `ALPACA_SECRET_KEY`, `FRED_API_KEY`.
+- Cache last seen at 2026-04-07 (24 days stale at run time).
+
+**Verification after each step:**
+
+1. **refresh_data:** `df['date'].max()` should print `2026-05-01`. Check via:
+   ```
+   python3 -c "from model.pipeline.data_loader import fetch_dataset; from model.pipeline.config import DataConfig; d = fetch_dataset(DataConfig()); print(d['ohlcv']['date'].max())"
+   ```
+
+2. **backtest:** `pipeline/results/predictions_AAPL.csv` exists, contains all 3 horizons stacked. `lasso_detailed_AAPL.csv` and `xgb_importance_steps_AAPL.csv` exist. Last `date` within 20 BDays of 2026-05-01. **Precision check** — all numeric columns should max 6 decimals (4 for bounded stats). No 16-decimal repr.
+
+3. **feature_decay:** `feature_decay_AAPL.csv` exists with per-(horizon × feature) decay metrics.
+
+4. **forecast --retrain:** `forecasts/AAPL_model_2026-05-01.joblib` exists. `forecasts/forecast_2026-05-01.csv` has `forecast_h21 > 0`, `cycle_start_date = 2026-05-01`, `window_end_date ≈ 2026-05-29`.
+
+**Daily refresh path (Mon 5/4 onward, no --retrain):**
+```
+python -m model.pipeline --mode forecast --tickers AAPL
+```
+Loads existing joblib, sub-minute runtime per ticker. Writes a fresh `forecast_{date}.csv`.
+
+### Pitfalls / things to remember
+
+- **Stale per-horizon files in `pipeline/results/`** — old `predictions_{TICKER}_H{h}.csv` from previous runs are still on disk. New code does not write them and does not read them; analysis scripts now read `all_predictions.csv` or `predictions_{TICKER}.csv`. Optional cleanup before tomorrow's run for tidiness; pipeline does not require it.
+- **Per-step XGB importance** is captured only on the first outer-horizon pass (`h == _first_h`) since `train_wfa()` fits all horizons internally — capturing on every outer pass would triple-count.
+- **`_run_forecast` predictor alignment** — when loading a persisted model, missing predictors are filled with 0 and a warning printed; column order is reordered to match `model.predictors`. If the warning prints for many features at daily refresh time, the feature pipeline diverged and a `--retrain` is warranted.
+- **Full 91-ticker corpus is NOT cleared to run yet.** Plan: AAPL handoff first, then scale up only after database team confirms schema acceptance. Full corpus wall-time ~14-16h on parallel_tickers=8.
+- **Automation is out of scope.** The two single-command entry points are scriptable; user invokes them by hand for the first cycle. Cron / GHA / Task Scheduler comes after one cycle runs cleanly.
+- **WRDS access expires mid-June 2026.** Out of scope for this initiative but worth flagging.
+
+### Sanity-check commands kept handy
+
+```bash
+# Confirm step_days
+python3 -c "from model.pipeline.config import BacktestConfig; print(BacktestConfig().step_days)"
+
+# Inspect prediction precision
+python3 -c "import pandas as pd; df = pd.read_csv('model/pipeline/results/predictions_AAPL.csv'); print(df.head()); [print(f'{c}: max {df[c].astype(str).str.split(chr(46)).str[1].fillna(chr(48)).str.len().max()} dec') for c in ['y_true','y_pred','y_pred_q15','vrp_wedge','put_call_skew_30d']]"
+
+# Round-trip model save/load (quick verify)
+python3 -c "from model.pipeline.models import EnsembleVolModel; print(hasattr(EnsembleVolModel, 'save'), hasattr(EnsembleVolModel, 'load'))"
+```

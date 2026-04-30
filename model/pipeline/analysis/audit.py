@@ -38,6 +38,8 @@ import pandas as pd
 from scipy import stats
 from sklearn.linear_model import LinearRegression
 
+from ..utils import DECIMAL_PRECISION, round_for_output
+
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 # ---------------------------------------------------------------------------
@@ -79,34 +81,46 @@ def _load_all_predictions(
     horizons: Optional[List[int]] = None,
     tickers: Optional[List[str]] = None,
 ) -> pd.DataFrame:
-    """Load all per-ticker prediction CSVs, parse ticker/horizon from filenames."""
-    frames = []
-    for f in sorted(results_dir.glob("predictions_*_H*.csv")):
-        stem = f.stem  # e.g. predictions_AAPL_H21
-        parts = stem.split("_")
-        if len(parts) < 3:
-            continue
-        ticker = parts[1]
-        try:
-            horizon = int(parts[2][1:])  # "H21" -> 21
-        except ValueError:
-            continue
-        if horizons and horizon not in horizons:
-            continue
-        if tickers and ticker not in tickers:
-            continue
-        df = pd.read_csv(f, parse_dates=["date"])
-        df["ticker"] = ticker
-        df["horizon"] = horizon
-        frames.append(df)
+    """
+    Load per-ticker prediction CSVs (long-form, all horizons stacked).
 
-    if not frames:
-        print(f"[AUDIT] No prediction files found in {results_dir}")
+    Prefer the consolidated all_predictions.csv when present; otherwise
+    concatenate predictions_{TICKER}.csv files. Filenames no longer encode
+    the horizon — that lives in the ``horizon`` column.
+    """
+    combined_path = results_dir / "all_predictions.csv"
+    if combined_path.exists():
+        df = pd.read_csv(combined_path, parse_dates=["date"])
+    else:
+        frames = []
+        for f in sorted(results_dir.glob("predictions_*.csv")):
+            if f.name == "all_predictions.csv":
+                continue
+            stem = f.stem  # e.g. predictions_AAPL
+            parts = stem.split("_", 1)
+            if len(parts) != 2 or parts[0] != "predictions":
+                continue
+            ticker = parts[1]
+            sub = pd.read_csv(f, parse_dates=["date"])
+            if "ticker" not in sub.columns:
+                sub["ticker"] = ticker
+            frames.append(sub)
+        if not frames:
+            print(f"[AUDIT] No prediction files found in {results_dir}")
+            sys.exit(1)
+        df = pd.concat(frames, ignore_index=True)
+
+    if "horizon" not in df.columns:
+        print(f"[AUDIT] Predictions are missing the 'horizon' column — "
+              f"please re-run the backtest with the current pipeline.")
         sys.exit(1)
 
-    df = pd.concat(frames, ignore_index=True)
+    if horizons:
+        df = df[df["horizon"].isin(horizons)]
+    if tickers:
+        df = df[df["ticker"].isin(tickers)]
+
     df = df.dropna(subset=["y_true", "y_pred"])
-    # Guard against zero/negative predictions
     df = df[(df["y_pred"] > 0) & (df["y_true"] > 0)]
     print(f"[AUDIT] Loaded {len(df):,} predictions  |  "
           f"{df['ticker'].nunique()} tickers  |  "
@@ -159,7 +173,7 @@ def test_mz_regression(df: pd.DataFrame, out_dir: Path) -> pd.DataFrame:
                 print(f"      {r['ticker']:6s}  beta={r['beta']:.3f} ({flag})  "
                       f"alpha={r['alpha']:.4f}  R²={r['r2']:.3f}")
 
-    result.to_csv(out_dir / "mz_regression.csv", index=False)
+    round_for_output(result, DECIMAL_PRECISION).to_csv(out_dir / "mz_regression.csv", index=False)
     print(f"\n  Saved → audit/mz_regression.csv")
     return result
 
@@ -249,7 +263,7 @@ def test_diebold_mariano(df: pd.DataFrame, out_dir: Path) -> pd.DataFrame:
                 print(f"      {r['ticker']:6s}  DM={r['dm_sq']:.2f}  "
                       f"model_rmse={r['model_rmse']:.4f}  naive={r['naive_rmse']:.4f}")
 
-    result.to_csv(out_dir / "diebold_mariano.csv", index=False)
+    round_for_output(result, DECIMAL_PRECISION).to_csv(out_dir / "diebold_mariano.csv", index=False)
     print(f"\n  Saved → audit/diebold_mariano.csv")
     return result
 
@@ -302,7 +316,7 @@ def test_tail_asymmetry(df: pd.DataFrame, out_dir: Path) -> pd.DataFrame:
             n_high = (ratio > 3.0).sum()
             print(f"\n  Tickers where top-10 RMSE > 3× middle-80 RMSE: {n_high}")
 
-    result.to_csv(out_dir / "tail_asymmetry.csv", index=False)
+    round_for_output(result, DECIMAL_PRECISION).to_csv(out_dir / "tail_asymmetry.csv", index=False)
     print(f"\n  Saved → audit/tail_asymmetry.csv")
     return result
 
@@ -356,10 +370,12 @@ def test_regime_bias(df: pd.DataFrame, out_dir: Path) -> pd.DataFrame:
 
     if ticker_rows:
         per_ticker = pd.DataFrame(ticker_rows)
-        per_ticker.to_csv(out_dir / "regime_bias_per_ticker_H21.csv", index=False)
+        round_for_output(per_ticker, DECIMAL_PRECISION).to_csv(
+            out_dir / "regime_bias_per_ticker_H21.csv", index=False,
+        )
         print(f"\n  Per-ticker H=21 regime bias → audit/regime_bias_per_ticker_H21.csv")
 
-    result.to_csv(out_dir / "regime_bias.csv", index=False)
+    round_for_output(result, DECIMAL_PRECISION).to_csv(out_dir / "regime_bias.csv", index=False)
     print(f"  Saved → audit/regime_bias.csv")
     return result
 
@@ -405,7 +421,7 @@ def test_vrp_quintile_rmse(df: pd.DataFrame, out_dir: Path) -> pd.DataFrame:
         print(f"\n  H={h}:")
         print(sub_h[["quintile", "n", "mean_abs_wedge", "rmse", "qlike", "mean_bias"]].to_string(index=False))
 
-    result.to_csv(out_dir / "vrp_quintile_rmse.csv", index=False)
+    round_for_output(result, DECIMAL_PRECISION).to_csv(out_dir / "vrp_quintile_rmse.csv", index=False)
     print(f"\n  Saved → audit/vrp_quintile_rmse.csv")
     return result
 
@@ -469,10 +485,10 @@ def test_lasso_stability(results_dir: Path, out_dir: Path) -> Optional[pd.DataFr
 
         # Correlation matrix
         corr_df = pd.DataFrame(corr_matrix, index=tickers, columns=tickers)
-        corr_df.to_csv(out_dir / f"lasso_rank_corr_H{horizon}.csv")
+        corr_df.round(4).to_csv(out_dir / f"lasso_rank_corr_H{horizon}.csv")
 
     result = pd.DataFrame(rows)
-    result.to_csv(out_dir / "lasso_stability.csv", index=False)
+    round_for_output(result, DECIMAL_PRECISION).to_csv(out_dir / "lasso_stability.csv", index=False)
     print(f"\n  Saved → audit/lasso_stability.csv + lasso_rank_corr_H*.csv")
     return result
 
@@ -485,12 +501,20 @@ def test_vrp_nan_rate(results_dir: Path, out_dir: Path) -> pd.DataFrame:
     """vrp_wedge NaN fraction per ticker — proxy for data pipeline completeness."""
     _section("TEST 7 · VRP Wedge NaN Rate (NaN Propagation Proxy)")
 
-    # Load raw H=21 files to get vrp_wedge NaN counts
+    # Load per-ticker prediction CSVs (long-form), filter to H=21 in-memory,
+    # then compute vrp_wedge NaN rate per ticker.
     rows = []
-    for f in sorted(results_dir.glob("predictions_*_H21.csv")):
-        parts = f.stem.split("_")
+    for f in sorted(results_dir.glob("predictions_*.csv")):
+        if f.name == "all_predictions.csv":
+            continue
+        stem = f.stem  # predictions_AAPL
+        parts = stem.split("_", 1)
+        if len(parts) != 2 or parts[0] != "predictions":
+            continue
         ticker = parts[1]
         df = pd.read_csv(f)
+        if "horizon" in df.columns:
+            df = df[df["horizon"] == 21]
         n = len(df)
         if "vrp_wedge" not in df.columns:
             nan_rate = 1.0
@@ -514,7 +538,7 @@ def test_vrp_nan_rate(results_dir: Path, out_dir: Path) -> pd.DataFrame:
     else:
         print("  All tickers have vrp_wedge NaN rate ≤ 5%")
 
-    result.to_csv(out_dir / "vrp_nan_rate.csv", index=False)
+    round_for_output(result, DECIMAL_PRECISION).to_csv(out_dir / "vrp_nan_rate.csv", index=False)
     print(f"\n  Saved → audit/vrp_nan_rate.csv")
     return result
 
@@ -576,7 +600,7 @@ def test_term_structure(df: pd.DataFrame, out_dir: Path) -> pd.DataFrame:
         print(f"\n  Tickers with >20% any-inversion:")
         print(high[["ticker", "n", "inv_21_63_rate", "inv_63_126_rate"]].to_string(index=False))
 
-    result.to_csv(out_dir / "term_structure.csv", index=False)
+    round_for_output(result, DECIMAL_PRECISION).to_csv(out_dir / "term_structure.csv", index=False)
     print(f"\n  Saved → audit/term_structure.csv")
     return result
 
@@ -652,7 +676,7 @@ def test_seam_analysis(df: pd.DataFrame, out_dir: Path,
     print(f"    ratio > 2.0 → visible model refit jumps at step boundaries")
     print(f"    ratio > 5.0 → severe discontinuities (investigate)")
 
-    result.to_csv(out_dir / "seam_analysis.csv", index=False)
+    round_for_output(result, DECIMAL_PRECISION).to_csv(out_dir / "seam_analysis.csv", index=False)
     print(f"\n  Saved → audit/seam_analysis.csv")
     return result
 

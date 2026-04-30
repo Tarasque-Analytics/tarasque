@@ -178,7 +178,7 @@ class BacktestConfig:
 
     window_type: str = "expanding"       # "expanding" or "rolling"
     rolling_window_days: int = 756       # 3 years if rolling
-    step_days: int = 25                  # retrain every ~5wk (production quality)
+    step_days: int = 20                  # 4 trading weeks; production retrain cadence
 
     # Ticker-level parallelism: number of tickers to process simultaneously.
     # 5950X (32 logical) + GTX 1070: 4 workers keeps raw_data memory copies within 32GB.

@@ -33,6 +33,8 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 
+from ..utils import DECIMAL_PRECISION, round_for_output
+
 warnings.filterwarnings("ignore")
 
 # ── path bootstrap ─────────────────────────────────────────────────────────────
@@ -306,7 +308,7 @@ def main():
         log_df = pd.DataFrame(trial_log).sort_values("objective")
         out_path = RESULTS_DIR / f"hyperparam_search_{args.ticker}.csv"
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        log_df.to_csv(out_path, index=False)
+        round_for_output(log_df, DECIMAL_PRECISION).to_csv(out_path, index=False)
         print(f"\n[SEARCH] Trial log saved -> {out_path}")
         print("\n  Top 5 trials:")
         print(log_df[["trial", "objective", "qlike", "mz_beta_dev"]].head(5).to_string(index=False))

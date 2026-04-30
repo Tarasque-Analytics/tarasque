@@ -33,6 +33,7 @@ if str(ROOT) not in sys.path:
 from model.pipeline.config import load_config
 from model.pipeline.data_loader import fetch_dataset
 from model.pipeline.features import FeatureBuilder
+from model.pipeline.utils import DECIMAL_PRECISION, round_for_output
 from model.pipeline.analysis.hyperparam_search import (
     _mini_backtest,
     make_objective,
@@ -116,7 +117,7 @@ def run_search(
     log_df = pd.DataFrame(trial_log).sort_values("objective")
     out_path = RESULTS_DIR / f"hyperparam_search_{ticker}.csv"
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    log_df.to_csv(out_path, index=False)
+    round_for_output(log_df, DECIMAL_PRECISION).to_csv(out_path, index=False)
     print(f"  Trial log -> {out_path}")
 
     return log_df
@@ -271,7 +272,7 @@ def print_comparison(
     # Save combined ranking for review
     merged = _rank_and_merge(log1, log2, ticker1, ticker2)
     merged_path = RESULTS_DIR / f"hyperparam_comparison_{ticker1}_{ticker2}.csv"
-    merged.to_csv(merged_path, index=False)
+    round_for_output(merged, DECIMAL_PRECISION).to_csv(merged_path, index=False)
     print(f"  Combined trial ranking saved -> {merged_path}")
 
 

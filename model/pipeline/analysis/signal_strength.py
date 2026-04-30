@@ -38,6 +38,8 @@ from typing import Dict, List
 import numpy as np
 import pandas as pd
 
+from ..utils import DECIMAL_PRECISION, round_json_dict
+
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -337,6 +339,7 @@ def main():
             for p in np.linspace(0, 1, 101)
         },
     }
+    payload = round_json_dict(payload, DECIMAL_PRECISION)
     with open(out_json, "w") as f:
         json.dump(payload, f, indent=2)
     print(f"\n[SIGNAL] JSON saved -> {out_json}")

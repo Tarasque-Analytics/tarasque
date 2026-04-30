@@ -29,6 +29,8 @@ from typing import List, Optional
 import numpy as np
 import pandas as pd
 
+from ..utils import DECIMAL_PRECISION, round_json_dict
+
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -370,6 +372,7 @@ def main():
         "window_5d": stats_5d,
         "window_21d": stats_21d,
     }
+    payload = round_json_dict(payload, DECIMAL_PRECISION)
     with open(out_json, "w") as f:
         json.dump(payload, f, indent=2)
     print(f"\n[VRP-COND] JSON saved -> {out_json}")

@@ -36,6 +36,8 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from ..utils import DECIMAL_PRECISION, round_for_output
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -48,14 +50,19 @@ def _load_predictions(results_dir: Path) -> pd.DataFrame:
         print(f"[RESID] Loaded {len(df):,} predictions from {combined.name}")
         return df
 
+    # Fallback to per-ticker long-form files (new schema).
     frames = []
-    for f in sorted(results_dir.glob("predictions_*_H*.csv")):
-        parts = f.stem.split("_")
+    for f in sorted(results_dir.glob("predictions_*.csv")):
+        if f.name == "all_predictions.csv":
+            continue
+        stem = f.stem
+        parts = stem.split("_", 1)
+        if len(parts) != 2 or parts[0] != "predictions":
+            continue
         ticker = parts[1]
-        horizon = int(parts[2][1:])
         df = pd.read_csv(f, parse_dates=["date"])
-        df["ticker"] = ticker
-        df["horizon"] = horizon
+        if "ticker" not in df.columns:
+            df["ticker"] = ticker
         frames.append(df)
 
     if not frames:
@@ -364,16 +371,26 @@ def run_residual_analysis(
         print(pd.DataFrame(rows).to_string(index=False))
 
     # ── Save outputs ──────────────────────────────────────────────────
-    worst.to_csv(output_dir / f"resid_worst_dates_H{horizon}.csv", index=False)
+    round_for_output(worst, DECIMAL_PRECISION).to_csv(
+        output_dir / f"resid_worst_dates_H{horizon}.csv", index=False,
+    )
     if not clustered.empty:
-        clustered.to_csv(
-            output_dir / f"resid_cross_ticker_clusters_H{horizon}.csv", index=False
+        round_for_output(clustered, DECIMAL_PRECISION).to_csv(
+            output_dir / f"resid_cross_ticker_clusters_H{horizon}.csv", index=False,
         )
-    regime.to_csv(output_dir / f"resid_by_quarter_H{horizon}.csv", index=False)
-    sector.to_csv(output_dir / f"resid_by_sector_H{horizon}.csv", index=False)
-    per_ticker.to_csv(output_dir / f"resid_per_ticker_H{horizon}.csv", index=False)
+    round_for_output(regime, DECIMAL_PRECISION).to_csv(
+        output_dir / f"resid_by_quarter_H{horizon}.csv", index=False,
+    )
+    round_for_output(sector, DECIMAL_PRECISION).to_csv(
+        output_dir / f"resid_by_sector_H{horizon}.csv", index=False,
+    )
+    round_for_output(per_ticker, DECIMAL_PRECISION).to_csv(
+        output_dir / f"resid_per_ticker_H{horizon}.csv", index=False,
+    )
     if not acf_df.empty:
-        acf_df.to_csv(output_dir / f"resid_acf_H{horizon}.csv", index=False)
+        round_for_output(acf_df, DECIMAL_PRECISION).to_csv(
+            output_dir / f"resid_acf_H{horizon}.csv", index=False,
+        )
 
     print(f"\n[RESID] Outputs saved to {output_dir}")
 

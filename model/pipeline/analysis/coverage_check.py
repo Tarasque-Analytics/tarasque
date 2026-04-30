@@ -24,6 +24,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from ..utils import DECIMAL_PRECISION, round_for_output
+
 RESULTS_DIR = Path("model/pipeline/results")
 PREDS_CSV   = RESULTS_DIR / "all_predictions.csv"
 TARGET_COV  = 0.85  # tau=0.15 => want 85% of y_true above the floor
@@ -73,7 +75,7 @@ def main():
     offsets = compute_offsets(target=args.target)
 
     out_path = RESULTS_DIR / "q15_coverage_offsets.csv"
-    offsets.to_csv(out_path, index=False)
+    round_for_output(offsets, DECIMAL_PRECISION).to_csv(out_path, index=False)
     print(f"[COVERAGE] Offsets saved -> {out_path}  ({len(offsets)} rows)")
 
     # Summary

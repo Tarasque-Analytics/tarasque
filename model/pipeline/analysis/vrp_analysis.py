@@ -29,28 +29,34 @@ import pandas as pd
 from scipy import stats
 from sklearn.linear_model import LinearRegression
 
+from ..utils import DECIMAL_PRECISION, round_for_output
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def _load_predictions(results_dir: Path) -> pd.DataFrame:
-    """Load all_predictions.csv or concatenate per-ticker files."""
+    """Load all_predictions.csv or concatenate per-ticker long-form files."""
     combined = results_dir / "all_predictions.csv"
     if combined.exists():
         df = pd.read_csv(combined, parse_dates=["date"])
         print(f"[VRP] Loaded {len(df):,} predictions from {combined.name}")
         return df
 
-    # Fall back to individual files
+    # Fall back to per-ticker files (new schema: all horizons in one CSV).
     frames = []
-    for f in sorted(results_dir.glob("predictions_*_H*.csv")):
-        parts = f.stem.split("_")
+    for f in sorted(results_dir.glob("predictions_*.csv")):
+        if f.name == "all_predictions.csv":
+            continue
+        stem = f.stem
+        parts = stem.split("_", 1)
+        if len(parts) != 2 or parts[0] != "predictions":
+            continue
         ticker = parts[1]
-        horizon = int(parts[2][1:])
         df = pd.read_csv(f, parse_dates=["date"])
-        df["ticker"] = ticker
-        df["horizon"] = horizon
+        if "ticker" not in df.columns:
+            df["ticker"] = ticker
         frames.append(df)
 
     if not frames:
@@ -277,16 +283,21 @@ def run_vrp_analysis(
     # ── Save outputs ──────────────────────────────────────────────────────
     ols_rows = [ols_rv, ols_err, ols_signed, ols_skew if "put_call_skew_30d" in sub.columns else {}]
     ols_df = pd.DataFrame([r for r in ols_rows if r])
-    ols_df.to_csv(output_dir / f"vrp_ols_H{horizon}.csv", index=False)
+    round_for_output(ols_df, DECIMAL_PRECISION).to_csv(
+        output_dir / f"vrp_ols_H{horizon}.csv", index=False,
+    )
 
     qt_rv["analysis"] = "rv"
     qt_err["analysis"] = "error"
     qt_pct["analysis"] = "rv_pct_rank"
-    pd.concat([qt_rv, qt_err, qt_pct]).to_csv(
-        output_dir / f"vrp_quintiles_H{horizon}.csv", index=False
+    quintile_combined = pd.concat([qt_rv, qt_err, qt_pct])
+    round_for_output(quintile_combined, DECIMAL_PRECISION).to_csv(
+        output_dir / f"vrp_quintiles_H{horizon}.csv", index=False,
     )
     if ticker_rows:
-        tk_df.to_csv(output_dir / f"vrp_per_ticker_H{horizon}.csv", index=False)
+        round_for_output(tk_df, DECIMAL_PRECISION).to_csv(
+            output_dir / f"vrp_per_ticker_H{horizon}.csv", index=False,
+        )
 
     print(f"\n[VRP] Results saved to {output_dir}")
 

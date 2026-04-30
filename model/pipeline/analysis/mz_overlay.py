@@ -37,6 +37,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from ..utils import DECIMAL_PRECISION, round_for_output
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -143,19 +145,26 @@ def enforce_term_structure(h21: np.ndarray, h63: np.ndarray, h126: np.ndarray,
 
 def run(lam: float = EW_LAM, tol: float = TS_TOL):
     # ── Load all prediction files ────────────────────────────────────────────
-    pred_files = sorted(RESULTS_DIR.glob("predictions_*_H*.csv"))
-    print(f"[OVERLAY] Loading {len(pred_files)} prediction files...")
+    # New schema: per-ticker CSV with all horizons stacked (long form).
+    pred_files = [
+        f for f in sorted(RESULTS_DIR.glob("predictions_*.csv"))
+        if f.name != "all_predictions.csv"
+    ]
+    print(f"[OVERLAY] Loading {len(pred_files)} per-ticker prediction files...")
 
-    # Build per-(ticker, horizon) dataframes
     data: dict[tuple, pd.DataFrame] = {}
     for f in pred_files:
-        stem = f.stem  # predictions_AAPL_H21
-        ticker_part, h_part = stem.rsplit("_H", 1)
-        ticker  = ticker_part.replace("predictions_", "")
-        horizon = int(h_part)
-        df = pd.read_csv(f, parse_dates=["date"])
-        df = df.sort_values("date").reset_index(drop=True)
-        data[(ticker, horizon)] = df
+        stem = f.stem  # predictions_AAPL
+        parts = stem.split("_", 1)
+        if len(parts) != 2 or parts[0] != "predictions":
+            continue
+        ticker = parts[1]
+        full = pd.read_csv(f, parse_dates=["date"])
+        if "horizon" not in full.columns:
+            continue
+        for horizon, sub in full.groupby("horizon"):
+            sub = sub.drop(columns=["horizon"]).sort_values("date").reset_index(drop=True)
+            data[(ticker, int(horizon))] = sub
 
     tickers  = sorted({t for t, _ in data})
     horizons = sorted({h for _, h in data})
@@ -199,7 +208,7 @@ def run(lam: float = EW_LAM, tol: float = TS_TOL):
 
     cal_df = pd.DataFrame(cal_rows).sort_values(["ticker", "horizon"])
     out_cal = RESULTS_DIR / "mz_calibration.csv"
-    cal_df.to_csv(out_cal, index=False)
+    round_for_output(cal_df, DECIMAL_PRECISION).to_csv(out_cal, index=False)
     print(f"[OVERLAY] Calibration params saved -> {out_cal}")
     print(f"          EW beta range: "
           f"{cal_df.ew_beta.min():.3f} – {cal_df.ew_beta.max():.3f}  "
@@ -265,7 +274,7 @@ def run(lam: float = EW_LAM, tol: float = TS_TOL):
         frames.append(df)
     combined = pd.concat(frames, ignore_index=True)
     out_combined = RESULTS_DIR / "all_predictions_cal.csv"
-    combined.to_csv(out_combined, index=False)
+    round_for_output(combined, DECIMAL_PRECISION).to_csv(out_combined, index=False)
     print(f"[OVERLAY] Calibrated predictions saved -> {out_combined}  "
           f"({len(combined):,} rows)")
 

@@ -38,12 +38,14 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from ..utils import DECIMAL_PRECISION, round_for_output
+
 warnings.filterwarnings("ignore")
 
 RESULTS_DIR  = Path("model/pipeline/results")
 OHLCV_DIR    = Path("data_cache/ohlcv")
 MIN_TRAIN    = 252    # ~1 year — benchmarks need far fewer obs
-STEP_DAYS    = 25
+STEP_DAYS    = 20    # matches BacktestConfig.step_days
 HORIZONS     = [21, 63, 126]
 QLIKE_FLOOR  = 1e-6  # prevent div-by-zero in QLIKE
 
@@ -135,12 +137,17 @@ def run_ticker(ticker: str) -> list[dict]:
     ret_pct   = ret_arr * 100             # percent returns for arch
 
     # ── Load ensemble predictions (y_true + y_pred) per horizon ─────────
+    # New schema: per-ticker CSV with all horizons stacked. Split by horizon
+    # in-memory and keep the same {h: DataFrame} shape for downstream code.
     pred_data = {}
-    for h in HORIZONS:
-        fp = RESULTS_DIR / f"predictions_{ticker}_H{h}.csv"
-        if fp.exists():
-            df = pd.read_csv(fp, parse_dates=["date"]).set_index("date")
-            pred_data[h] = df
+    fp = RESULTS_DIR / f"predictions_{ticker}.csv"
+    if fp.exists():
+        full = pd.read_csv(fp, parse_dates=["date"])
+        if "horizon" in full.columns:
+            for h in HORIZONS:
+                sub = full[full["horizon"] == h]
+                if not sub.empty:
+                    pred_data[h] = sub.drop(columns=["horizon"]).set_index("date")
 
     if not pred_data:
         return []
@@ -286,10 +293,12 @@ def main():
                         help="Parallel workers (default: 4)")
     args = parser.parse_args()
 
-    # Discover tickers from prediction files
+    # Discover tickers from prediction files (new long-form per-ticker schema)
     all_tickers = sorted({
-        f.stem.rsplit("_H", 1)[0].replace("predictions_", "")
-        for f in RESULTS_DIR.glob("predictions_*_H21.csv")
+        f.stem.replace("predictions_", "")
+        for f in RESULTS_DIR.glob("predictions_*.csv")
+        if f.name != "all_predictions.csv"
+        and not f.stem.endswith("_cal")
     })
     tickers = args.tickers if args.tickers else all_tickers
     print(f"[BENCH] {len(tickers)} tickers  |  horizons {HORIZONS}  |  "
@@ -320,7 +329,7 @@ def main():
 
     # Save full results
     out_path = RESULTS_DIR / "benchmark_comparison.csv"
-    df.to_csv(out_path, index=False)
+    round_for_output(df, DECIMAL_PRECISION).to_csv(out_path, index=False)
     print(f"\n[BENCH] Full results saved -> {out_path}")
 
     # ── Summary table ────────────────────────────────────────────────────

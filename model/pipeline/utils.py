@@ -4,6 +4,8 @@ utils.py — Shared helpers used across the pipeline.
 Ported from volarbmodel_backtest.py: clean_num (:35-42), QuantLib (:517-546),
 EventCalendar (:91-97).
 """
+from typing import Dict, Optional
+
 import numpy as np
 import pandas as pd
 from datetime import datetime, date, timedelta
@@ -20,6 +22,133 @@ def clean_num(val, decimals=2):
     if val is None or pd.isna(val) or np.isinf(val):
         return None
     return round(float(val), decimals)
+
+
+# ---------------------------------------------------------------------------
+# Output precision schema
+# ---------------------------------------------------------------------------
+# Source-data precision audit (CRSP / OptionMetrics / FRED) places a hard ceiling
+# on what the model can meaningfully resolve. Writing 16-decimal Python repr to
+# CSVs advertises precision the inputs do not support, and exposes FP-subtraction
+# artifacts (e.g. put_call_skew_30d trailing 9s). Apply this schema at every
+# CSV / JSON write path.
+#
+# Bounded statistics on [0,1] (R², coverage) → 4 decimals.
+# Vol-scale floats (forecasts, RV, IV-derived) → 6 decimals.
+# Counts → integer.
+DECIMAL_PRECISION: Dict[str, int] = {
+    # Predictions / targets
+    "y_true": 6, "y_pred": 6, "y_pred_q15": 6, "y_pred_q85": 6,
+    "vrp_wedge": 6, "put_call_skew_30d": 6,
+    # Forecast outputs
+    "forecast_h21": 6, "forecast_h63": 6, "forecast_h126": 6,
+    # Frontend payload time-series and aggregates
+    "predicted_rv_21d": 6, "predicted_rv_63d": 6, "predicted_rv_126d": 6,
+    "realized_rv_21d": 6, "implied_vol_30d": 6,
+    "garch_21d": 6, "market_iv_atm": 6,
+    "vrp_percentile_1y": 4, "z_score_stabilized": 4,
+    "avg_vrp_wedge": 6, "avg_forecast_rv_21d": 6, "percentile_1y": 4,
+    "forecast_rv_21d": 6, "risk_score": 4,
+    "vol_regime_zscore": 4, "market_vol_21d": 6,
+    "overall_r2": 4, "overall_mz_beta": 4,
+    "all_y_true": 6, "all_y_pred": 6,
+    # Error metrics on vol scale
+    "rmse": 6, "qlike": 6, "pinball_q15": 6, "pinball_q85": 6,
+    # Regression coefficients
+    "mz_alpha": 4, "mz_beta": 4, "mz_r2": 4,
+    # Bounded stats on [0, 1]
+    "event_capture_rate": 4, "coverage_q15": 4, "coverage_q85": 4,
+    # Lasso / XGB tracking
+    "coef": 6, "alpha": 6, "l1_ratio": 4, "mean_abs_coef": 6,
+    "mean_alpha": 6, "mean_l1_ratio": 4, "inclusion_freq": 4,
+    "importance": 6, "mean_importance": 6,
+    # Feature decay metrics (4 dec — stability, not precision-critical)
+    "rolling_inclusion_freq": 4, "sign_flip_rate": 4,
+    "importance_slope": 6, "importance_slope_pvalue": 4,
+    "rolling_ic": 4, "decay_score": 4,
+    # Diagnostic stats (analysis/audit.py)
+    "vif": 4, "ic": 4, "spearman": 4, "pearson": 4,
+    "beta": 4, "alpha_intercept": 6,
+    "r2": 4, "avg_spearman": 4,
+    "dm_sq": 4, "p_value": 4,
+    "model_rmse": 6, "naive_rmse": 6,
+    "rmse_top": 6, "rmse_middle": 6, "rmse_bottom": 6,
+    "qlike_top": 6, "qlike_middle": 6, "qlike_bottom": 6,
+    "top_10": 6, "middle_80": 6, "bottom_10": 6,
+    "mean_bias": 6, "bias": 6, "rel_bias": 4,
+    "mean_abs_wedge": 6, "ratio": 4,
+    "vrp_nan_rate": 4, "nan_rate": 4,
+    "inv_any_rate": 4, "inv_21_63_rate": 4, "inv_63_126_rate": 4,
+    "seam_jump_ratio": 4, "boundary_mean": 6, "interior_mean": 6,
+    "delta": 6, "coverage_raw": 4, "coverage_adj": 4,
+    "y_cal": 6, "alpha_ew": 6, "beta_ew": 4, "lam": 6,
+    # Counts
+    "n_predictions": 0, "n_fits": 0, "horizon": 0, "step": 0,
+    "fold": 0, "n": 0, "n_steps": 0, "n_tickers": 0, "n_total": 0,
+    "sign_flips": 0,
+}
+
+
+def round_for_output(
+    df: pd.DataFrame,
+    schema: Optional[Dict[str, int]] = None,
+) -> pd.DataFrame:
+    """
+    Return a copy of *df* with float columns rounded per *schema*.
+
+    Columns absent from *schema* are left untouched (no surprise rounding).
+    Integer-target columns (decimals == 0) are cast to nullable Int64.
+    """
+    schema = schema if schema is not None else DECIMAL_PRECISION
+    out = df.copy()
+    for col, decimals in schema.items():
+        if col not in out.columns:
+            continue
+        if decimals == 0:
+            out[col] = pd.to_numeric(out[col], errors="coerce").round(0).astype("Int64")
+        else:
+            out[col] = pd.to_numeric(out[col], errors="coerce").round(decimals)
+    return out
+
+
+def round_scalar(val, decimals: int):
+    """Round a single value, returning None for NaN/Inf/None."""
+    if val is None:
+        return None
+    try:
+        f = float(val)
+    except (TypeError, ValueError):
+        return val
+    if np.isnan(f) or np.isinf(f):
+        return None
+    return round(f, decimals)
+
+
+def round_json_dict(payload, schema: Optional[Dict[str, int]] = None):
+    """
+    Recursively round numeric leaves in a JSON-style payload.
+
+    Keys present in *schema* drive the decimal count. Numeric values under
+    keys not in the schema fall through unchanged; lists of floats are
+    rounded only when the parent key is in the schema.
+    """
+    schema = schema if schema is not None else DECIMAL_PRECISION
+
+    def _walk(obj, key=None):
+        if isinstance(obj, dict):
+            return {k: _walk(v, k) for k, v in obj.items()}
+        if isinstance(obj, list):
+            if key in schema:
+                d = schema[key]
+                return [round_scalar(v, d) if isinstance(v, (int, float, np.floating)) else _walk(v, key) for v in obj]
+            return [_walk(v, key) for v in obj]
+        if isinstance(obj, (float, np.floating)):
+            if key in schema:
+                return round_scalar(obj, schema[key])
+            return obj
+        return obj
+
+    return _walk(payload)
 
 
 # ---------------------------------------------------------------------------

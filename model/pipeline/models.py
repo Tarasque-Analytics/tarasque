@@ -7,6 +7,8 @@ Ported from volarbmodel_backtest.py:
     SHAP explanation  (:469-514)
 """
 import time
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Tuple
@@ -354,6 +356,41 @@ class EnsembleVolModel:
             curves[h] = np.exp(np.clip(blended_log, -5, 5))
         return curves
 
+    # ── Persistence ───────────────────────────────────────────────────
+
+    def save(self, path) -> None:
+        """
+        Serialize the trained ensemble to *path* via joblib.
+
+        Used by `--mode forecast` to avoid retraining between cycle boundaries.
+        Daily refresh loads the model and runs `predict_curve` only.
+        """
+        import joblib
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump({
+            "models": self.models,
+            "weights": self.weights,
+            "rmse_scores": self.rmse_scores,
+            "feature_importance": self.feature_importance,
+            "predictors": self.predictors,
+            "final_scaler": self.final_scaler,
+            "config": self.config,
+        }, path)
+
+    @classmethod
+    def load(cls, path) -> "EnsembleVolModel":
+        """Restore a previously-saved ensemble."""
+        import joblib
+        state = joblib.load(path)
+        obj = cls(state["config"])
+        obj.models = state["models"]
+        obj.weights = state["weights"]
+        obj.rmse_scores = state.get("rmse_scores", obj.rmse_scores)
+        obj.feature_importance = state.get("feature_importance", {})
+        obj.predictors = state["predictors"]
+        obj.final_scaler = state["final_scaler"]
+        return obj
+
     # ── SHAP Explainability (backtest :469-514) ───────────────────────
 
     def explain_prediction(
@@ -485,3 +522,24 @@ class QuantileVolModel:
             log_q    = np.clip(m.predict(X_s), -5, 5)
             out[h]   = np.exp(log_q)
         return out
+
+    def save(self, path) -> None:
+        """Serialize the fitted quantile model to *path*."""
+        import joblib
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump({
+            "models": self._models,
+            "scaler": self._scaler,
+            "config": self.config,
+            "tau":    self.tau,
+        }, path)
+
+    @classmethod
+    def load(cls, path) -> "QuantileVolModel":
+        """Restore a previously-saved quantile model."""
+        import joblib
+        state = joblib.load(path)
+        obj = cls(state["config"], tau=state["tau"])
+        obj._models = state["models"]
+        obj._scaler = state["scaler"]
+        return obj

@@ -13,7 +13,7 @@ import pandas as pd
 from typing import Dict, List, Optional
 
 from .config import DataConfig, ModelConfig, SECTOR_ETF_MAP
-from .utils import days_to_next_fomc
+from .utils import days_to_next_fomc, days_to_next_cpi, days_to_next_nfp
 from .models import GarchForecaster
 
 
@@ -84,6 +84,10 @@ class FeatureBuilder:
         if "vsurfd" in raw_data and not raw_data["vsurfd"].empty:
             df = self._add_options_features(df, ticker, raw_data["vsurfd"])
 
+        # 9b. Open interest features (new — from OptionMetrics opprcd)
+        if "oi_25delta" in raw_data and not raw_data["oi_25delta"].empty:
+            df = self._add_oi_features(df, ticker, raw_data["oi_25delta"])
+
         # 10. Macro features (new — from FRED data)
         if "fred" in raw_data and not raw_data["fred"].empty:
             df = self._add_macro_features(df, raw_data["fred"])
@@ -114,38 +118,37 @@ class FeatureBuilder:
         Mirrors the backtest's predictor selection logic (:382-384) but
         extended for new feature prefixes.
 
-        Explicit exclusions (VIF analysis 2026-04-08):
-          rv_TARGET          — literal alias for rv_21d (VIF=inf)
-          rv_5d, rv_10d      — mechanically correlated with rv_21d (VIF 11-17);
-                               ewma_vol captures short-window signal more cleanly
-          rv_21d             — re-included (v6); VIF=10.6 but Lasso handles it;
-                               strongest H=21 predictor, wrong to exclude via VIF alone
-          iv_atm_30d         — contained inside vrp_wedge (VIF=121); vrp_wedge is
-                               the economically meaningful quantity (relative to RV)
-          vol_trend          — rv_21d / rolling_mean(rv_21d); redundant with
-                               vol_regime_zscore which is the standardised version
+        Explicit exclusions (updated 2026-04-23):
+          rv_TARGET          — literal alias for rv_21d (VIF=inf); always exclude
+          iv_atm_30d         — contained inside vrp_wedge (VIF=121); VIF too high
+                               even for ElasticNet; vrp_wedge is the economically
+                               meaningful quantity (relative to RV)
+          vol_trend          — rv_21d / rolling_mean(rv_21d); numerically redundant
+                               with vol_regime_zscore which is the standardised form
           put_call_abs_skew  — r=0.92 with put_call_skew_30d; signed skew sufficient
+          tech_ATR           — Spearman r=0.949 with rv_21d; no incremental signal
+
+        Re-included (ElasticNet handles correlated groups — no arbitrary zeroing):
+          rv_5d, rv_10d, rv_63d   — short/medium RV windows; ElasticNet shrinks the
+                                    RV cluster proportionally instead of picking one
+          corr_sector_21d/252d    — rolling stock-sector correlation; captures regime-
+          sector_wedge              specific coupling tightness. JPM H63/H126 R² dropped
+                                    0.17 points after VIF exclusion. Signal is real for
+                                    financials/energy even when collinear with ETF ret/mom.
         """
         exclude_prefixes = ("y_", "close_")
         include_prefixes = (
             "ret_", "rv_", "vol_", "tech_", "event_", "iv_",
             "put_call_", "term_", "vrp_", "macro_", "beta_",
             "res_", "price_", "corr_", "sector_", "ewma_", "mom21_",
-            "garch_",
+            "garch_", "oi_", "fear_",
         )
         exclude_exact = {
-            "rv_TARGET",           # literal alias for rv_21d (VIF=inf)
-            "rv_5d",               # redundant with ewma_vol (VIF=11)
-            "rv_10d",              # redundant with rv_21d (VIF=17, Spearman r=0.93)
-            "rv_63d",              # explained by rv_21d + rv_126d (VIF=18)
-            # rv_21d re-added: VIF=10.6 but strongest H=21 predictor; Lasso handles collinearity
-            "iv_atm_30d",          # contained inside vrp_wedge (VIF=121)
-            "vol_trend",           # ratio form of vol_regime_zscore (VIF=10.5)
+            "rv_TARGET",              # literal alias for rv_21d (VIF=inf)
+            "iv_atm_30d",             # contained inside vrp_wedge (VIF=121)
+            "vol_trend",              # ratio form of vol_regime_zscore
             "put_call_abs_skew_30d",  # Spearman r=0.92 with put_call_skew_30d
-            "corr_sector_21d",     # VIF=26 — sector signal already in ETF ret/mom features
-            "corr_sector_252d",    # VIF=28 — same group as above
-            "sector_wedge",        # VIF=30 — derived from corr_sector_21d/252d
-            "tech_ATR",            # Spearman r=0.949 with rv_21d — redundant
+            "tech_ATR",               # Spearman r=0.949 with rv_21d
         }
         cols = []
         for c in df.columns:
@@ -340,6 +343,16 @@ class FeatureBuilder:
             feature_name="event_div_gravity",
         )
 
+        # CPI release gravity (BLS macro event)
+        df["event_cpi_gravity"] = df.index.to_series().apply(
+            lambda d: 1.0 / (days_to_next_cpi(d) + 1)
+        )
+
+        # NFP release gravity (BLS Employment Situation)
+        df["event_nfp_gravity"] = df.index.to_series().apply(
+            lambda d: 1.0 / (days_to_next_nfp(d) + 1)
+        )
+
         return df
 
     def _merge_event_gravity(
@@ -421,6 +434,52 @@ class FeatureBuilder:
         iv_mean = df["iv_atm_30d"].rolling(63).mean()
         iv_std = df["iv_atm_30d"].rolling(63).std()
         df["iv_atm_z_score"] = (df["iv_atm_30d"] - iv_mean) / (iv_std + 1e-9)
+
+        return df
+
+    def _add_oi_features(self, df, ticker, oi_data):
+        """Open interest features at 25-delta: put/call ratio, fear intensity.
+
+        fear_intensity_25d = IV skew x log(OI_put / OI_call)
+        Multiplicative interaction: requires both price asymmetry (skew)
+        AND quantity asymmetry (OI ratio) to fire.  If puts are expensive
+        but nobody is buying them, or OI is skewed but pricing is flat,
+        the signal stays near zero.
+        """
+        oi = oi_data[oi_data["ticker"] == ticker].copy()
+        if oi.empty:
+            for col in ["oi_put_call_ratio_25d", "fear_intensity_25d",
+                        "oi_hedge_pressure_chg_5d"]:
+                df[col] = np.nan
+            return df
+
+        oi["date"] = pd.to_datetime(oi["date"])
+
+        # Aggregate to daily put/call totals
+        put_oi = (oi[oi["cp_flag"] == "P"]
+                  .groupby("date")["total_oi"].sum()
+                  .sort_index())
+        call_oi = (oi[oi["cp_flag"] == "C"]
+                   .groupby("date")["total_oi"].sum()
+                   .sort_index())
+
+        put_oi = put_oi.reindex(df.index).ffill(limit=5)
+        call_oi = call_oi.reindex(df.index).ffill(limit=5)
+
+        # Put/call OI ratio
+        ratio = put_oi / (call_oi + 1e-6)
+        df["oi_put_call_ratio_25d"] = ratio
+
+        # Fear intensity: skew x log(OI ratio)
+        oi_log_ratio = np.log(put_oi / (call_oi + 1e-6))
+        skew = df.get("put_call_skew_30d")
+        if skew is not None:
+            df["fear_intensity_25d"] = skew * oi_log_ratio
+        else:
+            df["fear_intensity_25d"] = np.nan
+
+        # Hedging pressure momentum: 5d change in put/call ratio
+        df["oi_hedge_pressure_chg_5d"] = ratio.diff(5)
 
         return df
 

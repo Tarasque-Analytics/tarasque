@@ -153,7 +153,7 @@ def test_mz_regression(df: pd.DataFrame, out_dir: Path) -> pd.DataFrame:
         # Show extremes
         bad = sub[sub["p_beta1"] < 0.05].sort_values("beta")
         if len(bad):
-            print(f"    Tickers with beta≠1 (p<0.05):")
+            print(f"    Tickers with beta!=1 (p<0.05):")
             for _, r in bad.iterrows():
                 flag = "OVER" if r["beta"] > 1 else "UNDER"
                 print(f"      {r['ticker']:6s}  beta={r['beta']:.3f} ({flag})  "

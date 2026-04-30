@@ -19,7 +19,7 @@ from .models import EnsembleVolModel as _EnsembleVolModel
 
 from .config import DataConfig, ModelConfig, BacktestConfig
 from .features import FeatureBuilder
-from .models import EnsembleVolModel
+from .models import EnsembleVolModel, QuantileVolModel
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -129,8 +129,11 @@ class BacktestEngine:
             if target_col not in feature_df.columns:
                 continue
 
-            # Minimum training rows: max(252, 20 * n_features)
-            min_train = max(252, 20 * len(predictors))
+            # Minimum training rows: 3 years flat.
+            # 20x rule was conservative for Lasso instability with correlated
+            # features. ElasticNet's L2 term stabilises with shorter windows,
+            # so a fixed 756-day floor is sufficient and gives more predictions.
+            min_train = 756
             all_dates = feature_df.index[min_train:]
             test_starts = all_dates[::step]
 
@@ -192,15 +195,29 @@ class BacktestEngine:
                         xgb_imp_sum[hh] += imp
                         xgb_imp_count[hh] += 1
 
+                # Quantile model — direct fit, no WFA folds needed
+                q_preds_step: Dict[int, Dict[int, np.ndarray]] = {}
+                for tau in getattr(self.mc, "quantile_alphas", []):
+                    try:
+                        q_model = QuantileVolModel(self.mc, tau=tau)
+                        q_model.fit(X_tr, y_tr_dict)
+                        q_preds_step[tau] = q_model.predict_batch(X_te)
+                    except Exception:
+                        pass
+
                 # Batch-predict all test rows at once
                 try:
                     pred_curves = model.predict_curve_batch(X_te)
                     for i, idx in enumerate(X_te.index):
-                        all_preds.append({
+                        row: dict = {
                             "date": idx,
                             "y_true": float(np.exp(feature_df.loc[idx, target_col])),
                             "y_pred": float(pred_curves[h][i]),
-                        })
+                        }
+                        for tau, q_by_h in q_preds_step.items():
+                            if h in q_by_h:
+                                row[f"y_pred_q{int(tau * 100)}"] = float(q_by_h[h][i])
+                        all_preds.append(row)
                 except Exception:
                     pass
 
@@ -285,9 +302,10 @@ class BacktestEngine:
                     "stage": rec["stage"],
                     "step": rec["step"],
                     "fold": rec["fold"],
-                    "alpha": rec["alpha"],
-                    "feature": fname,
-                    "coef": rec["coefs"][i] if i < len(rec["coefs"]) else 0.0,
+                    "alpha":    rec["alpha"],
+                    "l1_ratio": rec.get("l1_ratio", np.nan),
+                    "feature":  fname,
+                    "coef":     rec["coefs"][i] if i < len(rec["coefs"]) else 0.0,
                 })
         if not rows:
             return
@@ -296,10 +314,11 @@ class BacktestEngine:
         summary = (
             df.groupby(["feature", "horizon"])
             .agg(
-                inclusion_freq=("coef", lambda x: (x != 0).mean()),
-                mean_abs_coef=("coef", lambda x: x.abs().mean()),
-                mean_lambda=("alpha", "mean"),
-                n_fits=("coef", "count"),
+                inclusion_freq  =("coef",     lambda x: (x != 0).mean()),
+                mean_abs_coef   =("coef",     lambda x: x.abs().mean()),
+                mean_alpha      =("alpha",    "mean"),
+                mean_l1_ratio   =("l1_ratio", "mean"),
+                n_fits          =("coef",     "count"),
             )
             .reset_index()
         )
@@ -448,18 +467,41 @@ class BacktestEngine:
         completed = 0
         sweep_start = time.time()
 
-        # Cap workers to cpu_count / 4 — each worker runs RF/LassoCV with n_jobs=4,
+        # Cap workers to cpu_count / 4 — each worker runs RF/ElasticNet with n_jobs=4,
         # so total CPU threads = n_workers × 4 ≤ cpu_count. XGB uses CUDA independently.
         max_safe = max(1, (os.cpu_count() or 4) // 4)
         n_workers = min(n_workers, n_total, max_safe)
 
         print(f"\n[BACKTEST] Parallel sweep: {n_total} tickers, {n_workers} workers")
 
+        # Slice raw_data per ticker before pickling to workers.
+        # Sending the full 90+ ticker dataset to every worker causes MemoryError
+        # when all workers try to unpickle simultaneously.  Each worker only needs:
+        #   ohlcv  — its ticker + all factor ETFs (for feature computation)
+        #   vsurfd — its ticker only
+        #   fred / compustat_meta / crsp_index — already small, kept as-is
+        factor_etfs = set(self.dc.all_factor_etfs)
+
+        def _slice_raw(t: str) -> Dict:
+            sliced = {}
+            for key, df in raw_data.items():
+                if df is None or (hasattr(df, "empty") and df.empty):
+                    sliced[key] = df
+                    continue
+                if key == "ohlcv" and "ticker" in df.columns:
+                    keep = factor_etfs | {t}
+                    sliced[key] = df[df["ticker"].isin(keep)]
+                elif key == "vsurfd" and "ticker" in df.columns:
+                    sliced[key] = df[df["ticker"] == t]
+                else:
+                    sliced[key] = df   # fred, compustat_meta, crsp_index — shared
+            return sliced
+
         with ProcessPoolExecutor(max_workers=n_workers) as executor:
             futures = {
                 executor.submit(
                     _backtest_one_ticker,
-                    ticker, raw_data,
+                    ticker, _slice_raw(ticker),
                     self.dc, self.mc, self.bc, model_names,
                 ): ticker
                 for ticker in self.dc.tickers
@@ -560,7 +602,7 @@ class BacktestEngine:
             # Placeholder weights (actual weights aren't preserved across runs;
             # we'd need to retrain to get them — use equal weights as default)
             weights: Dict[int, Dict[str, float]] = {
-                h: {"XGB": 0.33, "RF": 0.33, "LassoCV": 0.33}
+                h: {"XGB": 0.33, "RF": 0.33, "ElasticNet": 0.33}
                 for h in predictions.keys()
             }
 
@@ -634,6 +676,28 @@ class BacktestEngine:
         metrics["event_capture_rate"] = self._event_capture_rate(
             pred_df, feature_df, horizon,
         )
+
+        # 5. Quantile calibration — pinball loss and coverage per tau
+        #    coverage_q85 = fraction of y_true > y_pred_q85
+        #    Perfect calibration: coverage_q85 ≈ 0.15  (i.e. 1 - tau)
+        #    pinball_q85  = mean asymmetric loss L_tau(y_true, y_pred_q85)
+        for col in pred_df.columns:
+            if not col.startswith("y_pred_q"):
+                continue
+            try:
+                tau_pct = int(col.replace("y_pred_q", ""))
+            except ValueError:
+                continue
+            tau    = tau_pct / 100.0
+            q_vals = pred_df[col].values
+            valid_q = np.isfinite(q_vals) & (q_vals > 0)
+            if valid_q.sum() > 20:
+                q  = np.clip(q_vals[valid_q], 1e-6, None)
+                yt = y_true[valid_q]   # already clipped above
+                diff    = yt - q
+                pinball = np.where(diff >= 0, tau * diff, (tau - 1) * diff)
+                metrics[f"pinball_q{tau_pct}"] = float(np.mean(pinball))
+                metrics[f"coverage_q{tau_pct}"] = float(np.mean(yt > q))
 
         metrics["n_predictions"] = len(y_true)
 

@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Tuple
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LassoCV
+from sklearn.linear_model import ElasticNetCV
 from sklearn.ensemble import RandomForestRegressor
 import xgboost as xgb
 
@@ -102,7 +102,7 @@ class GarchForecaster:
 
 class EnsembleVolModel:
     """
-    XGBoost + RandomForest + LassoCV ensemble with inverse-RMSE weighting.
+    XGBoost + RandomForest + ElasticNetCV ensemble with inverse-RMSE weighting.
 
     Ported from VolArbModel in volarbmodel_backtest.py:352-466.
     Additions: minimum weight floor, model_names ablation parameter.
@@ -125,7 +125,7 @@ class EnsembleVolModel:
 
         for h in self.horizons:
             self.models[h] = self._init_models()
-            self.weights[h] = {"XGB": 0.33, "RF": 0.33, "LassoCV": 0.33}
+            self.weights[h] = {"XGB": 0.33, "RF": 0.33, "ElasticNet": 0.33}
             self.rmse_scores[h] = 0.0
 
     _gpu_checked: bool = False
@@ -153,10 +153,11 @@ class EnsembleVolModel:
         return {
             "XGB": xgb.XGBRegressor(**xgb_params),
             "RF": RandomForestRegressor(**self.config.rf_params),
-            "LassoCV": LassoCV(
+            "ElasticNet": ElasticNetCV(
                 cv=TimeSeriesSplit(n_splits=3), max_iter=10000,
                 n_jobs=getattr(self.config, "lasso_n_jobs", -1),
-                alphas=20,  # 20-point grid (default 100); sklearn 1.7+ uses alphas= not n_alphas=
+                l1_ratio=[0.5, 0.7, 0.9],  # cross-validates sparsity vs group-shrinkage
+                alphas=20,                  # 20-point alpha grid (sklearn 1.7+ accepts int)
             ),
         }
 
@@ -175,11 +176,11 @@ class EnsembleVolModel:
         Parameters
         ----------
         model_names : list[str], optional
-            Subset of ["XGB", "RF", "LassoCV"] for ablation studies.
+            Subset of ["XGB", "RF", "ElasticNet"] for ablation studies.
         """
         splits = splits or self.config.wfa_splits
         if model_names is None:
-            model_names = ["XGB", "RF", "LassoCV"]
+            model_names = ["XGB", "RF", "ElasticNet"]
 
         self.predictors = list(X.columns)
 
@@ -243,12 +244,13 @@ class EnsembleVolModel:
                     else:
                         self.models[h][name].fit(X_tr_s, y_tr)
                     self.__class__._profile[name] = self.__class__._profile.get(name, 0) + (time.perf_counter() - _t)
-                    if name == "LassoCV":
-                        _lasso = self.models[h]["LassoCV"]
+                    if name == "ElasticNet":
+                        _en = self.models[h]["ElasticNet"]
                         self.lasso_log.append({
                             "horizon": h, "stage": "fold", "fold": _fold,
-                            "alpha": float(_lasso.alpha_),
-                            "coefs": _lasso.coef_.tolist(),
+                            "alpha":    float(_en.alpha_),
+                            "l1_ratio": float(_en.l1_ratio_),
+                            "coefs":    _en.coef_.tolist(),
                         })
                     log_preds = np.clip(self.models[h][name].predict(X_te_s), -5, 5)
                     preds_lin = np.exp(log_preds)
@@ -285,12 +287,13 @@ class EnsembleVolModel:
                     self.models[h][name].fit(X_final_s, y, sample_weight=final_sample_weights)
                 else:
                     self.models[h][name].fit(X_final_s, y)
-                if name == "LassoCV":
-                    _lasso = self.models[h]["LassoCV"]
+                if name == "ElasticNet":
+                    _en = self.models[h]["ElasticNet"]
                     self.lasso_log.append({
                         "horizon": h, "stage": "final", "fold": -1,
-                        "alpha": float(_lasso.alpha_),
-                        "coefs": _lasso.coef_.tolist(),
+                        "alpha":    float(_en.alpha_),
+                        "l1_ratio": float(_en.l1_ratio_),
+                        "coefs":    _en.coef_.tolist(),
                     })
 
         # 5. FEATURE IMPORTANCE from XGB at shortest horizon (backtest :443-444)
@@ -405,3 +408,80 @@ class EnsembleVolModel:
             "base_value_log": float(base_value),
             "shap_values": top_impacts,
         }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# QUANTILE VOL MODEL
+# ═══════════════════════════════════════════════════════════════════════════
+
+class QuantileVolModel:
+    """
+    Walk-forward XGBoost quantile regressor.
+
+    Trains one XGBRegressor(objective="reg:quantileerror") per horizon using
+    the same expanding training window as the ensemble.  No WFA fold loop is
+    needed — quantile models have no weights to compute, so a direct fit on
+    the full training window is sufficient.
+
+    Predicts log(RV) at quantile ``tau``, then exp()-s to annualised vol.
+    Because log() is monotone, P_tau(log RV) = log(P_tau(RV)).
+
+    Calibration check (run in audit / analysis):
+        coverage = mean(y_true > y_pred_q{int(tau*100)})
+        Perfect calibration: coverage ≈ 1 - tau   (e.g. 0.15 for tau=0.85)
+
+    Requirements: XGBoost >= 2.0 (reg:quantileerror + quantile_alpha).
+    """
+
+    def __init__(self, config: ModelConfig, tau: float = 0.85):
+        self.config   = config
+        self.tau      = tau
+        self.horizons = config.horizons
+        self._models:  Dict[int, xgb.XGBRegressor] = {}
+        self._scaler:  Optional[StandardScaler]     = None
+
+    def _make_xgb(self) -> xgb.XGBRegressor:
+        params = dict(self.config.xgb_params)
+        params["objective"]      = "reg:quantileerror"
+        params["quantile_alpha"] = self.tau
+        # Reuse the GPU flag already resolved by EnsembleVolModel._init_models()
+        if params.get("device") == "cuda" and not EnsembleVolModel._gpu_available:
+            params["device"] = "cpu"
+        return xgb.XGBRegressor(**params)
+
+    def fit(self, X: pd.DataFrame, y_dict: Dict[int, pd.Series]) -> None:
+        """
+        Fit one quantile XGB per horizon on the full training window.
+
+        A single StandardScaler is fitted on X (all rows) and shared across
+        horizons, matching the ensemble's final_scaler convention.
+        """
+        self._scaler = StandardScaler()
+        X_s = self._scaler.fit_transform(X)
+
+        for h in self.horizons:
+            y = y_dict.get(h)
+            if y is None:
+                continue
+            valid = y.notna()
+            if valid.sum() < 10:
+                continue
+            m = self._make_xgb()
+            m.fit(X_s[valid.values], y[valid].values)
+            self._models[h] = m
+
+    def predict_batch(self, X: pd.DataFrame) -> Dict[int, np.ndarray]:
+        """
+        Predict quantile vol for a batch of test rows.
+
+        Returns {horizon: array_of_annualised_vol} (one value per row).
+        Missing horizons (fit failed) are omitted from the dict.
+        """
+        if self._scaler is None or not self._models:
+            return {}
+        X_s = self._scaler.transform(X)
+        out: Dict[int, np.ndarray] = {}
+        for h, m in self._models.items():
+            log_q    = np.clip(m.predict(X_s), -5, 5)
+            out[h]   = np.exp(log_q)
+        return out

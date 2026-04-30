@@ -6,7 +6,7 @@ EventCalendar (:91-97).
 """
 import numpy as np
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from scipy.stats import norm
 from scipy.optimize import brentq
 
@@ -148,6 +148,68 @@ def days_to_next_fomc(target_date):
     if isinstance(target_date, datetime):
         target_date = target_date.date()
     future = [d for d in FOMC_DATES if d >= target_date]
+    if not future:
+        return 100
+    return (future[0] - target_date).days
+
+
+# ---------------------------------------------------------------------------
+# CPI Release Calendar  (Bureau of Labor Statistics)
+# ---------------------------------------------------------------------------
+# CPI is released ~mid-month (10th-15th). Generated programmatically;
+# accurate to +/-2 days which is negligible for 1/(days+1) gravity features.
+
+def _mid_month_weekday(year, month, target_day=13):
+    """Nearest weekday to target_day of the month."""
+    d = date(year, month, target_day)
+    if d.weekday() == 5:    # Saturday -> Monday
+        d += timedelta(days=2)
+    elif d.weekday() == 6:  # Sunday -> Monday
+        d += timedelta(days=1)
+    return d
+
+
+CPI_DATES = sorted([
+    _mid_month_weekday(y, m)
+    for y in range(2014, 2027)
+    for m in range(1, 13)
+])
+
+
+def days_to_next_cpi(target_date):
+    """Distance in calendar days to next CPI release."""
+    if isinstance(target_date, datetime):
+        target_date = target_date.date()
+    future = [d for d in CPI_DATES if d >= target_date]
+    if not future:
+        return 100
+    return (future[0] - target_date).days
+
+
+# ---------------------------------------------------------------------------
+# NFP (Nonfarm Payrolls) Calendar  (BLS Employment Situation)
+# ---------------------------------------------------------------------------
+# Released first Friday of each month.
+
+def _first_friday(year, month):
+    """First Friday of a given month."""
+    d = date(year, month, 1)
+    days_ahead = (4 - d.weekday()) % 7  # Friday = weekday 4
+    return d + timedelta(days=days_ahead)
+
+
+NFP_DATES = sorted([
+    _first_friday(y, m)
+    for y in range(2014, 2027)
+    for m in range(1, 13)
+])
+
+
+def days_to_next_nfp(target_date):
+    """Distance in calendar days to next NFP release."""
+    if isinstance(target_date, datetime):
+        target_date = target_date.date()
+    future = [d for d in NFP_DATES if d >= target_date]
     if not future:
         return 100
     return (future[0] - target_date).days

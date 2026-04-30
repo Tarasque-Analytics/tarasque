@@ -120,6 +120,14 @@ def enforce_term_structure(h21: np.ndarray, h63: np.ndarray, h126: np.ndarray,
         h63[inv_mask] = blend
         h126[inv_mask] = blend
 
+    # Second H21 vs H63 pass — the H63-H126 pass above may have pulled H63
+    # down, creating a new H21 > H63 inversion that wasn't there before.
+    inv_mask = h21 > h63 * (1 + tol)
+    if inv_mask.any():
+        blend = 0.4 * h21[inv_mask] + 0.6 * h63[inv_mask]
+        h21[inv_mask] = blend
+        h63[inv_mask] = blend
+
     # Ensure positivity
     floor = 1e-4
     h21  = np.maximum(h21,  floor)

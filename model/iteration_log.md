@@ -1,17 +1,17 @@
 # Tarasque — Model Iteration Log
 _Tracks every model version, what changed, what improved, and what failed._
-_Last updated: 2026-04-08_
+_Last updated: 2026-04-28_
 
 ---
 
 ## Summary Arc
 
 ```
-v1  →  v2  →  v3  →  v4  →  v4 full corpus
-                              (94 tickers)
-RMSE   QLIKE  Beta   ETF    Production-scale
-fixed  fixed  drift  mom    calibration confirmed
-       -90%   closed added  100% EW-calibrated
+v1  →  v2  →  v3  →  v4  →  v4 full corpus  →  v5  →  v6  →  v6 full corpus  →  v7  →  v8 (current)
+                              (94 tickers)        BUG     split  (97 tickers)     Elastic  Optuna+
+RMSE   QLIKE  Beta   ETF    Production-scale     FIX     fix    two passes        Net      P15 floor
+fixed  fixed  drift  mom    calibration          ETF    AMZN   audit overlay     VIF      93-ticker
+       -90%   closed added  100% EW-calibrated  reload  fixed  benchmark         back     signal lift
 ```
 
 ---
@@ -199,17 +199,129 @@ H=21 portfolio avg beta=0.901, R²=0.346 — strong recovery from v3 dip (0.271)
 
 ---
 
+---
+
+## v5 — Critical Feature Bug Fix (2026-04-09)
+
+**What changed:**
+- **Bug 1 (data_loader.py:604):** `store.load("ohlcv", tickers=config.tickers)` excluded ETFs — silently dropped all 12 `ret_*/mom21_*` features AND broke `beta_spy`/sector coupling (no SPY in closes). Fix: load `config.tickers + config.all_factor_etfs`.
+- **Bug 2 (features.py:122):** `"mom21_"` missing from `include_prefixes` in `get_predictor_columns()` — momentum features were computed but never passed to models. The entire v4 rationale (ETF momentum) was never actually used.
+- Net: entire 94-ticker v4 corpus ran with ~34 effective features instead of 46. All v4 results are invalid.
+- Also dropped `tech_ATR` (Spearman=0.949 with rv_21d — pure redundancy).
+- VIF exclusions added: rv_5d, rv_10d, rv_63d, iv_atm_30d, vol_trend, put_call_abs_skew_30d. Feature count: 46. min_train raised to 920.
+
+**6-ticker validation (AAPL/JPM/XOM/NVDA/IBM/PEP):**
+
+| Ticker | H   | beta v4→v5     | R² note                      |
+|--------|-----|----------------|------------------------------|
+| JPM    | 21  | 1.082 → 0.992  | best result — beta near 1.0  |
+| JPM    | 126 | 1.431 → 1.253  | H126 drift closed             |
+| XOM    | 21  | 0.892 → 0.879  | canary held                  |
+| NVDA   | 21  | 0.935 → 0.776  | regressed — min_train effect  |
+
+**Verdict:** Pipeline bugs invalidated the full v4 corpus. 6-ticker validation confirms bug fix works; XOM canary held; JPM best result ever. Full 94-ticker re-run required. Config reset to full universe.
+
+---
+
+## v6 — Stock Split Fix + GARCH Feature + Full Corpus (2026-04-10 / 2026-04-11–16)
+
+**What changed:**
+1. **Split-adjusted prices:** `_pivot_ohlcv()` now reconstructs `adj_closes` from CRSP `ret` column (cumulative product). Prior approach used `log(prc/prc.shift(1))` which injected phantom vol spikes on split dates — AMZN June 2022 20:1 split injected ewma_vol=1425%. GK RV still uses raw H/L/O/C (intraday ratios are split-safe).
+2. **`garch_cond_vol` as predictor:** GARCH(1,1)-skewt conditional vol fit once per ticker on adj_returns. Added as 43rd predictor. Weakly selected by Lasso/ElasticNet (rank 28/43 at H=63, collinear with ewma_vol at H=21).
+3. **rv_21d re-added:** Was VIF-excluded (VIF=10.6) but is the strongest H=21 predictor. LassoCV/ElasticNet handle collinearity. Feature count 44.
+4. **Lasso + XGB tracking:** `lasso_tracking_{TICKER}.csv` and `xgb_importance_{TICKER}.csv` written per ticker.
+
+**6-ticker validation results:**
+
+| Ticker | H   | beta v5→v6     | R² note                              |
+|--------|-----|----------------|--------------------------------------|
+| AMZN   | 63  | 0.204 → 0.942  | SPLIT FIX CONFIRMED — biggest fix    |
+| BA     | 21  | 0.834 → 1.018  | improved                             |
+| XOM    | 21  | —    → 0.898   | canary: R²=0.512                     |
+| AAPL   | 21  | —    → 1.125   | stable                               |
+| C      | 126 | —    → 1.316   | R²=0.584 best H=126 in run           |
+| CVX    | 21  | —    → 0.991   | near-perfect calibration             |
+
+**Full 97-ticker corpus (two overnight passes via batch_backtest.py):**
+- First pass: 48 tickers, 17.8 hours. Second pass: 49 remaining, 13.6 hours.
+- 291 prediction files (97 tickers × 3 horizons). 756,249 rows in all_predictions.csv.
+- H=21 R²=0.374, H=63=0.319, H=126=0.458 corpus mean.
+- EW MZ betas 0.97-0.98 in current regime (COVID dominates flat OLS, making it look 24% calibrated — EW is the correct lens).
+- Tail asymmetry: -0.12 systematic underprediction of severe events (structural rolling-window lag — not worth patching separately).
+- Term structure inversion: 64.8% pre-overlay (calibration drift artifact, not real inversions).
+
+**Post-hoc additions (2026-04-11–16):**
+- **audit.py** — 9-test validity suite: DM test (97/97 beat persistence at H63/H126), MZ regression, tail coverage, IC, term structure compliance.
+- **mz_overlay.py** — EW MZ calibration (lambda=0.003) + soft isotonic term structure enforcement (tol=5%). Beta cap at 2.0 (VZ H126 raw=2.619). TS inversions reduced 64.8%→55.6%. Secondary violation bug identified (not yet fixed).
+- **benchmark_models.py** — HAR-RV + GARCH(1,1) walk-forward comparison. Ensemble lift over HAR: +0.135/+0.200/+0.432 mean ΔR² at H21/63/126. GARCH negative R² at all horizons (multi-step GARCH collapses to unconditional mean).
+
+**Verdict:** Definitive corpus. Split fix was the most impactful single change (AMZN H=63 R² 0.125→0.441). Full-history audit confirms robustness. MZ overlay makes H=126 deployment-ready.
+
+---
+
+## v7 — ElasticNet + Sector Coupling + Quantile Model (2026-04-23/24)
+
+**What changed:**
+1. **ElasticNet replaces LassoCV:** `ElasticNetCV(l1_ratio=[0.5,0.7,0.9])` cross-validates sparsity vs group-shrinkage per fold. L2 term prevents arbitrary zeroing of correlated feature groups. `mean_l1_ratio` tracked per fold in lasso_tracking CSVs.
+2. **6 VIF-excluded features restored:** `rv_5d, rv_10d, rv_63d, corr_sector_21d, corr_sector_252d, sector_wedge`. VIF=26-30 but carry real incremental signal (JPM H63 R² dropped 0.17 after removal). ElasticNet handles collinearity proportionally. Feature count 41→50.
+3. **min_train fixed to 756 flat** (was `max(252, 20×n_features)=1000` with 50 features — the 20× rule is Lasso-specific instability guard; ElasticNet's L2 is stable with shorter windows).
+4. **QuantileVolModel added:** Parallel XGBoost at tau=0.85 with `objective="reg:quantileerror"`. Outputs `y_pred_q85`. coverage_q85 = 0.27–0.36 vs target 0.15 → tau=0.85 behaves like ~P68 in practice.
+5. **Optuna search launched overnight:** hyperparam_search.py (JPM 120 trials + AAPL 80 trials, QLIKE + 0.3×|beta-1|² objective, step_days=63 for speed).
+
+**20-ticker cross-sector validation results (key highlights):**
+
+| Ticker | H   | beta v6→v7     | R² note                              |
+|--------|-----|----------------|--------------------------------------|
+| AMZN   | 21  | 0.666 → 0.846  | overforecast cluster improved        |
+| GOOGL  | 21  | 0.526 → 1.007  | dramatic improvement                 |
+| D      | 21  | 0.924 → 0.769  | sector coupling overcorrecting       |
+| LIN    | —   | —    → R²=0.94 | leakage artifact, exclude            |
+| META   | —   | —    → 314 rows| IPO recency — too short              |
+
+H21 mean R²=0.370, H63=0.350, H126=0.460.
+
+**Verdict:** ElasticNet + sector features are clearly better for financial names (JPM, GS). GOOGL overforecast cluster resolved. Sector coupling somewhat overcorrects at H21 for utilities (D). Quantile right-tail calibration is intractable — confirmed mismatch in model distribution, not a tau problem.
+
+---
+
+## v8 — Optuna Params + Left-Tail Floor + 93-Ticker Production Run (2026-04-28)
+
+**What changed:**
+1. **Optuna hyperparameters applied to config.py:** JPM/AAPL agreed on: depth 4→3, n_estimators 100→225, reg_alpha 0.01→0.15, reg_lambda 1.0→0.27, gamma 0.1→0.20, subsample 1.0→0.75, colsample 0.8→0.70. Compromises: learning_rate=0.05, min_child_weight=4, colsample_bytree=0.70. Smoke test: H126 beta improved (AAPL 1.372→1.230, JPM 1.356→1.303) at modest R² tradeoff. Systematic beta>1.0 is structural (expanding-window training), not hyperparameter-fixable.
+
+2. **tau=0.92 investigation → pivot to left tail (tau=0.15):** coverage_q92=0.19–0.39 vs target 0.08. Linear extrapolation implied tau>1.0 needed for true P85 — right tail is structurally intractable (unobserved shocks dominate). **Left tail (tau=0.15) is tractable:** low-vol regimes driven by observable persistent factors (GARCH, HYG, VIXY, RV windows). Errs conservatively (overwarn) — preferred under asymmetric loss. `quantile_alphas=[0.15]`. Outputs `y_pred_q15` = P15 vol floor estimate.
+
+3. **signal_strength.py built** (`analysis/`):
+   - Non-linear risk weight: flat <P60, convex above (P70→0.15, P80→0.30, P90→0.55, P95→0.75, P99→0.95)
+   - Expanding-window CDF per ticker (no lookahead bias) to track output percentiles
+   - Conditional tail precision: P(rv elevated | signal ≥ P80) vs baseline lift
+   - **3-ticker results:** XOM 24.7×, AAPL 7.2×, JPM 3.3× pooled 5.4× lift at P80+
+   - **2×2 regime taxonomy:** ensemble-only elevated = 6.1× (sharpest), both elevated = 5.4×, floor-only = 0.69× (contrarian), neither = 1.0×
+
+4. **vrp_return_conditional.py built** (`analysis/`): bins prior 5d/21d returns into quintiles, computes VRP wedge distribution per bucket. Hi-return + lo-VRP = momentum regime; hi-return + hi-VRP = mean reversion setup. JSON output for frontend.
+
+5. **MemoryError fix in parallel backtest:** `_slice_raw()` inside `_run_parallel()` — slices raw_data dict to only target ticker's vsurfd + shared ETF ohlcv + fred/meta before submitting to worker. Reduces per-worker pickle size ~90×.
+
+6. **93-ticker production universe:** Excluded LIN (R²=0.94 leakage artifact), OXY (RMSE explosion), VZ (beta outlier — Frontier Communications acquisition), META (IPO recency / user-flagged). step_days=63.
+
+**Status:** 85/93 tickers complete at session end. Final workers finishing.
+
+**Pending full-corpus analytics:**
+- `signal_strength.py` on all 93 tickers — expect 4–6× pooled lift at P80+
+- `vrp_return_conditional.py` — full VRP conditional distribution by return quintile
+
+---
+
 ## What's Next
 
-**Immediate priorities:**
-1. **MZ calibration overlay** — rolling OOS alpha+beta correction per ticker per horizon, applied as post-processing. Eliminates H=126 drift cleanly without touching the model.
-2. **IC/quintile spread** — rank 90 stocks by predicted vol daily, test whether top quintile realizes more vol. Converts "diagnostically good" to "monetizably validated."
-3. **Pull 119 new WRDS tickers** — identified but not yet in local DB. Expands universe toward the 400-ticker production target.
-4. **SHAP cross-ticker analysis** — feature importance heatmap by sector, SHAP on named event dates, rolling importance over time.
+**Immediate (once v8 corpus completes):**
+1. Run signal_strength.py and vrp_return_conditional.py on full 93-ticker predictions
+2. Fix TS monotonicity bug in mz_overlay.py (second H21-H63 pass after H63-H126 enforcement)
+3. OI differential pull from WRDS (25δ put/call OI — TIME SENSITIVE, access expiring)
 
 **Deferred:**
-- Vol surface term structure slope as feature (IV_30d - IV_91d already in DB)
-- Residual autocorrelation correction (rho * residual_{t-1} term)
-- SVI interpolated IV surface
-- Markov regime switching overlay
-- Supabase write layer (Caleb)
+- IC demeaned cross-sectional signal (IC=0.836 dominated by structural component)
+- SHAP cross-ticker analysis — feature importance heatmap by sector
+- Exponential sample weighting — lambda=0.0006 worsened JPM H=126, revisit
+- SVI interpolated IV surface, Markov regime switching — long-term
+- Supabase write layer, backend API, frontend — SWEs handling

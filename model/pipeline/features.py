@@ -353,6 +353,12 @@ class FeatureBuilder:
             lambda d: 1.0 / (days_to_next_nfp(d) + 1)
         )
 
+        # NOTE: event_tech_gravity (CES/SXSW/GTC/etc.) was canaried 2026-05-01
+        # on AAPL+XOM and showed near-zero net effect on AAPL (its intended
+        # target) with -0.015 R² regression at H=63. Reverted from launch spec.
+        # TECH_EVENT_DATES + days_to_next_tech_event remain in utils.py as
+        # research artifacts for v11+ event-window analysis.
+
         return df
 
     def _merge_event_gravity(

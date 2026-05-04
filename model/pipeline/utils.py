@@ -342,3 +342,66 @@ def days_to_next_nfp(target_date):
     if not future:
         return 100
     return (future[0] - target_date).days
+
+
+# ---------------------------------------------------------------------------
+# Tech / industry event calendar
+# ---------------------------------------------------------------------------
+# Sector-aware feature: vol clusters around major tech industry events even when
+# nothing macro is happening. Captured as a single gravity feature (1/(d+1)) so
+# tech-adjacent names get the lift without polluting non-tech models — ElasticNet
+# shrinks the coefficient toward zero for tickers where the event isn't a vol
+# driver. Dates are programmatically generated from known annual rhythms; minor
+# +/-2 day inaccuracy is negligible for 1/(d+1) gravity.
+#
+# Events covered (one peak day per event per year):
+#   - CES (Las Vegas): first Tuesday on/after January 7
+#   - SXSW (Austin): second Friday of March  ← captures March-tech vol clusters
+#   - Google I/O (Mountain View): second Tuesday of May
+#   - Apple WWDC: first Monday on/after June 5
+#   - Apple iPhone keynote: second Tuesday of September
+#   - NVIDIA GTC: third Tuesday of March (skips when conflicts with SXSW)
+
+def _first_target_weekday_on_or_after(year, month, day, weekday):
+    """First date ≥ (year-month-day) that falls on `weekday` (0=Mon..6=Sun)."""
+    d = date(year, month, day)
+    days_ahead = (weekday - d.weekday()) % 7
+    return d + timedelta(days=days_ahead)
+
+
+def _nth_weekday_of_month(year, month, weekday, n):
+    """nth occurrence of `weekday` in the given month (n=1 first, n=2 second...)."""
+    d = date(year, month, 1)
+    days_ahead = (weekday - d.weekday()) % 7
+    return d + timedelta(days=days_ahead + 7 * (n - 1))
+
+
+def _build_tech_event_dates(start_year=2014, end_year=2027):
+    dates = []
+    for y in range(start_year, end_year + 1):
+        # CES: first Tuesday on/after Jan 7
+        dates.append(_first_target_weekday_on_or_after(y, 1, 7, weekday=1))
+        # SXSW: second Friday of March
+        dates.append(_nth_weekday_of_month(y, 3, weekday=4, n=2))
+        # Google I/O: second Tuesday of May
+        dates.append(_nth_weekday_of_month(y, 5, weekday=1, n=2))
+        # WWDC: first Monday on/after June 5
+        dates.append(_first_target_weekday_on_or_after(y, 6, 5, weekday=0))
+        # Apple iPhone keynote: second Tuesday of September
+        dates.append(_nth_weekday_of_month(y, 9, weekday=1, n=2))
+        # NVIDIA GTC: third Tuesday of March (approximate; sometimes shifted)
+        dates.append(_nth_weekday_of_month(y, 3, weekday=1, n=3))
+    return sorted(set(dates))
+
+
+TECH_EVENT_DATES = _build_tech_event_dates()
+
+
+def days_to_next_tech_event(target_date):
+    """Distance in calendar days to next tech industry event."""
+    if isinstance(target_date, datetime):
+        target_date = target_date.date()
+    future = [d for d in TECH_EVENT_DATES if d >= target_date]
+    if not future:
+        return 100
+    return (future[0] - target_date).days

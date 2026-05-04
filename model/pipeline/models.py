@@ -190,6 +190,11 @@ class EnsembleVolModel:
         tscv = TimeSeriesSplit(n_splits=splits)
 
         lam = self.config.exp_weight_lambda
+        # Vol-weighted MSE knob: w = 1 + alpha * y_rank_pct.
+        # alpha=0 -> uniform (default); alpha>0 -> upweight high-vol training obs.
+        # Targets the AAPL-style under-forecast (β>1) cluster. NOT for the
+        # corpus-wide over-forecast (β<0.7) cluster — use exp_weight_lambda there.
+        vol_alpha = float(getattr(self.config, "vol_weight_alpha", 0.0))
 
         # 1. FINAL SCALER — fit on all data (backtest :394-396)
         self.final_scaler = StandardScaler()
@@ -198,13 +203,16 @@ class EnsembleVolModel:
             columns=X.columns, index=X.index,
         )
 
-        # Final-fit sample weights (same lambda, applied once outside horizon loop)
-        if lam > 0:
+        # Final-fit sample weights (recency + vol, applied once outside horizon loop)
+        final_sample_weights = None
+        if lam > 0 or vol_alpha > 0:
             n_final = len(X_final_s)
-            raw_w_final = np.exp(lam * np.arange(n_final))
-            final_sample_weights = raw_w_final / raw_w_final.mean()
-        else:
-            final_sample_weights = None
+            w_f = np.ones(n_final)
+            if lam > 0:
+                w_f = w_f * np.exp(lam * np.arange(n_final))
+            # Note: final-fit vol weighting applied per-horizon below since y is
+            # different per horizon.
+            final_sample_weights = w_f / w_f.mean()
 
         for h in self.horizons:
             y = y_dict[h]
@@ -229,19 +237,25 @@ class EnsembleVolModel:
                 X_tr_s = fold_scaler.fit_transform(X_tr)
                 X_te_s = fold_scaler.transform(X_te)
 
-                # Exponential sample weights: recent rows get higher weight.
-                # w_i = exp(lambda * i), i=0 oldest, i=N-1 newest.
-                # Normalised so mean weight = 1.0 (preserves effective sample size signal).
-                if lam > 0:
+                # Sample weights: combine recency (lambda) and vol-rank (alpha).
+                # Both default off; either can be enabled independently via config.
+                # Final weight = recency_w * vol_w, normalised so mean = 1.0.
+                fold_sample_weights = None
+                if lam > 0 or vol_alpha > 0:
                     n_tr = len(X_tr_s)
-                    raw_w = np.exp(lam * np.arange(n_tr))
-                    fold_sample_weights = raw_w / raw_w.mean()
-                else:
-                    fold_sample_weights = None
+                    w = np.ones(n_tr)
+                    if lam > 0:
+                        w = w * np.exp(lam * np.arange(n_tr))
+                    if vol_alpha > 0:
+                        # Rank in [0, 1]; higher realized vol -> higher weight.
+                        rank_pct = pd.Series(y_tr).rank(pct=True).values
+                        w = w * (1.0 + vol_alpha * rank_pct)
+                    fold_sample_weights = w / w.mean()
 
                 for name in model_names:
                     _t = time.perf_counter()
-                    if fold_sample_weights is not None and name in ("XGB", "RF"):
+                    if fold_sample_weights is not None:
+                        # All three estimators accept sample_weight in fit()
                         self.models[h][name].fit(X_tr_s, y_tr, sample_weight=fold_sample_weights)
                     else:
                         self.models[h][name].fit(X_tr_s, y_tr)
@@ -284,9 +298,22 @@ class EnsembleVolModel:
                   f"Weights: {', '.join(f'{n}={self.weights[h][n]:.2f}' for n in model_names)}")
 
             # 4. FINAL FIT on fully scaled data (backtest :437-440)
+            # Compose per-horizon final sample weights: recency * vol-rank
+            if final_sample_weights is not None or vol_alpha > 0:
+                base = (final_sample_weights if final_sample_weights is not None
+                        else np.ones(len(X_final_s)))
+                if vol_alpha > 0:
+                    rank_pct_h = y.rank(pct=True).values
+                    final_w_h = base * (1.0 + vol_alpha * rank_pct_h)
+                    final_w_h = final_w_h / final_w_h.mean()
+                else:
+                    final_w_h = base
+            else:
+                final_w_h = None
+
             for name in model_names:
-                if final_sample_weights is not None and name in ("XGB", "RF"):
-                    self.models[h][name].fit(X_final_s, y, sample_weight=final_sample_weights)
+                if final_w_h is not None:
+                    self.models[h][name].fit(X_final_s, y, sample_weight=final_w_h)
                 else:
                     self.models[h][name].fit(X_final_s, y)
                 if name == "ElasticNet":

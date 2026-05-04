@@ -154,7 +154,18 @@ class ModelConfig:
     garch_dist: str = "skewt"
 
     # Exponential recency weighting — lambda=0 disables (uniform weights).
+    # Lambda > 0 upweights recent observations. Half-life ≈ ln(2)/lambda BDays.
+    # Targets corpus-wide H=63/H=126 over-forecast cluster (β<0.7) where the
+    # model anchors to training-era vol levels that no longer apply. Try 0.0005
+    # (half-life ~5.5 yrs) before 0.001 (~2.75 yrs).
     exp_weight_lambda: float = 0.0
+
+    # Vol-rank weighting (orthogonal to lambda) — alpha=0 disables.
+    # w = 1 + alpha * y.rank(pct=True). Upweights high-vol training observations.
+    # Targets the AAPL-style under-forecast (β>1) cluster only — would WORSEN
+    # the over-forecast cluster, so use alongside exp-weighting only with care.
+    # Try alpha=1.0 (top decile gets ~2x weight) for a canary.
+    vol_weight_alpha: float = 0.0
 
     # ── Ensemble ─────────────────────────────────────────────────────────
     # Floor prevents a single model from dominating the blend.

@@ -748,8 +748,10 @@ def append_recent_data(
         recent = cont.fetch_recent_ohlcv(config.tickers, since_date=last_date)
         if not recent.empty:
             combined = pd.concat([ohlcv, recent], ignore_index=True)
-            # Normalize to tz-naive UTC dates — Alpaca returns tz-aware, CRSP is tz-naive.
-            combined["date"] = pd.to_datetime(combined["date"], utc=True).dt.tz_localize(None)
+            # Truncate to YYYY-MM-DD — handles mixed string/Timestamp/tz-aware/tz-naive
+            # rows in the concat. Daily bars are calendar dates; the time component carries
+            # no information and parses inconsistently across CRSP cache vs Alpaca fresh pull.
+            combined["date"] = pd.to_datetime(combined["date"].astype(str).str[:10])
             combined = combined.drop_duplicates(
                 subset=["date", "ticker"], keep="last",
             )

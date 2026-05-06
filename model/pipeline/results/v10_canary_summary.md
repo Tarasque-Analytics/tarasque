@@ -1,13 +1,13 @@
 # v10+ Canary Validation — Meeting Brief
 
-_Generated 2026-05-04. Aggregated from local v10+ canary
-predictions + v9 SSD canary (12 tickers). Total unique tickers analyzed: 26._
+_Generated 2026-05-05. Aggregated from local v10+ canary
+predictions + v9 SSD canary (12 tickers). Total unique tickers analyzed: 55._
 
 ## Calibration Summary (raw OLS, log-vol space)
 
-- **H=21**: n=26, mean β=0.991, std=0.057, in [0.7,1.3]: **26/26** (100%), mean R²=0.471
-- **H=63**: n=26, mean β=1.058, std=0.106, in [0.7,1.3]: **25/26** (96%), mean R²=0.460
-- **H=126**: n=26, mean β=1.099, std=0.126, in [0.7,1.3]: **24/26** (92%), mean R²=0.551
+- **H=21**: n=55, mean β=0.980, std=0.094, in [0.7,1.3]: **54/55** (98%), mean R²=0.460
+- **H=63**: n=55, mean β=1.066, std=0.117, in [0.7,1.3]: **54/55** (98%), mean R²=0.451
+- **H=126**: n=55, mean β=1.117, std=0.124, in [0.7,1.3]: **50/55** (91%), mean R²=0.555
 
 ## What This Means
 
@@ -22,21 +22,21 @@ predictions + v9 SSD canary (12 tickers). Total unique tickers analyzed: 26._
 | Ticker | v8 R² | v10+ R² | Lift |
 |---|---|---|---|
 | **WFC** | 0.035 | 0.607 | +0.573 |
+| **UPS** | 0.059 | 0.618 | +0.559 |
 | **XOM** | 0.102 | 0.649 | +0.547 |
 | **GE** | 0.152 | 0.673 | +0.521 |
+| **INTC** | 0.127 | 0.642 | +0.516 |
 | **SLB** | 0.180 | 0.686 | +0.506 |
+| **QCOM** | 0.052 | 0.519 | +0.467 |
+| **GILD** | 0.003 | 0.456 | +0.453 |
 | **LLY** | 0.074 | 0.519 | +0.445 |
-| **PLD** | 0.071 | 0.506 | +0.436 |
-| **PFE** | 0.062 | 0.469 | +0.408 |
-| **KO** | 0.093 | 0.449 | +0.355 |
-| **TSLA** | 0.081 | 0.418 | +0.337 |
-| **WMT** | 0.110 | 0.419 | +0.310 |
+| **TXN** | 0.023 | 0.459 | +0.436 |
 
 
 ## Bottom Line
 
 v10+ spec (step_days=20, ElasticNet+XGB+RF ensemble, MSE in log-vol, τ=0.15 floor)
-generalizes the v9 calibration improvements across 26 sectorally
+generalizes the v9 calibration improvements across 55 sectorally
 diverse stocks. The v8 over-forecast cluster (β<0.7 on most names at H=63/H=126)
 is structurally fixed by the step_days change. Remaining residual β patterns are
 the regime classifier signal — preserved as actionable diagnostic, not corrected away

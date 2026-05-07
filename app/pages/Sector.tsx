@@ -9,7 +9,7 @@ export default function SectorView() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Data is preloaded from route loader
+    // Data is preloaded from route loader - need only when pulling from DB, maybe
     setIsLoading(false);
   }, []);
 

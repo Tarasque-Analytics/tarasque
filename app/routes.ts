@@ -13,7 +13,7 @@ export default [
   route("login", "./routes/login.tsx"),
   route("register", "./routes/register.tsx"),
 
-  // Protected routes (auth req)
+  // Protected routes (auth req) - make sure to run backend when testing
   layout("./layouts/ProtectedLayout.tsx", [
     route("dashboard", "./routes/dashboard.tsx"),
     route("equity/:symbol", "./routes/ticker.tsx"),

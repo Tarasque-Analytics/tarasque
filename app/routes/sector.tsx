@@ -1,4 +1,4 @@
-// uncomment below once SectorDataPayload exists if applicable
+// uncomment below once SectorDataPayload exists if applicable - probably a different payload than tickers
 // import type { SectorDataPayload } from "../context/SectorDataContext";
 import type { LoaderFunctionArgs } from "react-router";
 import { loadTickerPayload } from "../utils/tickers";

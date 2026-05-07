@@ -1,0 +1,40 @@
+```
+table securities
+security_id needs to be tied to all model outputs - since we're doing this for single tickers anyway, i just need to keep track of it on DB insert
+the same applies to the ticker itself - its how we index stuff
+for other metadata (gics_sector, gics_industry, sector_etf) we'll probably need to hardcode to map stuff over
+min_history_date and last_model_run are things that we also need the model to just grab and output with the rest of its stuff
+INT security_id, TEXT ticker, TEXT gics_sector, TEXT gics_industry, TEXT sector_etf, BOOL DEFAULT TRUE active, DATE min_history_date, TIMESTAMP last_model_run
+primary key: security_id
+
+table volatility_history
+each entry in the table needs to have a date, rv, iv_atm, vrp_wedge, pfv_ cal q15 _ (21, 63, 126) somewhere from the model
+INT security_id (foreign key ref securities), DATE NOT NULL date, DOUBLE PRECISION (the following: rv, iv_atm, vrp_wedge, pfv_21, pfv_63, pfv_126, pfv_cal_21, pfv_cal_63, pfv_cal_126, pfv_q15_21, pfv_q15_63, pfv_q15_126)
+primary key: (security_id, date)
+
+table prices_history
+we're going to want some sort of workflow to grab this data *once* per day (to keep it in line with when we run the model) and cache the following outputs
+INT security_id (foreign key ref securities), DATE NOT NULL date, NUMERIC(12, 4) (the following: open, close, high, low, adj_close), BIGINT volume
+primary key: (security_id, date)
+
+table options_chain
+this should be data that is already mostly in the previous model - some parts may need to be removed, but we might want to query some options API daily just for the old bid/ask/volume statistics if we plan to show them to users; everything else should be just part of the contracts themselves
+BIGSERIAL id, INT security_id (foreign key ref securities), DATE NOT NULL snapshot_date, DATE NOT NULL expiry, NUMERIC(10,2) strike, CHAR(1) NOT NULL CHECK(option_type IN('C','P')) option_type, NUMERIC(8, 2) (the following: bid, ask, mid, last), INT volume, INT open_interest, DOUBLE PRECISION iv, DOUBLE PRECISION delta
+primary key: id
+UNIQUE (security_id, snapshot_date, expiry, option_type, strike)
+
+table shap_snapshot
+this i honestly dont totally understand - we should absolutely modify this before proceeding, specifically to figure out which parts are actually necessary to describe and recreate the graph
+the "information" parts, though, should be good (security_id and dates)
+INT security_id (foreign key ref securities), DATE NOT NULL retrain_date, INT NOT NULL horizon, DATE NOT NULL snapshot_date, DOUBLE PRECISION base_value, DOUBLE PRECISION predicted_value, JSONB NOT NULL feature_data {[name, display_name, value, shap, abs_shap]}
+primary key: (security_id, retrain_date, horizon)
+
+table ai_overview
+this is also just a preliminary thing for now
+BIGSERIAL id, INT security_id (foreign key ref securities), DATE NOT NULL date, TEXT NOT NULL (the following: model_ver, prompt_ver, headline), JSONB NOT NULL content, TIMESTAMPTZ NOT NULL DEFAULT now() generated_at
+primary key: id
+UNIQUE(security_id, date, model_ver, prompt_ver)
+
+These are ordered in (rough approximation of) priority - let me know which of these the model can already just output, and which we might need to change out.
+This should be set up such that we can both manually run the model on a ticker and have it automatically upload new data to the database and also automatically run it on a certain subset of tickers every so often and automatically upload that new data to the database.
+```

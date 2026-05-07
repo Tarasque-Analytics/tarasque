@@ -27,18 +27,8 @@ export default function Navigation() {
             </Link>
           </li>
           <li className="nav-item">
-            <Link to="/equity/MS" className="nav-link">
-              Equity (MS Example)
-            </Link>
-          </li>
-          <li className="nav-item">
-            <Link to="/sector/MS" className="nav-link">
-              Sector (MS Example)
-            </Link>
-          </li>
-          <li className="nav-item">
-            <Link to="/macro" className="nav-link">
-              Macro
+            <Link to="/ticker/MS" className="nav-link">
+              Ticker (MS Example)
             </Link>
           </li>
           <li className="nav-item">

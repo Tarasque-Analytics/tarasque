@@ -16,7 +16,9 @@ export default [
   // Protected routes (auth req)
   layout("./layouts/ProtectedLayout.tsx", [
     route("dashboard", "./routes/dashboard.tsx"),
-    route("ticker/:symbol", "./routes/ticker.tsx"),
+    route("equity/:symbol", "./routes/ticker.tsx"),
+    route("macro", "./routes/macro.tsx"),
+    route("sector/:sector", "./routes/sector.tsx"),
   ]),
 
   // Wildcard route for 404/unmatched routes

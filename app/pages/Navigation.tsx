@@ -32,8 +32,8 @@ export default function Navigation() {
             </Link>
           </li>
           <li className="nav-item">
-            <Link to="/sector/MS" className="nav-link">
-              Sector (MS Example)
+            <Link to="/sector/IT" className="nav-link">
+              Sector (IT Example)
             </Link>
           </li>
           <li className="nav-item">

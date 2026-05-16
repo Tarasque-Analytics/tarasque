@@ -7,6 +7,9 @@ import Predictors from "../components/ticker/predictors";
 import type { TickerDataPayload } from "../context/TickerDataContext";
 import { TickerDataProvider } from "../context/TickerDataContext";
 
+// TESTING PURPOSES ONLY
+import { loadEquityData } from "../utils/database";
+
 export default function TickerView() {
   const { symbol } = useParams<{ symbol: string }>();
   const payloadData = useLoaderData() as TickerDataPayload;
@@ -16,6 +19,13 @@ export default function TickerView() {
     // Data is preloaded from route loader
     setIsLoading(false);
   }, []);
+  
+  // TESTING PURPOSES ONLY
+  const res = loadEquityData("AAPL").then((value) => {
+    console.log(value)
+  }).catch((reason) => {
+    console.error(reason)
+  });
 
   return (
     <TickerDataProvider data={payloadData}>

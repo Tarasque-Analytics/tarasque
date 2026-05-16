@@ -1,7 +1,11 @@
-import type { TickerDataPayload } from "../context/TickerDataContext";
+/**
+ * Includes definitions for rows stored in the various tables in the database along
+ * with functions to gather comprehensive data for any one of the pages
+ * 
+ */
+
 
 const API_BASE_URL = "http://localhost:8000/api";
-
 // Volatility and forecasting data
 export interface VolatilityRecord {
   date: string;
@@ -120,48 +124,14 @@ export interface EquitiesPayload {
 }
 
 /**
- * Get all available ticker symbols from the backend
- */
-export async function getAvailableTickers(): Promise<string[]> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/tickers`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch tickers: ${response.statusText}`);
-    }
-    const data = await response.json();
-    return data.tickers;
-  } catch (error) {
-    console.error("Error fetching available tickers:", error);
-    return [];
-  }
-}
-
-/**
- * Load payload data for a specific ticker from the backend
- */
-export async function loadTickerPayload(symbol: string): Promise<TickerDataPayload> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/tickers/${symbol}`);
-    if (!response.ok) {
-      if (response.status === 404) {
-        throw new Error(`No data found for symbol: ${symbol}`);
-      }
-      throw new Error(`Failed to fetch data for ${symbol}: ${response.statusText}`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.error(`Error loading ticker data for ${symbol}:`, error);
-    throw error;
-  }
-}
-
-/**
  * Load comprehensive equity data for a specific ticker from the backend
  * Includes volatility, price history, options, AI overview, SHAP, distributions, and events
+ * Used for /equity/:symbol
  */
 export async function loadEquityData(symbol: string): Promise<EquitiesPayload> {
   try {
     const response = await fetch(`${API_BASE_URL}/equity/${symbol}`);
+    console.log("response: " + response);
     if (!response.ok) {
       if (response.status === 404) {
         throw new Error(`No equity data found for symbol: ${symbol}`);

@@ -15,10 +15,7 @@ export default function Dashboard() {
 
   return (
     <div>
-      <div className="flex justify-center">Dashboard</div>
-      <Link to="/" className="flex justify-center">
-        Go to Navigation
-      </Link>
+
       {/* Component Grid */}
       {isLoading ? (
         <div className="loading-placeholder" />

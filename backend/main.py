@@ -16,11 +16,11 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from supabase import acreate_client, Client, AsyncClient
+from supabase import create_client, Client, AsyncClient
 import asyncio
 from contextlib import asynccontextmanager
 
-supabase : AsyncClient = None
+supabase : Client = None
 
 # Supabase
 @asynccontextmanager
@@ -28,11 +28,23 @@ async def lifespan(app: FastAPI):
     # using global here to purely define the supabase once before the server starts up
     # the acreate_client is an async function and thus needs to be in a async function as well
     global supabase
-    load_dotenv("..\\.env")
+    
+    # Load .env from project root (parent of backend directory)
+    env_path = Path(__file__).parent.parent / ".env"
+    if not env_path.exists():
+        raise RuntimeError(f".env file not found at {env_path}")
+    load_dotenv(env_path)
     
     url = os.environ.get("VITE_SUPABASE_URL")
     key = os.environ.get("VITE_SUPABASE_PUBLISHABLE_KEY")
-    supabase = await acreate_client(url, key)
+    
+    if not url or not key:
+        raise RuntimeError(
+            "Missing required environment variables. "
+            f"VITE_SUPABASE_URL: {bool(url)}, VITE_SUPABASE_PUBLISHABLE_KEY: {bool(key)}"
+        )
+    
+    supabase = create_client(url, key)
     yield
     # In the future if anything needs to be done after closing the app, put it here
 
@@ -50,15 +62,6 @@ app.add_middleware(
 
 # Path to data directory relative to this file
 DATA_DIR = Path(__file__).parent.parent / "app" / "assets" / "data"
-
-    
-@app.on_event("startup")
-async def get_supabase_client():
-    load_dotenv("..\\..\\.env")
-    url = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_KEY")
-    supabase = await acreate_client(url, key)
-    return supabase
 
 # Change to PostgreSQL check when implemented
 @app.get("/api/health")
@@ -175,7 +178,8 @@ async def get_equity_data(symbol: str):
         security_metadata = await get_security_data(symbol)
         sec_id = security_metadata["security_id"]
         gics_sector = security_metadata["gics_sector"]
-        (vol_hist, price_hist, options, ai_overview, shap, distributions, events) = await asyncio.gather(
+        # Capture exceptions as results instead of raising them
+        vol_hist, price_hist, options, ai_overview, shap, distributions, events = await asyncio.gather(
             get_volatility_history(sec_id),
             get_price_history(sec_id),
             get_options_chain(sec_id),
@@ -195,7 +199,10 @@ async def get_equity_data(symbol: str):
             "distribution_data": distributions,
             "events": events
         }
+    except HTTPException:
+        raise  # Re-raise HTTPException as-is to preserve status codes
     except Exception as e:
+        print(f"Comes here {str(e)}")
         raise HTTPException(status_code=500, detail=f"Equity data cannot be found for {symbol}: {str(e)}")
     
     
@@ -217,12 +224,13 @@ async def get_security_data(symbol: str):
     symbol = symbol.upper()
     # Get the security_id
     try:
-        response =  await (supabase.table("securities")
+        response = (supabase.table("securities")
             .select("*")
             .eq("ticker", symbol)
             .execute()
         )
     except Exception as e:
+        print(str(e))
         raise HTTPException(
             status_code=404,
             detail=f"Error fetching from securities table: {e}"
@@ -238,7 +246,7 @@ async def get_volatility_history(security_id: int):
     """Get 5 years of volatility data for a security"""
     five_years_ago = (datetime.now() - timedelta(days=365*5)).strftime('%Y-%m-%d')
     try:
-        response = await (supabase.table("volatility_history") 
+        response = (supabase.table("volatility_history") 
             .select("*") 
             .eq("security_id", security_id) 
             .gte("date", five_years_ago) 
@@ -258,7 +266,7 @@ async def get_price_history(security_id: int):
     one_year_ago = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
     
     try:
-        response = await (supabase.table("prices_history")
+        response = (supabase.table("prices_history")
             .select("*")
             .eq("security_id", security_id)
             .gte("date", one_year_ago)
@@ -277,7 +285,7 @@ async def get_options_chain(security_id: int):
     """Get latest options chain for a security"""
     try:
         # Get the most recent snapshot date
-        latest_snapshot = await (supabase.table("options_chain")
+        latest_snapshot = (supabase.table("options_chain")
             .select("snapshot_date")
             .eq("security_id", security_id)
             .order("snapshot_date", desc=True)
@@ -290,7 +298,7 @@ async def get_options_chain(security_id: int):
         snapshot_date = latest_snapshot.data[0]["snapshot_date"]
         
         # Get all options for that snapshot
-        response = await (supabase.table("options_chain")
+        response = (supabase.table("options_chain")
             .select("*")
             .eq("security_id", security_id)
             .eq("snapshot_date", snapshot_date)
@@ -313,7 +321,7 @@ async def get_ai_overview(
 ):
     """Get latest AI overview for a security"""
     try:
-        response = await (supabase.table("ai_overview")
+        response = (supabase.table("ai_overview")
             .select("*")
             .eq("security_id", security_id)
             .eq("model_ver", model_version)
@@ -323,7 +331,7 @@ async def get_ai_overview(
             .limit(1)
             .execute())
     except Exception as e:
-        print("Exception at ai")   
+        print(f"Exception at ai {str(e)}")   
         raise HTTPException(
             status_code=404,
             detail=f"Error fetching from ai_overview_equity table: {e}"
@@ -335,7 +343,7 @@ async def get_shap_snapshot(security_id: int):
     """Get latest SHAP snapshot per horizon for a security"""
     try:
         # Get the most recent retrain date
-        latest_retrain = await (supabase.table("shap_snapshot")
+        latest_retrain = (supabase.table("shap_snapshot")
             .select("retrain_date")
             .eq("security_id", security_id)
             .order("retrain_date", desc=True)
@@ -348,7 +356,7 @@ async def get_shap_snapshot(security_id: int):
         retrain_date = latest_retrain.data[0]["retrain_date"]
         
         # Get all horizons for the latest retrain
-        response = await (supabase.table("shap_snapshot")
+        response = (supabase.table("shap_snapshot")
             .select("*")
             .eq("security_id", security_id)
             .eq("retrain_date", retrain_date)
@@ -369,16 +377,16 @@ async def get_distribution(
 ):
     """Get distribution data (stock/sector/market scopes)"""
     try:
-        response = await supabase.rpc(
+        response = supabase.rpc(
             "get_distribution",
             {
                 "p_security_id": security_id,
                 "p_metric": metric,
                 "p_lookback_days": lookback_days
             }
-        )
+        ).execute()
     except Exception as e:
-        print("Exception at distribution")   
+        print(f"Exception at distribution {str(e)}")   
         raise HTTPException(
             status_code=404,
             detail=f"Error calling get_distribution RPC: {e}"
@@ -391,7 +399,7 @@ async def get_events(symbol: str, gics_sector: str):
     
     try:
         # Get all events from the past year
-        response = await (supabase.table("events_history")
+        response = (supabase.table("events_history")
             .select("*")
             .gte("event_date", one_year_ago)
             .execute())

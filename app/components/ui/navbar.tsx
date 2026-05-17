@@ -5,7 +5,6 @@
 
 // assets
 import notATurtle from "~/assets/turtle.svg";
-import VolarTitle from "~/assets/volarbear-title.png";
 import Home from "~/assets/home.svg";
 // components
 import Search from "./search";

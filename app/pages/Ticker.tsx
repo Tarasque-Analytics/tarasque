@@ -18,14 +18,14 @@ export default function TickerView() {
   useEffect(() => {
     // Data is preloaded from route loader
     setIsLoading(false);
+    
+    // TESTING PURPOSES ONLY
+    loadEquityData("AAPL").then((value) => {
+      console.log(value)
+    }).catch((reason) => {
+      console.error(reason)
+    });
   }, []);
-  
-  // TESTING PURPOSES ONLY
-  const res = loadEquityData("AAPL").then((value) => {
-    console.log(value)
-  }).catch((reason) => {
-    console.error(reason)
-  });
 
   return (
     <TickerDataProvider data={payloadData}>

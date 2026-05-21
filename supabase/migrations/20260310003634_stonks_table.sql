@@ -153,3 +153,153 @@ BEGIN
     RETURN QUERY SELECT 'stock'::TEXT, 0::DOUBLE PRECISION, 0::DOUBLE PRECISION, 0::INT, 0::DOUBLE PRECISION, 0::DOUBLE PRECISION WHERE FALSE;
 END;
 $$ LANGUAGE plpgsql;
+
+
+CREATE TABLE user_dashboard (
+  user_id UUID NOT NULL REFERENCES auth.identities(id) PRIMARY KEY,
+  watchlist JSONB NOT NULL DEFAULT '[]'::jsonb
+);
+
+
+
+
+
+-- Enable Row Level Security on all tables
+
+-- 1. Securities table
+ALTER TABLE securities ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read access to securities"
+  ON securities FOR SELECT
+  TO public
+  USING (true);
+
+CREATE POLICY "Restrict write access to authenticated users"
+  ON securities FOR INSERT
+  TO authenticated
+  WITH CHECK (false);
+
+CREATE POLICY "Restrict update access to authenticated users"
+  ON securities FOR UPDATE
+  TO authenticated
+  USING (false);
+
+CREATE POLICY "Restrict delete access to authenticated users"
+  ON securities FOR DELETE
+  TO authenticated
+  USING (false);
+
+-- 2. Volatility History table
+ALTER TABLE volatility_history ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read access to volatility_history"
+  ON volatility_history FOR SELECT
+  TO public
+  USING (true);
+
+CREATE POLICY "Restrict write access to authenticated users"
+  ON volatility_history FOR INSERT
+  TO authenticated
+  WITH CHECK (false);
+
+CREATE POLICY "Restrict update access to authenticated users"
+  ON volatility_history FOR UPDATE
+  TO authenticated
+  USING (false);
+
+CREATE POLICY "Restrict delete access to authenticated users"
+  ON volatility_history FOR DELETE
+  TO authenticated
+  USING (false);
+
+-- 3. Prices History table
+ALTER TABLE prices_history ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read access to prices_history"
+  ON prices_history FOR SELECT
+  TO public
+  USING (true);
+
+CREATE POLICY "Restrict write access to authenticated users"
+  ON prices_history FOR INSERT
+  TO authenticated
+  WITH CHECK (false);
+
+CREATE POLICY "Restrict update access to authenticated users"
+  ON prices_history FOR UPDATE
+  TO authenticated
+  USING (false);
+
+CREATE POLICY "Restrict delete access to authenticated users"
+  ON prices_history FOR DELETE
+  TO authenticated
+  USING (false);
+
+-- 4. Options Chain table
+ALTER TABLE options_chain ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read access to options_chain"
+  ON options_chain FOR SELECT
+  TO public
+  USING (true);
+
+CREATE POLICY "Restrict write access to authenticated users"
+  ON options_chain FOR INSERT
+  TO authenticated
+  WITH CHECK (false);
+
+CREATE POLICY "Restrict update access to authenticated users"
+  ON options_chain FOR UPDATE
+  TO authenticated
+  USING (false);
+
+CREATE POLICY "Restrict delete access to authenticated users"
+  ON options_chain FOR DELETE
+  TO authenticated
+  USING (false);
+
+-- 5. SHAP Snapshot table
+ALTER TABLE shap_snapshot ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read access to shap_snapshot"
+  ON shap_snapshot FOR SELECT
+  TO public
+  USING (true);
+
+CREATE POLICY "Restrict write access to authenticated users"
+  ON shap_snapshot FOR INSERT
+  TO authenticated
+  WITH CHECK (false);
+
+CREATE POLICY "Restrict update access to authenticated users"
+  ON shap_snapshot FOR UPDATE
+  TO authenticated
+  USING (false);
+
+CREATE POLICY "Restrict delete access to authenticated users"
+  ON shap_snapshot FOR DELETE
+  TO authenticated
+  USING (false);
+
+-- 6. Events History table
+ALTER TABLE events_history ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read access to events_history"
+  ON events_history FOR SELECT
+  TO public
+  USING (true);
+
+CREATE POLICY "Restrict write access to authenticated users"
+  ON events_history FOR INSERT
+  TO authenticated
+  WITH CHECK (false);
+
+CREATE POLICY "Restrict update access to authenticated users"
+  ON events_history FOR UPDATE
+  TO authenticated
+  USING (false);
+
+CREATE POLICY "Restrict delete access to authenticated users"
+  ON events_history FOR DELETE
+  TO authenticated
+  USING (false);

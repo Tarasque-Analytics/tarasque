@@ -9,32 +9,40 @@ TODO: PostgreSQL Integration
 - Add connection pooling for performance
 - Implement caching layer (Redis) for frequently accessed tickers
 """
-from datetime import datetime, timedelta
 import json
 import os
 from pathlib import Path
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from supabase import create_client, Client, AsyncClient
+from supabase import acreate_client
 import asyncio
 from contextlib import asynccontextmanager
+import traceback
+from backend import database
+from backend.database import (
+    get_security_data,
+    get_volatility_history,
+    get_price_history,
+    get_options_chain,
+    get_ai_overview,
+    get_shap_snapshot,
+    get_distribution,
+    get_events
+)
 
-supabase : Client = None
 
-# Supabase
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # using global here to purely define the supabase once before the server starts up
-    # the acreate_client is an async function and thus needs to be in a async function as well
-    global supabase
+    # initialize our supabase instance before server start
     
     # Load .env from project root (parent of backend directory)
     env_path = Path(__file__).parent.parent / ".env"
     if not env_path.exists():
         raise RuntimeError(f".env file not found at {env_path}")
-    load_dotenv(env_path)
     
+    load_dotenv(env_path)
     url = os.environ.get("VITE_SUPABASE_URL")
     key = os.environ.get("VITE_SUPABASE_PUBLISHABLE_KEY")
     
@@ -44,7 +52,8 @@ async def lifespan(app: FastAPI):
             f"VITE_SUPABASE_URL: {bool(url)}, VITE_SUPABASE_PUBLISHABLE_KEY: {bool(key)}"
         )
     
-    supabase = create_client(url, key)
+    supabase_client = acreate_client(url, key)
+    database.initialize_db(supabase_client)
     yield
     # In the future if anything needs to be done after closing the app, put it here
 
@@ -178,7 +187,8 @@ async def get_equity_data(symbol: str):
         security_metadata = await get_security_data(symbol)
         sec_id = security_metadata["security_id"]
         gics_sector = security_metadata["gics_sector"]
-        # Capture exceptions as results instead of raising them
+        
+        # gather everything async
         vol_hist, price_hist, options, ai_overview, shap, distributions, events = await asyncio.gather(
             get_volatility_history(sec_id),
             get_price_history(sec_id),
@@ -202,7 +212,8 @@ async def get_equity_data(symbol: str):
     except HTTPException:
         raise  # Re-raise HTTPException as-is to preserve status codes
     except Exception as e:
-        print(f"Comes here {str(e)}")
+        print(f"Exception thrown: {str(e)}", flush=True)
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Equity data cannot be found for {symbol}: {str(e)}")
     
     
@@ -219,218 +230,6 @@ async def get_sector_data():
 @app.get("/api/macro")
 async def get_macro_data():
     return {}
-
-async def get_security_data(symbol: str):
-    symbol = symbol.upper()
-    # Get the security_id
-    try:
-        response = (supabase.table("securities")
-            .select("*")
-            .eq("ticker", symbol)
-            .execute()
-        )
-    except Exception as e:
-        print(str(e))
-        raise HTTPException(
-            status_code=404,
-            detail=f"Error fetching from securities table: {e}"
-        )
-    if not response.data:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No security found for symbol: {symbol}"
-        )
-    return response.data[0]
-
-async def get_volatility_history(security_id: int):
-    """Get 5 years of volatility data for a security"""
-    five_years_ago = (datetime.now() - timedelta(days=365*5)).strftime('%Y-%m-%d')
-    try:
-        response = (supabase.table("volatility_history") 
-            .select("*") 
-            .eq("security_id", security_id) 
-            .gte("date", five_years_ago) 
-            .order("date", desc=False) 
-            .execute()
-        )
-    except Exception as e:
-        print("Exception at vol")
-        raise HTTPException(
-            status_code=404,
-            detail=f"Error fetching from volatility_history table: {e}"
-        )
-    return response.data
-
-async def get_price_history(security_id: int):
-    """Get 1 year of price data for a security"""
-    one_year_ago = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
-    
-    try:
-        response = (supabase.table("prices_history")
-            .select("*")
-            .eq("security_id", security_id)
-            .gte("date", one_year_ago)
-            .order("date", desc=False)
-            .execute())
-    except Exception as e:
-        print("Exception at price")
-        raise HTTPException(
-            status_code=404,
-            detail=f"Error fetching from prices_history table: {e}"
-        )
-    
-    return response.data
-
-async def get_options_chain(security_id: int):
-    """Get latest options chain for a security"""
-    try:
-        # Get the most recent snapshot date
-        latest_snapshot = (supabase.table("options_chain")
-            .select("snapshot_date")
-            .eq("security_id", security_id)
-            .order("snapshot_date", desc=True)
-            .limit(1)
-            .execute())
-        
-        if not latest_snapshot.data:
-            return []
-        
-        snapshot_date = latest_snapshot.data[0]["snapshot_date"]
-        
-        # Get all options for that snapshot
-        response = (supabase.table("options_chain")
-            .select("*")
-            .eq("security_id", security_id)
-            .eq("snapshot_date", snapshot_date)
-            .order("expiry", desc=False)
-            .order("strike", desc=False)
-            .execute())
-    except Exception as e:
-        print("Exception at options")        
-        raise HTTPException(
-            status_code=404,
-            detail=f"Error fetching from options_chain table: {e}"
-        )
-    
-    return response.data
-
-async def get_ai_overview(
-    security_id: int,
-    model_version: str = "v1",
-    prompt_version: str = "v1"
-):
-    """Get latest AI overview for a security"""
-    try:
-        response = (supabase.table("ai_overview")
-            .select("*")
-            .eq("security_id", security_id)
-            .eq("model_ver", model_version)
-            .eq("prompt_ver", prompt_version)
-            .eq("flagged", False)
-            .order("date", desc=True)
-            .limit(1)
-            .execute())
-    except Exception as e:
-        print(f"Exception at ai {str(e)}")   
-        raise HTTPException(
-            status_code=404,
-            detail=f"Error fetching from ai_overview_equity table: {e}"
-        )
-    
-    return response.data[0] if response.data else None
-
-async def get_shap_snapshot(security_id: int):
-    """Get latest SHAP snapshot per horizon for a security"""
-    try:
-        # Get the most recent retrain date
-        latest_retrain = (supabase.table("shap_snapshot")
-            .select("retrain_date")
-            .eq("security_id", security_id)
-            .order("retrain_date", desc=True)
-            .limit(1)
-            .execute())
-        
-        if not latest_retrain.data:
-            return []
-        
-        retrain_date = latest_retrain.data[0]["retrain_date"]
-        
-        # Get all horizons for the latest retrain
-        response = (supabase.table("shap_snapshot")
-            .select("*")
-            .eq("security_id", security_id)
-            .eq("retrain_date", retrain_date)
-            .execute())
-    except Exception as e:
-        print("Exception at shap")   
-        raise HTTPException(
-            status_code=404,
-            detail=f"Error fetching from shap_snapshot table: {e}"
-        )
-    
-    return response.data
-
-async def get_distribution(
-    security_id: int,
-    metric: str = "rv",
-    lookback_days: int = 1260
-):
-    """Get distribution data (stock/sector/market scopes)"""
-    try:
-        response = supabase.rpc(
-            "get_distribution",
-            {
-                "p_security_id": security_id,
-                "p_metric": metric,
-                "p_lookback_days": lookback_days
-            }
-        ).execute()
-    except Exception as e:
-        print(f"Exception at distribution {str(e)}")   
-        raise HTTPException(
-            status_code=404,
-            detail=f"Error calling get_distribution RPC: {e}"
-        )
-    return response.data
-
-async def get_events(symbol: str, gics_sector: str):
-    """Get events for the past year (market, sector, and ticker-specific)"""
-    one_year_ago = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
-    
-    try:
-        # Get all events from the past year
-        response = (supabase.table("events_history")
-            .select("*")
-            .gte("event_date", one_year_ago)
-            .execute())
-        
-        if not response.data:
-            return []
-        
-        events = response.data
-        
-        # Filter for market events OR sector events OR ticker events
-        filtered_events = [
-            e for e in events
-            if (e["scope"] == "market"
-                or (e["scope"] == "sector" and e["scope_value"] == gics_sector)
-                or (e["scope"] == "ticker" and e["scope_value"] == symbol))
-        ]
-        
-        # Sort by severity then date
-        severity_order = {"crisis": 0, "major": 1, "notable": 2}
-        filtered_events.sort(
-            key=lambda x: (severity_order.get(x["severity"], 3), x["event_date"]),
-            reverse=True
-        )
-    except Exception as e:
-        print("Exception at events")   
-        raise HTTPException(
-            status_code=404,
-            detail=f"Error fetching from events_history table: {e}"
-        )
-    
-    return filtered_events
 
 if __name__ == "__main__":
     import uvicorn

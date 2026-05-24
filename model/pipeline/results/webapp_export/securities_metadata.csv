@@ -1,0 +1,6 @@
+symbol,gics_sector,gics_industry,sector_etf,active,excluded_reason,min_history_date
+AAPL,Tech,,XLK,True,,
+LIN,Other,,,False,R^2=0.94 leakage from Linde-Praxair merger,
+OXY,Other,,,False,RMSE explosion in WFA folds,
+VZ,Other,,,False,Frontier Communications acquisition artifact,
+META,Other,,,False,Insufficient post-IPO history,

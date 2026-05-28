@@ -15,19 +15,31 @@ backend changes).
 ## Running
 
 ```bash
-python backend/main.py    # serves http://127.0.0.1:8000, API base /api
+pip install -r backend/requirements.txt          # needs the `supabase` SDK (NOT `supabase-py`)
+python -m backend.main                            # run from the repo root; serves :8000, API base /api
 ```
+
+**Launch as a module from the repo root** (`python -m backend.main` or
+`uvicorn backend.main:app`). `python backend/main.py` does **not** work — the code uses absolute
+`from backend import ...` imports, which require the repo root on `sys.path`.
 
 Env vars load from a `.env` at the repo root (parent of `backend/`):
 `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. The lifespan handler raises if either
-is missing. CORS is open to `http://localhost:5173` and `http://localhost:3000`.
+is missing, and `await`s `acreate_client(...)` (it's async — must be awaited). CORS is open to
+`http://localhost:5173` and `http://localhost:3000`.
 
 ## Data sources (mid-migration)
 
 - Legacy file endpoints (`/api/tickers`, `/api/tickers/{symbol}`) read
   `app/assets/data/{SYMBOL}_Payload.json`.
-- DB endpoint `/api/equity/{symbol}` aggregates Supabase queries (in `database.py`) in parallel
-  via `asyncio.gather`.
+- DB endpoint `/api/equity/{symbol}` resolves the ticker to a `security_id` via `securities`,
+  then aggregates Supabase queries (in `database.py`) in parallel via `asyncio.gather`.
+  Current payload keys: `symbol, volatility_history, price_history, options_chain, ai_overview,
+  latest_shap_snapshot, events`. **`distribution_data` is temporarily disabled** (see below).
+- `/api/dashboard`, `/api/sector/{sector}`, `/api/macro` are unimplemented stubs returning `{}`.
+
+Because the equity queries run under one `asyncio.gather`, any single query raising will fail
+the whole payload (no partial results).
 
 ## Database
 
@@ -59,7 +71,10 @@ Two separate event sources; do not conflate them:
 - `volatility_history` is the wide feature table (RV/IV, VRP wedge, `pfv_*` and `fwd_premium_*`
   term-structure features, cached SHAP top-10 JSONB per horizon 21/63/126).
 - `get_distribution` is a Postgres RPC (stored procedure), **not** a table — it is not in
-  `database_SQL_defs.sql`. Called via `supabase.rpc("get_distribution", ...)`.
+  `database_SQL_defs.sql`. **Currently commented out** in both `main.py` and `database.py`
+  (grep `distribution PR`): the RPC hits a Postgres statement timeout (code `57014`), so it was
+  disabled to keep `/api/equity` working. Re-enabling is deferred to a separate PR pending
+  finance-side input on the distribution structure — see the tracking GitHub issue.
 
 ## Conventions
 

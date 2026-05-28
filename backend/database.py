@@ -132,7 +132,7 @@ async def get_ai_overview(
             .eq("model_ver", model_version)
             .eq("prompt_ver", prompt_version)
             .eq("flagged", False)
-            .order("date", desc=True)
+            .order("generated_at", desc=True)
             .limit(1)
             .execute()
         )
@@ -140,7 +140,7 @@ async def get_ai_overview(
         print(f"Exception at get_ai_overview: {str(e)}", flush=True)
         raise HTTPException(
             status_code=404,
-            detail=f"Error fetching from ai_overview_equity table: {e}"
+            detail=f"Error fetching from ai_overview table: {e}"
         )
     
     return response.data[0] if response.data else None
@@ -204,42 +204,23 @@ async def get_distribution(
     return response.data
 
 
-async def get_events(symbol: str, gics_sector: str):
-    """Get events for the past year (market, sector, and ticker-specific)"""
+async def get_events(security_id: int):
+    """Get events for a security over the past year, most recent first"""
     one_year_ago = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
-    
+
     try:
-        # Get all events from the past year
-        response = await (supabase.table("events_history")
+        response = await (supabase.table("event_history")
             .select("*")
+            .eq("security_id", security_id)
             .gte("event_date", one_year_ago)
+            .order("event_date", desc=True)
             .execute()
-        )
-        
-        if not response.data:
-            return []
-        
-        events = response.data
-        
-        # Filter for market events OR sector events OR ticker events
-        filtered_events = [
-            e for e in events
-            if (e["scope"] == "market"
-                or (e["scope"] == "sector" and e["scope_value"] == gics_sector)
-                or (e["scope"] == "ticker" and e["scope_value"] == symbol))
-        ]
-        
-        # Sort by severity then date
-        severity_order = {"crisis": 0, "major": 1, "notable": 2}
-        filtered_events.sort(
-            key=lambda x: (severity_order.get(x["severity"], 3), x["event_date"]),
-            reverse=True
         )
     except Exception as e:
         print(f"Exception at get_events: {str(e)}", flush=True)
         raise HTTPException(
             status_code=404,
-            detail=f"Error fetching from events_history table: {e}"
+            detail=f"Error fetching from event_history table: {e}"
         )
-    
-    return filtered_events
+
+    return response.data

@@ -47,20 +47,26 @@ VALUES
   (320193, CURRENT_DATE, CURRENT_DATE + 60, 230.00, 'C', 6.25, 6.50, 6.375, 6.30, 3000, 40000, 0.20, 0.60),
   (320193, CURRENT_DATE, CURRENT_DATE + 60, 230.00, 'P', 4.00, 4.25, 4.125, 4.10, 2000, 30000, 0.20, -0.40);
 
--- SHAP Snapshot (feature importance data for AAPL, 2 horizons)
+-- SHAP Snapshot (feature importance data for AAPL, 3 horizons: 21/63/126)
 INSERT INTO shap_snapshot (security_id, retrain_date, horizon, snapshot_date, base_value, predicted_value, feature_data)
 VALUES
-  (320193, CURRENT_DATE, 5, CURRENT_DATE, 232.50, 234.20, '{"iv_30d": 0.45, "rv_21d": 0.38, "vrp": 0.05, "vix": 0.42, "momentum": 0.12}'::jsonb),
-  (320193, CURRENT_DATE, 10, CURRENT_DATE, 232.50, 235.80, '{"iv_30d": 0.42, "rv_21d": 0.35, "vrp": 0.04, "vix": 0.40, "momentum": 0.10}'::jsonb),
-  (320193, CURRENT_DATE, 20, CURRENT_DATE, 232.50, 238.50, '{"iv_30d": 0.40, "rv_21d": 0.32, "vrp": 0.03, "vix": 0.38, "momentum": 0.08}'::jsonb);
+  (320193, CURRENT_DATE, 21, CURRENT_DATE, 0.19, 0.21, '{"iv_30d": 0.45, "rv_21d": 0.38, "vrp": 0.05, "vix": 0.42, "momentum": 0.12}'::jsonb),
+  (320193, CURRENT_DATE, 63, CURRENT_DATE, 0.19, 0.20, '{"iv_30d": 0.42, "rv_21d": 0.35, "vrp": 0.04, "vix": 0.40, "momentum": 0.10}'::jsonb),
+  (320193, CURRENT_DATE, 126, CURRENT_DATE, 0.19, 0.195, '{"iv_30d": 0.40, "rv_21d": 0.32, "vrp": 0.03, "vix": 0.38, "momentum": 0.08}'::jsonb);
 
--- Events (market, sector, and ticker-specific events)
-INSERT INTO events_history (event_date, event_type, severity, scope, scope_value, title, description, source)
+-- Per-security events (event_history is keyed by security_id)
+INSERT INTO event_history (security_id, event_date, event_type, scope, title, description, source)
 VALUES
-  (CURRENT_DATE - 5, 'earnings', 'major', 'ticker', 'AAPL', 'Apple Q2 Earnings', 'Apple reported strong iPhone sales with 15% YoY growth', 'Bloomberg'),
-  (CURRENT_DATE - 3, 'fomc', 'major', 'market', NULL, 'Federal Reserve Rate Decision', 'Fed held rates steady at 5.25-5.50%', 'Reuters'),
-  (CURRENT_DATE - 1, 'dividend', 'notable', 'ticker', 'PG', 'Procter & Gamble Dividend Payment', 'Quarterly dividend of $0.92 per share paid', 'SEC'),
-  (CURRENT_DATE, 'earnings', 'major', 'ticker', 'MSFT', 'Microsoft Q3 Earnings', 'Microsoft beats EPS expectations with AI growth driving revenue', 'MarketWatch'),
-  (CURRENT_DATE + 1, 'fomc', 'notable', 'market', NULL, 'Fed Rate Decision Announcement', 'Market expecting 25bps rate cut next month', 'WSJ');
+  (320193, CURRENT_DATE - 5, 'earnings', 'ticker', 'Apple Q2 Earnings', 'Apple reported strong iPhone sales with 15% YoY growth', 'Bloomberg'),
+  (99001,  CURRENT_DATE - 1, 'dividend', 'ticker', 'Procter & Gamble Dividend Payment', 'Quarterly dividend of $0.92 per share paid', 'SEC'),
+  (166080, CURRENT_DATE,     'earnings', 'ticker', 'Microsoft Q3 Earnings', 'Microsoft beats EPS expectations with AI growth driving revenue', 'MarketWatch');
 
-  
+-- Market-wide macro calendar (days-to-next-event feature; affects all securities)
+-- Daily snapshots counting down to the next FOMC decision on CURRENT_DATE + 1.
+INSERT INTO macro_calendar (date, event_type, days_to_event, event_date)
+VALUES
+  (CURRENT_DATE - 4, 'fomc', 5, CURRENT_DATE + 1),
+  (CURRENT_DATE - 3, 'fomc', 4, CURRENT_DATE + 1),
+  (CURRENT_DATE - 2, 'fomc', 3, CURRENT_DATE + 1),
+  (CURRENT_DATE - 1, 'fomc', 2, CURRENT_DATE + 1),
+  (CURRENT_DATE,     'fomc', 1, CURRENT_DATE + 1);

@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
     if not url or not key:
         raise RuntimeError(
             "Missing required environment variables. "
-            f"VITE_SUPABASE_URL: {bool(url)}, VITE_SUPABASE_PUBLISHABLE_KEY: {bool(key)}"
+            f"VITE_SUPABASE_URL found: {bool(url)}, VITE_SUPABASE_PUBLISHABLE_KEY found: {bool(key)}"
         )
     
     supabase_client = acreate_client(url, key)
@@ -186,8 +186,7 @@ async def get_equity_data(symbol: str):
     try:
         security_metadata = await get_security_data(symbol)
         sec_id = security_metadata["security_id"]
-        gics_sector = security_metadata["gics_sector"]
-        
+
         # gather everything async
         vol_hist, price_hist, options, ai_overview, shap, distributions, events = await asyncio.gather(
             get_volatility_history(sec_id),
@@ -196,7 +195,7 @@ async def get_equity_data(symbol: str):
             get_ai_overview(sec_id),
             get_shap_snapshot(sec_id),
             get_distribution(sec_id),
-            get_events(symbol, gics_sector)
+            get_events(sec_id)
         )
         
         return {
@@ -224,7 +223,6 @@ async def get_dashboard():
 
 @app.get("/api/sector/{sector}")
 async def get_sector_data():
-    
     return {}
 
 @app.get("/api/macro")

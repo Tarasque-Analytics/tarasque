@@ -1,5 +1,8 @@
 import type { TickerDataPayload } from "../context/TickerDataContext";
 
+// File-backed ticker payload helpers (legacy /api/tickers* endpoints).
+// The database-backed equity spec lives in ./database.ts.
+
 const API_BASE_URL = "http://localhost:8000/api";
 
 /**

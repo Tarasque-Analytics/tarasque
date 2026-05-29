@@ -1,0 +1,147 @@
+/**
+ * Canonical client-side spec for the database-backed API.
+ *
+ * Row interfaces mirror the Supabase tables (see supabase/database_SQL_defs.sql), and
+ * loadEquityData() fetches the composite payload for the /equity/:symbol page from
+ * GET /api/equity/:symbol. Numeric columns that are nullable in the DB are typed `| null`.
+ */
+
+const API_BASE_URL = "http://localhost:8000/api";
+
+// Volatility and forecasting data (volatility_history)
+export interface VolatilityRecord {
+  date: string;
+  rv: number | null;
+  ewma_vol: number | null;
+  iv_atm_30d: number | null;
+  iv_atm_60d: number | null;
+  iv_atm_91d: number | null;
+  iv_atm_182d: number | null;
+  vrp_wedge: number | null;
+  vrp_wedge_ewma_21d: number | null;
+  pfv_21: number | null;
+  pfv_63: number | null;
+  pfv_126: number | null;
+  pfv_q15_21: number | null;
+  pfv_q15_63: number | null;
+  pfv_q15_126: number | null;
+  pfv_cal_21: number | null;
+  pfv_cal_63: number | null;
+  pfv_cal_126: number | null;
+  next_earnings_date?: string | null;
+  days_to_earnings?: number | null;
+  next_dividend_date?: string | null;
+  days_to_dividend?: number | null;
+  model_run_id: number | null;
+}
+
+// Price history / OHLCV (prices_history)
+export interface PriceRecord {
+  date: string;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  close: number | null;
+  adj_close: number | null;
+  volume: number | null;
+}
+
+// Options chain (options_chain)
+export interface OptionRecord {
+  id: number;
+  security_id: number;
+  snapshot_date: string;
+  expiry: string;
+  strike: number;
+  option_type: "C" | "P";
+  bid: number | null;
+  ask: number | null;
+  mid: number | null;
+  last: number | null;
+  volume: number | null;
+  open_interest: number | null;
+  iv: number | null;
+  delta: number | null;
+}
+
+// AI overview (ai_overview) — backend returns select("*")
+export interface AIOverview {
+  id: number;
+  security_id: number;
+  model_ver: string;
+  prompt_ver: string;
+  headline: string;
+  content: Record<string, unknown>;
+  generated_at: string;
+  flagged: boolean | null;
+}
+
+// SHAP snapshot (shap_snapshot)
+export interface SHAPSnapshot {
+  security_id: number;
+  retrain_date: string;
+  horizon: number;
+  snapshot_date: string;
+  base_value: number | null;
+  predicted_value: number | null;
+  feature_data: Record<string, unknown>;
+}
+
+// Distribution data.
+// NOTE: not currently returned by the API — the get_distribution RPC is disabled pending
+// finance input (tracked in the distribution PR). Kept here for when it's re-enabled.
+export interface DistributionBin {
+  scope: "stock" | "sector" | "market";
+  bin_low: number;
+  bin_high: number;
+  count: number;
+  current_value: number;
+  current_percentile: number;
+}
+
+// Event (event_history) — per-security only. Market-wide events (CPI/FOMC/NFP) live in
+// macro_calendar, not here, so there is no market/sector scope or severity.
+export interface EventRecord {
+  security_id: number;
+  event_id: number;
+  event_date: string;
+  title: string;
+  description?: string | null;
+  event_type?: string | null;
+  scope?: string | null;
+  source?: string | null;
+}
+
+// Complete payload from GET /api/equity/:symbol
+export interface EquitiesPayload {
+  symbol: string;
+  volatility_history: VolatilityRecord[];
+  price_history: PriceRecord[];
+  options_chain: OptionRecord[];
+  ai_overview: AIOverview | null;
+  latest_shap_snapshot: SHAPSnapshot[];
+  // Disabled in the backend (get_distribution) — omitted from the payload for now.
+  distribution_data?: DistributionBin[];
+  events: EventRecord[];
+}
+
+/**
+ * Load comprehensive equity data for a ticker from the database-backed API.
+ * Includes volatility, price history, options, AI overview, SHAP, and events.
+ * Used for /equity/:symbol.
+ */
+export async function loadEquityData(symbol: string): Promise<EquitiesPayload> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/equity/${symbol}`);
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error(`No equity data found for symbol: ${symbol}`);
+      }
+      throw new Error(`Failed to fetch equity data for ${symbol}: ${response.statusText}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error(`Error loading equity data for ${symbol}:`, error);
+    throw error;
+  }
+}

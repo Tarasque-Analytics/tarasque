@@ -4,11 +4,14 @@ This guide covers the current FastAPI backend used by the app team, including se
 
 ## Overview
 
-The backend currently serves ticker payload JSON files to the frontend.
+The backend serves equity data to the frontend from two sources (mid-migration):
+file-backed ticker payloads and a Supabase (Postgres) database.
 
 - Framework: FastAPI + Uvicorn
 - API base URL: http://localhost:8000/api
-- Data source: app/assets/data/*_Payload.json
+- Data sources:
+  - Legacy file payloads: app/assets/data/*_Payload.json (`/api/tickers*`)
+  - Supabase database: `/api/equity/{symbol}`
 - CORS enabled for local frontend origins:
   - http://localhost:5173
   - http://localhost:3000
@@ -17,7 +20,7 @@ The backend currently serves ticker payload JSON files to the frontend.
 
 ### 1. Prerequisites
 
-- Python 3.8+
+- Python 3.9+ (the `supabase` 2.x SDK drops 3.8; 3.11 recommended)
 - pip
 - Node.js (for full app workflow, not required to run backend alone)
 
@@ -42,18 +45,27 @@ source .venv/bin/activate
 pip install -r backend/requirements.txt
 ```
 
-Current required packages:
+Current required packages (see backend/requirements.txt):
 - fastapi
 - uvicorn
 - python-multipart
+- python-dotenv
+- supabase  (the official SDK — install `supabase`, NOT `supabase-py`)
 
 ### 4. Supabase necessities
 
-Supabase is not required for the current file-backed backend API.
+Supabase is now **required to run the backend at all**: the app's startup (lifespan) reads a
+`.env` and creates a Supabase client, and raises immediately if it can't.
 
-Supabase is needed only when you are working on database/migration tasks.
+Create a `.env` at the **repo root** (the parent of `backend/`) with:
 
-If you are doing DB work, install and run:
+```
+VITE_SUPABASE_URL=<your-supabase-url>
+VITE_SUPABASE_PUBLISHABLE_KEY=<your-anon/publishable-key>
+```
+
+These can point at a hosted Supabase project or a local instance. For local DB work
+(migrations, seed data) you also need:
 - Docker Desktop (must be running)
 - Supabase CLI
 
@@ -97,8 +109,13 @@ After starting backend, verify:
 
 ### Run backend only
 
+Run as a module **from the repo root** (not `python backend/main.py` — the absolute
+`from backend import ...` imports require the repo root on `sys.path`):
+
 ```bash
-python backend/main.py
+python -m backend.main
+# or:
+uvicorn backend.main:app --port 8000
 ```
 
 Backend listens on:
@@ -115,7 +132,7 @@ Use two terminals from repository root.
 Terminal A:
 
 ```bash
-python backend/main.py
+python -m backend.main
 ```
 
 Terminal B:
@@ -136,7 +153,21 @@ Returns all available tickers derived from payload filenames.
 
 ### GET /api/tickers/{symbol}
 
-Returns full payload JSON for a ticker symbol (case-insensitive).
+Returns full payload JSON for a ticker symbol (case-insensitive). (File-backed.)
+
+### GET /api/equity/{symbol}
+
+The main **Supabase-backed** endpoint. Resolves the ticker to a `security_id`, then aggregates
+several DB queries in parallel into one payload. Current keys: `symbol, volatility_history,
+price_history, options_chain, ai_overview, latest_shap_snapshot, events`.
+
+Note: `distribution_data` is temporarily disabled (the `get_distribution` RPC times out —
+tracked in a separate issue/PR). Because all queries share one `asyncio.gather`, any single
+failing query returns an error for the whole payload.
+
+### GET /api/dashboard, /api/sector/{sector}, /api/macro
+
+Unimplemented stubs — currently return `{}`.
 
 ## Example Usage
 
@@ -218,12 +249,22 @@ curl http://localhost:8000/api/tickers/AAPL
 - Frontend cannot load data:
   - Confirm backend is running on port 8000
   - Confirm frontend API base URL is set to http://localhost:8000/api
+- Backend won't start / `.env file not found` at startup:
+  - Create `.env` at the repo root with `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`
+- `ModuleNotFoundError: No module named 'backend'`:
+  - Launch from the repo root as `python -m backend.main` (not `python backend/main.py`)
+- `ImportError: cannot import name 'acreate_client'` or `No module named 'supabase'`:
+  - Install the official SDK: `pip install supabase` (the requirements name is `supabase`, not `supabase-py`)
+- 500 from `/api/equity/{symbol}`:
+  - Confirm the ticker exists in the `securities` table and Supabase creds are valid
 
 ## Current vs Planned Data Backend
 
-Current:
-- File-backed payload API from app/assets/data
+Current (mid-migration):
+- File-backed payload API from app/assets/data (`/api/tickers*`)
+- Supabase-backed query layer for `/api/equity/{symbol}` (see backend/database.py)
 
 Planned:
-- PostgreSQL/Supabase-backed API with migrations, query layer, and optional caching
-- When that work begins, update this guide with connection config and DB-first run flow
+- Migrate the remaining endpoints (dashboard/sector/macro stubs) to Supabase
+- Re-enable `distribution_data` once the `get_distribution` RPC is fixed (separate PR)
+- Optional caching layer for frequently accessed tickers

@@ -1,30 +1,22 @@
 import { useParams, useLoaderData } from "react-router";
-import { useState, useEffect } from "react";
 import Attributes from "../components/ticker/attributes";
 import MonteCarlo from "~/components/ticker/monte_carlo";
 import Options from "../components/ticker/options";
 import Predictors from "../components/ticker/predictors";
-import type { TickerDataPayload } from "../context/TickerDataContext";
 import { TickerDataProvider } from "../context/TickerDataContext";
+import { EquityDataProvider } from "../context/EquityDataContext";
+import type { TickerLoaderData } from "../routes/ticker";
 
 export default function TickerView() {
   const { symbol } = useParams<{ symbol: string }>();
-  const payloadData = useLoaderData() as TickerDataPayload;
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    // Data is preloaded from route loader
-    setIsLoading(false);
-  }, []);
+  const { payload, equity } = useLoaderData() as TickerLoaderData;
 
   return (
-    <TickerDataProvider data={payloadData}>
-      <div>
-        <div className="flex justify-center">Data and Analytics for {symbol}</div>
-        {/* Component Grid */}
-        {isLoading ? (
-          <div className="loading-placeholder" />
-        ) : (
+    <TickerDataProvider data={payload}>
+      <EquityDataProvider data={equity}>
+        <div>
+          <div className="flex justify-center">Data and Analytics for {symbol}</div>
+          {/* Component Grid */}
           <div className="grid grid-cols-4 grid-rows-2 gap-4">
             <div className="">
               <Attributes />
@@ -39,8 +31,8 @@ export default function TickerView() {
               <MonteCarlo />
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      </EquityDataProvider>
     </TickerDataProvider>
   );
 }

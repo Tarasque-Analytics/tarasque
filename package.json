@@ -5,11 +5,12 @@
   "scripts": {
     "build": "react-router build",
     "dev:frontend": "react-router dev",
-    "dev:backend": "python backend/main.py",
+    "dev:backend": "python -m backend.main",
     "dev-win": "start \"Frontend\" cmd /k \"npm run dev:frontend\" & start \"Backend\" cmd /k \"npm run dev:backend\"",
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
-    "typecheck": "react-router typegen && tsc"
+    "typecheck": "react-router typegen && tsc",
+    "test:backend": "python -m pytest"
   },
   "dependencies": {
     "@react-router/node": "7.12.0",

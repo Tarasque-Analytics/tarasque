@@ -1,24 +1,47 @@
 import type { TickerDataPayload } from "../context/TickerDataContext";
 import type { LoaderFunctionArgs } from "react-router";
 import { loadTickerPayload } from "../utils/tickers";
+import { loadEquityData, type EquitiesPayload } from "../utils/database";
 import TickerView from "../pages/Ticker";
 
-// Route loader: fetch ticker data from backend API
-export async function loader({ params }: LoaderFunctionArgs): Promise<TickerDataPayload> {
+export interface TickerLoaderData {
+  // Legacy file-backed payload consumed by the existing ticker components.
+  payload: TickerDataPayload;
+  // Database-backed payload from GET /api/equity/:symbol; null if the DB query is unavailable.
+  equity: EquitiesPayload | null;
+}
+
+// Route loader: fetch both the file payload (required) and the DB equity payload (optional)
+// in parallel so navigating to /equity/:symbol hits /api/equity/:symbol with the real symbol.
+export async function loader({ params }: LoaderFunctionArgs): Promise<TickerLoaderData> {
   const { symbol } = params;
-  
+
   if (!symbol) {
     throw new Response("Symbol parameter is required", { status: 400 });
   }
-  
-  try {
-    return await loadTickerPayload(symbol);
-  } catch (error) {
+
+  const [payloadResult, equityResult] = await Promise.allSettled([
+    loadTickerPayload(symbol),
+    loadEquityData(symbol),
+  ]);
+
+  if (payloadResult.status === "rejected") {
+    const reason = payloadResult.reason;
     throw new Response(
-      `Failed to load data for ${symbol}: ${error instanceof Error ? error.message : "Unknown error"}`,
+      `Failed to load data for ${symbol}: ${reason instanceof Error ? reason.message : "Unknown error"}`,
       { status: 404 }
     );
   }
+
+  // DB payload is non-fatal: keep rendering from the file payload if /api/equity fails.
+  let equity: EquitiesPayload | null = null;
+  if (equityResult.status === "fulfilled") {
+    equity = equityResult.value;
+  } else {
+    console.error(`Equity data unavailable for ${symbol}:`, equityResult.reason);
+  }
+
+  return { payload: payloadResult.value, equity };
 }
 
 // For parsing payload JSON file:

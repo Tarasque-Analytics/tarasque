@@ -1,50 +1,52 @@
 /**
- * Includes definitions for rows stored in the various tables in the database along
- * with functions to gather comprehensive data for any one of the pages
- * 
+ * Canonical client-side spec for the database-backed API.
+ *
+ * Row interfaces mirror the Supabase tables (see supabase/database_SQL_defs.sql), and
+ * loadEquityData() fetches the composite payload for the /equity/:symbol page from
+ * GET /api/equity/:symbol. Numeric columns that are nullable in the DB are typed `| null`.
  */
 
-
 const API_BASE_URL = "http://localhost:8000/api";
-// Volatility and forecasting data
+
+// Volatility and forecasting data (volatility_history)
 export interface VolatilityRecord {
   date: string;
-  rv: number;
-  ewma_vol: number;
-  iv_atm_30d: number;
-  iv_atm_60d: number;
-  iv_atm_91d: number;
-  iv_atm_182d: number;
-  vrp_wedge: number;
-  vrp_wedge_ewma_21d: number;
-  pfv_21: number;
-  pfv_63: number;
-  pfv_126: number;
-  pfv_q15_21: number;
-  pfv_q15_63: number;
-  pfv_q15_126: number;
-  pfv_cal_21: number;
-  pfv_cal_63: number;
-  pfv_cal_126: number;
-  next_earnings_date?: string;
-  days_to_earnings?: number;
-  next_dividend_date?: string;
-  days_to_dividend?: number;
-  model_run_id: number;
+  rv: number | null;
+  ewma_vol: number | null;
+  iv_atm_30d: number | null;
+  iv_atm_60d: number | null;
+  iv_atm_91d: number | null;
+  iv_atm_182d: number | null;
+  vrp_wedge: number | null;
+  vrp_wedge_ewma_21d: number | null;
+  pfv_21: number | null;
+  pfv_63: number | null;
+  pfv_126: number | null;
+  pfv_q15_21: number | null;
+  pfv_q15_63: number | null;
+  pfv_q15_126: number | null;
+  pfv_cal_21: number | null;
+  pfv_cal_63: number | null;
+  pfv_cal_126: number | null;
+  next_earnings_date?: string | null;
+  days_to_earnings?: number | null;
+  next_dividend_date?: string | null;
+  days_to_dividend?: number | null;
+  model_run_id: number | null;
 }
 
-// Price history (OHLCV)
+// Price history / OHLCV (prices_history)
 export interface PriceRecord {
   date: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  adj_close: number;
-  volume: number;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  close: number | null;
+  adj_close: number | null;
+  volume: number | null;
 }
 
-// Options chain
+// Options chain (options_chain)
 export interface OptionRecord {
   id: number;
   security_id: number;
@@ -52,43 +54,42 @@ export interface OptionRecord {
   expiry: string;
   strike: number;
   option_type: "C" | "P";
-  bid: number;
-  ask: number;
-  mid: number;
-  last: number;
-  volume: number;
-  open_interest: number;
-  iv: number;
-  delta: number;
+  bid: number | null;
+  ask: number | null;
+  mid: number | null;
+  last: number | null;
+  volume: number | null;
+  open_interest: number | null;
+  iv: number | null;
+  delta: number | null;
 }
 
-// AI overview
+// AI overview (ai_overview) — backend returns select("*")
 export interface AIOverview {
   id: number;
   security_id: number;
-  date: string;
-  model_version: string;
-  prompt_version: string;
+  model_ver: string;
+  prompt_ver: string;
   headline: string;
-  risk_tier: string;
   content: Record<string, unknown>;
-  input_tokens: number;
-  output_tokens: number;
   generated_at: string;
+  flagged: boolean | null;
 }
 
-// SHAP snapshot
+// SHAP snapshot (shap_snapshot)
 export interface SHAPSnapshot {
   security_id: number;
   retrain_date: string;
   horizon: number;
   snapshot_date: string;
-  base_value: number;
-  predicted_value: number;
+  base_value: number | null;
+  predicted_value: number | null;
   feature_data: Record<string, unknown>;
 }
 
-// Distribution data
+// Distribution data.
+// NOTE: not currently returned by the API — the get_distribution RPC is disabled pending
+// finance input (tracked in the distribution PR). Kept here for when it's re-enabled.
 export interface DistributionBin {
   scope: "stock" | "sector" | "market";
   bin_low: number;
@@ -98,20 +99,20 @@ export interface DistributionBin {
   current_percentile: number;
 }
 
-// Event
-export interface Event {
-  id: number;
+// Event (event_history) — per-security only. Market-wide events (CPI/FOMC/NFP) live in
+// macro_calendar, not here, so there is no market/sector scope or severity.
+export interface EventRecord {
+  security_id: number;
+  event_id: number;
   event_date: string;
-  event_type: "earnings" | "dividend" | "fomc";
-  severity: "crisis" | "major" | "notable";
-  scope: "market" | "sector" | "ticker";
-  scope_value?: string;
   title: string;
-  description?: string;
-  source?: string;
+  description?: string | null;
+  event_type?: string | null;
+  scope?: string | null;
+  source?: string | null;
 }
 
-// Complete equity payload
+// Complete payload from GET /api/equity/:symbol
 export interface EquitiesPayload {
   symbol: string;
   volatility_history: VolatilityRecord[];
@@ -119,19 +120,19 @@ export interface EquitiesPayload {
   options_chain: OptionRecord[];
   ai_overview: AIOverview | null;
   latest_shap_snapshot: SHAPSnapshot[];
-  distribution_data: DistributionBin[];
-  events: Event[];
+  // Disabled in the backend (get_distribution) — omitted from the payload for now.
+  distribution_data?: DistributionBin[];
+  events: EventRecord[];
 }
 
 /**
- * Load comprehensive equity data for a specific ticker from the backend
- * Includes volatility, price history, options, AI overview, SHAP, distributions, and events
- * Used for /equity/:symbol
+ * Load comprehensive equity data for a ticker from the database-backed API.
+ * Includes volatility, price history, options, AI overview, SHAP, and events.
+ * Used for /equity/:symbol.
  */
 export async function loadEquityData(symbol: string): Promise<EquitiesPayload> {
   try {
     const response = await fetch(`${API_BASE_URL}/equity/${symbol}`);
-    console.log("response: " + response);
     if (!response.ok) {
       if (response.status === 404) {
         throw new Error(`No equity data found for symbol: ${symbol}`);

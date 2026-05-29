@@ -29,7 +29,7 @@ async def get_security_data(symbol: str):
     except Exception as e:
         print(f"Exception at get_security_data: {str(e)}", flush=True)
         raise HTTPException(
-            status_code=404,
+            status_code=500,
             detail=f"Error fetching from securities table: {e}"
         )
     if not response.data:
@@ -55,7 +55,7 @@ async def get_volatility_history(security_id: int):
     except Exception as e:
         print(f"Exception at get_volatility_history: {str(e)}", flush=True)
         raise HTTPException(
-            status_code=404,
+            status_code=500,
             detail=f"Error fetching from volatility_history table: {e}"
         )
     return response.data
@@ -76,7 +76,7 @@ async def get_price_history(security_id: int):
     except Exception as e:
         print(f"Exception at get_price_history: {str(e)}", flush=True)
         raise HTTPException(
-            status_code=404,
+            status_code=500,
             detail=f"Error fetching from prices_history table: {e}"
         )
     
@@ -112,7 +112,7 @@ async def get_options_chain(security_id: int):
     except Exception as e:
         print(f"Exception at get_options_chain: {str(e)}", flush=True)
         raise HTTPException(
-            status_code=404,
+            status_code=500,
             detail=f"Error fetching from options_chain table: {e}"
         )
     
@@ -131,7 +131,7 @@ async def get_ai_overview(
             .eq("security_id", security_id)
             .eq("model_ver", model_version)
             .eq("prompt_ver", prompt_version)
-            .eq("flagged", False)
+            .or_("flagged.is.null,flagged.eq.false")
             .order("generated_at", desc=True)
             .limit(1)
             .execute()
@@ -139,7 +139,7 @@ async def get_ai_overview(
     except Exception as e:
         print(f"Exception at get_ai_overview: {str(e)}", flush=True)
         raise HTTPException(
-            status_code=404,
+            status_code=500,
             detail=f"Error fetching from ai_overview table: {e}"
         )
     
@@ -173,7 +173,7 @@ async def get_shap_snapshot(security_id: int):
     except Exception as e:
         print(f"Exception at get_shap_snapshot: {str(e)}", flush=True)
         raise HTTPException(
-            status_code=404,
+            status_code=500,
             detail=f"Error fetching from shap_snapshot table: {e}"
         )
     
@@ -221,7 +221,7 @@ async def get_events(security_id: int):
     except Exception as e:
         print(f"Exception at get_events: {str(e)}", flush=True)
         raise HTTPException(
-            status_code=404,
+            status_code=500,
             detail=f"Error fetching from event_history table: {e}"
         )
 

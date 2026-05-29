@@ -223,7 +223,7 @@ async def get_dashboard():
     return {}
 
 @app.get("/api/sector/{sector}")
-async def get_sector_data():
+async def get_sector_data(sector: str):
     return {}
 
 @app.get("/api/macro")

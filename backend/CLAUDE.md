@@ -28,6 +28,35 @@ Env vars load from a `.env` at the repo root (parent of `backend/`):
 is missing, and `await`s `acreate_client(...)` (it's async — must be awaited). CORS is open to
 `http://localhost:5173` and `http://localhost:3000`.
 
+## Environments & configuration (dev / stg / prod)
+
+Three target environments, selected **per-process at startup** — no runtime switching. Changing
+environment means a restart, which is not expected/encouraged mid-session during development.
+
+- **dev** — local. Backend + Vite run locally against the **local Supabase stack**
+  (`npx supabase start`; API `http://127.0.0.1:54321`, local publishable key). Default for daily dev.
+- **stg** — remote. Backend + Vite still run locally but point at the **hosted Supabase** project
+  (shared/real data) to validate against production-like data before deploying.
+- **prod** — deployed. Hosted Supabase + deployed backend/frontend. Not touched during development.
+
+What actually varies per environment:
+- Backend → which Supabase it connects to (`VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY`).
+- Frontend → the FastAPI base URL (currently **hardcoded** `http://localhost:8000/api` in
+  `app/utils/database.ts` and `app/utils/tickers.ts` — must become env-driven for stg/prod).
+- *Not* "DB connection strings": the app uses the Supabase **API URL + anon/publishable key**, not
+  a raw Postgres string (the `:54322` URL is for the CLI/migrations only).
+
+**Intended selection mechanism (planned — not yet implemented; see Deployment next steps):**
+- Frontend: Vite `--mode` + mode env files (`.env.development` / `.env.staging` / `.env.production`)
+  read via `import.meta.env`, extending the team's existing Vite-mode pattern.
+- Backend: mirror with an `APP_ENV` (`dev|stg|prod`) var selecting the Supabase target; defaults to
+  `dev`/local so local dev needs zero setup.
+
+**Today (pre-deploy):** only a single repo-root `.env` exists. To switch local↔remote, edit
+`VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` and **restart both** the backend and Vite
+(both read env only at startup). Remote keys are secrets (never commit); local-stack keys are
+shared non-secret defaults.
+
 ## Data sources (mid-migration)
 
 - Legacy file endpoints (`/api/tickers`, `/api/tickers/{symbol}`) read
@@ -49,6 +78,23 @@ Canonical schema: `supabase/database_SQL_defs.sql`; migrations in `supabase/migr
 
 Tables: `securities`, `prices_history`, `volatility_history`, `options_chain`,
 `shap_snapshot`, `model_runs`, `ai_overview`, `event_history`, `macro_calendar`.
+
+### Local stack & migrations
+
+`database_SQL_defs.sql` is a reference dump of the **hosted** schema (authoritative for
+table/column names). The local DB is built from `supabase/migrations/` — a single
+`20260310003634_initial_schema.sql` that now **mirrors the hosted schema** (it had drifted —
+old `events_history` shape, no `macro_calendar` — which broke seeding until reconciled).
+Local workflow (Docker must be running):
+
+```bash
+npx supabase start      # boots the local stack (API :54321, DB :54322)
+npx supabase db reset   # drops, re-applies migrations, then runs supabase/seed.sql
+```
+
+`seed.sql` is **local-only** sample data — it is not run against the hosted DB. If the hosted
+schema changes, update the migration to match (or regenerate via `supabase db pull` once the
+project is linked; that also captures RLS/grants/functions the defs dump omits).
 
 ### Event model — important distinction
 
@@ -107,3 +153,25 @@ break it). It catches regressions like the unawaited-`acreate_client` lifespan b
 When adding connection tests, keep them schema-agnostic. The live tests drive the `lifespan` +
 ASGI app via `httpx.ASGITransport` rather than Starlette's `TestClient` (this env's `starlette`
 is incompatible with `httpx >= 0.28`, which removed the `app=` kwarg).
+
+## Deployment — next steps (after this PR merges)
+
+This PR's scope is the **database connection**, not deployment: the local migration now mirrors
+the hosted schema, `supabase db reset` + seed runs clean, `/api/equity/:symbol` hits the DB, and
+the frontend loads the payload into React context. Nothing is deployed yet, by design. The PR is
+still open. After it merges:
+
+1. **Implement the dev/stg/prod config** (the mechanism in *Environments* above):
+   - `app/config.ts` reading `import.meta.env` → `API_BASE_URL` + Supabase URL/key; replace the
+     two hardcoded `API_BASE_URL` constants in `app/utils/database.ts` and `app/utils/tickers.ts`.
+   - `.env.development` (local stack — committable) + `.env.staging` / `.env.production`
+     (hosted — secrets supplied by the platform, not committed).
+   - `backend/config.py` reading `APP_ENV` (`dev|stg|prod`) → Supabase URL/key.
+2. **Choose hosting** (backend e.g. Render/Fly/Railway; frontend e.g. Vercel/Netlify), set the
+   stg/prod `API_BASE_URL`, and update backend CORS (`main.py`, currently localhost-only) to allow
+   the deployed frontend origin(s).
+3. **Link Supabase** (`supabase link`) and reconcile remaining local↔hosted drift via
+   `supabase db pull` (RLS, grants, the real `get_distribution` body — none of which are in
+   `database_SQL_defs.sql`).
+4. **Set platform env vars** per deploy target (`APP_ENV`, Supabase URL/key); never commit hosted secrets.
+5. **Re-enable `get_distribution`** (its own tracking issue) before prod relies on distributions.

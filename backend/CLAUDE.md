@@ -81,3 +81,29 @@ Two separate event sources; do not conflate them:
 - Ticker symbols are normalized to uppercase at the API boundary.
 - DB helpers raise `HTTPException` on query failure and print a `flush=True` diagnostic.
 - `/api/equity/{symbol}` re-raises `HTTPException` as-is to preserve status codes.
+
+## Testing
+
+Tests live in `backend/tests/` (pytest). Config is `pytest.ini` at the repo root
+(`pythonpath = .` so `import backend` resolves; `testpaths = backend/tests`).
+
+```bash
+pip install -r backend/requirements-dev.txt   # installs pytest
+python -m pytest                               # from the repo root
+npm run test:backend                           # same thing, via package.json
+```
+
+`test_db_connection.py` guards the **database connection and client wiring**, not the schema —
+it deliberately asserts nothing about table columns or row contents (so schema changes don't
+break it). It catches regressions like the unawaited-`acreate_client` lifespan bug. Two tiers:
+
+- **Offline** (always run): `acreate_client` is a coroutine that must be awaited and returns an
+  `AsyncClient`; `initialize_db` wires the client into the module global.
+- **Live** (skipped unless `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY` are set in the
+  repo-root `.env`, which `conftest.py` loads): lifespan boots and `/api/health` responds; the
+  post-startup client is a real `AsyncClient`; a query round-trips and returns a list. Note: the
+  live tests **skip** (not fail) without creds, so CI without Supabase secrets won't enforce them.
+
+When adding connection tests, keep them schema-agnostic. The live tests drive the `lifespan` +
+ASGI app via `httpx.ASGITransport` rather than Starlette's `TestClient` (this env's `starlette`
+is incompatible with `httpx >= 0.28`, which removed the `app=` kwarg).

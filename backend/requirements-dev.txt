@@ -1,0 +1,4 @@
+# Dev/test dependencies (not required to run the backend).
+# Install: pip install -r backend/requirements-dev.txt
+# Run tests from the repo root: python -m pytest
+pytest

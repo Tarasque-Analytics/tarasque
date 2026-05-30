@@ -173,6 +173,7 @@ async def get_equity_data(symbol: str):
         dict: Composite equity data payload with the following structure:
             {
                 "symbol": str,                          # Normalized uppercase ticker
+                "security": dict,                       # Metadata: company_name, gics_sector/industry
                 "volatility_history": list[dict],       # 5 years of vol/IV/forecast data
                 "price_history": list[dict],            # 1 year of OHLCV data
                 "options_chain": list[dict],            # Latest snapshot options
@@ -201,6 +202,17 @@ async def get_equity_data(symbol: str):
         
         return {
             "symbol": symbol,
+            # Curated security metadata for the page header (company name + sector/industry
+            # badges). get_security_data already loaded the full row to resolve security_id.
+            "security": {
+                "security_id": sec_id,
+                "ticker": security_metadata.get("ticker"),
+                "company_name": security_metadata.get("company_name"),
+                "gics_sector": security_metadata.get("gics_sector"),
+                "gics_industry": security_metadata.get("gics_industry"),
+                "gics_subindustry": security_metadata.get("gics_subindustry"),
+                "sector_etf": security_metadata.get("sector_etf"),
+            },
             "volatility_history": vol_hist,
             "price_history": price_hist,
             "options_chain": options,

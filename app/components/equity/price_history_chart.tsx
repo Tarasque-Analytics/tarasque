@@ -121,15 +121,22 @@ export default function PriceHistoryChart() {
     return allRows.filter((p) => parseDay(p.date) >= cutoff);
   }, [allRows, range, latestISO]);
 
-  // VRP EWMA-21d aligned to the visible price dates (lookup by date, null when missing).
-  const vrpSeries = useMemo<(number | null)[]>(() => {
-    const byDate = new Map<string, number | null>();
-    for (const v of (equity?.volatility_history ?? []) as VolatilityRecord[]) {
-      byDate.set(v.date, v.vrp_wedge_ewma_21d);
-    }
-    return rows.map((p) => byDate.get(p.date) ?? null);
-  }, [equity, rows]);
-  const hasVrp = vrpSeries.some((v) => v != null);
+  // VRP EWMA-21d sub-panel.
+  // NOTE: in the current DB snapshot, volatility_history lags price_history (vol ends ~2025-05
+  // while prices run to ~2026-05), so the two series share no dates. We therefore window the VRP
+  // strip on the volatility series' OWN latest date instead of the price dates; the tooltip shows
+  // the true vol date. When the vol feed catches up to prices, switch this to a date-keyed lookup
+  // against the price window so the two x-axes line up as the design intends.
+  const volRows = useMemo<VolatilityRecord[]>(() => {
+    const withVrp = ((equity?.volatility_history ?? []) as VolatilityRecord[]).filter(
+      (v) => v.vrp_wedge_ewma_21d != null,
+    );
+    if (!withVrp.length) return [];
+    const volLatest = withVrp[withVrp.length - 1].date; // backend orders by date asc
+    const cutoff = cutoffFor(range, volLatest);
+    return withVrp.filter((v) => parseDay(v.date) >= cutoff);
+  }, [equity, range]);
+  const hasVrp = volRows.length > 0;
 
   // Event markers positioned onto the visible category axis (matched by date).
   const eventMarkers = useMemo(() => {
@@ -142,7 +149,7 @@ export default function PriceHistoryChart() {
   if (!equity) {
     return (
       <Card>
-        <div className="flex h-[420px] items-center justify-center text-sm text-(--text-secondary)">
+        <div className="flex h-105 items-center justify-center text-sm text-(--text-secondary)">
           Price data is currently unavailable.
         </div>
       </Card>
@@ -156,7 +163,7 @@ export default function PriceHistoryChart() {
     return (
       <Card>
         <Header name={name} symbol={equity.symbol} sec={sec} range={range} onRange={setRange} rows={[]} />
-        <div className="flex h-[360px] items-center justify-center text-sm text-(--text-secondary)">
+        <div className="flex h-90 items-center justify-center text-sm text-(--text-secondary)">
           No price history available for {equity.symbol}.
         </div>
       </Card>
@@ -274,11 +281,11 @@ export default function PriceHistoryChart() {
   };
 
   const vrpData: ChartData<"line", (number | null)[], string> = {
-    labels,
+    labels: volRows.map((v) => v.date),
     datasets: [
       {
         label: "VRP EWMA 21d",
-        data: vrpSeries,
+        data: volRows.map((v) => v.vrp_wedge_ewma_21d),
         borderColor: VRP_LINE,
         backgroundColor: VRP_FILL,
         borderWidth: 1.25,
@@ -336,13 +343,13 @@ export default function PriceHistoryChart() {
         <span className="text-sm text-(--text-muted)">· as of {longDate(latest.date)} · close</span>
       </div>
 
-      <div className="relative h-[300px]">
+      <div className="relative h-75">
         <Chart type="line" data={priceData} options={priceOptions} plugins={[eventPlugin]} />
       </div>
 
       {hasVrp && (
-        <div className="relative mt-1 h-[88px]">
-          <span className="absolute left-[60px] top-0 z-10 text-[10px] font-medium tracking-wide text-(--text-muted)">
+        <div className="relative mt-1 h-22">
+          <span className="absolute left-15 top-0 z-10 text-[10px] font-medium tracking-wide text-(--text-muted)">
             VRP EWMA 21d
           </span>
           <Chart type="line" data={vrpData} options={vrpOptions} />

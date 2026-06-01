@@ -63,7 +63,10 @@ shared non-secret defaults.
   `app/assets/data/{SYMBOL}_Payload.json`.
 - DB endpoint `/api/equity/{symbol}` resolves the ticker to a `security_id` via `securities`,
   then aggregates Supabase queries (in `database.py`) in parallel via `asyncio.gather`.
-  Current payload keys: `symbol, volatility_history, price_history, options_chain, ai_overview,
+  `price_history` returns the **full available history** (paginated through the per-request row
+  cap; some securities go back ~12 years) so the chart's range selector works at every range.
+  Current payload keys: `symbol, security, volatility_history,
+  price_history, options_chain, ai_overview,
   latest_shap_snapshot, events`. **`distribution_data` is temporarily disabled** (see below).
 - `/api/dashboard`, `/api/sector/{sector}`, `/api/macro` are unimplemented stubs returning `{}`.
 

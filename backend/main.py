@@ -175,7 +175,7 @@ async def get_equity_data(symbol: str):
                 "symbol": str,                          # Normalized uppercase ticker
                 "security": dict,                       # Metadata: company_name, gics_sector/industry
                 "volatility_history": list[dict],       # 5 years of vol/IV/forecast data
-                "price_history": list[dict],            # 1 year of OHLCV data
+                "price_history": list[dict],            # full available OHLCV history (paginated)
                 "options_chain": list[dict],            # Latest snapshot options
                 "ai_overview": dict | None,             # Latest AI commentary
                 "latest_shap_snapshot": list[dict],     # Latest SHAP features per horizon

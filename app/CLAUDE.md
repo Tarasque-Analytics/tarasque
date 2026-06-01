@@ -92,7 +92,7 @@ be exercised alongside.
 
 | Field | Shape | What it is |
 |---|---|---|
-| `price_history` | `PriceRecord[]` | ~1 year of OHLCV per security — source for the price-history chart |
+| `price_history` | `PriceRecord[]` | Full available OHLCV history per security (paginated; ~12y for older listings) — source for the price-history chart (range selector filters client-side) |
 | `volatility_history` | `VolatilityRecord[]` | ~5 years of vol/IV term structures, VRP wedge, forecast features (full column list in `backend/CLAUDE.md`) |
 | `options_chain` | `OptionRecord[]` | Latest snapshot — strike/expiry/type + bid/ask/iv/delta |
 | `ai_overview` | `AIOverview \| null` | Latest unflagged AI commentary, or null |

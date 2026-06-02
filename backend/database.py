@@ -62,25 +62,38 @@ async def get_volatility_history(security_id: int):
 
 
 async def get_price_history(security_id: int):
-    """Get 1 year of price data for a security"""
-    one_year_ago = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
-    
+    """Get the full available price history for a security (oldest -> newest).
+
+    Pages through PostgREST's per-request row cap so the entire multi-year history is
+    returned (some securities go back ~12 years), powering the chart's range selector
+    (1M/3M/6M/YTD/1Y/2Y/5Y/MAX); the frontend filters the window client-side. Paging by
+    ascending date keeps it correct even if the server caps rows per request.
+    """
+    PAGE = 1000
+    rows: list = []
+    offset = 0
     try:
-        response = await (supabase.table("prices_history")
-            .select("*")
-            .eq("security_id", security_id)
-            .gte("date", one_year_ago)
-            .order("date", desc=False)
-            .execute()
-        )
+        while True:
+            response = await (supabase.table("prices_history")
+                .select("*")
+                .eq("security_id", security_id)
+                .order("date", desc=False)
+                .range(offset, offset + PAGE - 1)
+                .execute()
+            )
+            batch = response.data or []
+            rows.extend(batch)
+            if len(batch) < PAGE:
+                break
+            offset += PAGE
     except Exception as e:
         print(f"Exception at get_price_history: {str(e)}", flush=True)
         raise HTTPException(
             status_code=500,
             detail=f"Error fetching from prices_history table: {e}"
         )
-    
-    return response.data
+
+    return rows
 
 
 async def get_options_chain(security_id: int):
@@ -207,15 +220,17 @@ async def get_shap_snapshot(security_id: int):
 
 
 async def get_events(security_id: int):
-    """Get events for a security over the past year, most recent first"""
-    one_year_ago = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
+    """Get all per-security events (event_history) for a security, oldest -> newest.
 
+    Returns the full history (not just the past year) so the price-history chart can draw
+    event-annotation lines across any selected range; the frontend filters to the visible
+    window. Per-security events are sparse, so a single request suffices.
+    """
     try:
         response = await (supabase.table("event_history")
             .select("*")
             .eq("security_id", security_id)
-            .gte("event_date", one_year_ago)
-            .order("event_date", desc=True)
+            .order("event_date", desc=False)
             .execute()
         )
     except Exception as e:

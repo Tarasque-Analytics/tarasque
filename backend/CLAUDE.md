@@ -63,7 +63,13 @@ shared non-secret defaults.
   `app/assets/data/{SYMBOL}_Payload.json`.
 - DB endpoint `/api/equity/{symbol}` resolves the ticker to a `security_id` via `securities`,
   then aggregates Supabase queries (in `database.py`) in parallel via `asyncio.gather`.
-  Current payload keys: `symbol, volatility_history, price_history, options_chain, ai_overview,
+  `price_history` returns the **full available history** (paginated through the per-request row
+  cap; some securities go back ~12 years) so the chart's range selector works at every range.
+  `events` likewise returns the security's full `event_history` (sparse, so a single request); the
+  frontend windows both to the selected range. `security` is curated metadata (company name, GICS
+  sector/industry) pulled from the `securities` row already fetched to resolve `security_id`.
+  Current payload keys: `symbol, security, volatility_history,
+  price_history, options_chain, ai_overview,
   latest_shap_snapshot, events`. **`distribution_data` is temporarily disabled** (see below).
 - `/api/dashboard`, `/api/sector/{sector}`, `/api/macro` are unimplemented stubs returning `{}`.
 
@@ -95,6 +101,25 @@ npx supabase db reset   # drops, re-applies migrations, then runs supabase/seed.
 `seed.sql` is **local-only** sample data — it is not run against the hosted DB. If the hosted
 schema changes, update the migration to match (or regenerate via `supabase db pull` once the
 project is linked; that also captures RLS/grants/functions the defs dump omits).
+
+### RLS / Data API reads — gotcha
+
+Tables served through the Supabase **Data API** are read with the **publishable/anon key**, so
+each needs a permissive `SELECT` RLS policy for `anon`. If RLS is enabled with **no policy**,
+PostgREST returns **0 rows silently** (no error) — the data is there, the API just can't see it.
+This bit us: `event_history` (and `macro_calendar`, `model_runs`) had RLS on with no policy, so
+`/api/equity/:symbol` returned an empty `events` array even though rows existed (they show in the
+dashboard, which runs as `service_role` and bypasses RLS). Fix is a read policy mirroring the
+already-readable tables:
+
+```sql
+create policy "Enable read access for all users" on public.event_history for select using (true);
+```
+
+The hosted fix was applied via the dashboard, so it is **not** in `database_SQL_defs.sql` (the
+dump omits RLS/grants) nor in the local migration — the local stack won't match until a
+`supabase db pull` or an explicit policy migration captures it. Add the same policy for
+`macro_calendar` / `model_runs` when an endpoint starts reading them.
 
 ### Event model — important distinction
 

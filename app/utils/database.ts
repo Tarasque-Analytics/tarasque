@@ -35,6 +35,19 @@ export interface VolatilityRecord {
   model_run_id: number | null;
 }
 
+// Security metadata (securities) — subset returned alongside the equity payload for page chrome
+// (company name + sector/industry badges). The backend already loads the full row to resolve
+// security_id; these fields are surfaced for the UI.
+export interface SecurityMeta {
+  security_id: number;
+  ticker: string;
+  company_name: string | null;
+  gics_sector: string | null;
+  gics_industry: string | null;
+  gics_subindustry: string | null;
+  sector_etf: string | null;
+}
+
 // Price history / OHLCV (prices_history)
 export interface PriceRecord {
   date: string;
@@ -115,6 +128,9 @@ export interface EventRecord {
 // Complete payload from GET /api/equity/:symbol
 export interface EquitiesPayload {
   symbol: string;
+  // Security metadata for the page header (company name, sector/industry). Present whenever the
+  // payload is (the backend resolves the security before aggregating); optional for resilience.
+  security?: SecurityMeta;
   volatility_history: VolatilityRecord[];
   price_history: PriceRecord[];
   options_chain: OptionRecord[];

@@ -18,7 +18,7 @@ export default function Search() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (ticker.trim()) {
-      navigate(`/ticker/${ticker.toUpperCase()}`);
+      navigate(`/equity/${ticker.toUpperCase()}`);
       setTicker("");
     }
   };

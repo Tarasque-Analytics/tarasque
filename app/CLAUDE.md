@@ -11,7 +11,8 @@ changes).
 - `app/routes/<name>.tsx` — route modules (loader + default re-export of the page).
 - `app/pages/<Name>.tsx` — page components rendered by their route module.
 - `app/layouts/<Name>.tsx` — layout components (e.g. `ProtectedLayout`).
-- `app/components/<area>/<name>.tsx` — UI grouped by page area (`ticker/`, `dashboard/`, `ui/`).
+- `app/components/<area>/<name>.tsx` — UI grouped by page area (`equity/` = redesigned
+  `/equity/:symbol` components, `ticker/` = legacy/being-replaced, `dashboard/`, `ui/` = shared).
 - `app/context/<Name>Context.tsx` — React contexts + their hooks.
 - `app/utils/` — data fetchers and shared types.
 - `app/supabaseClient.ts` — Supabase JS client (auth only; data flows via FastAPI).
@@ -81,23 +82,31 @@ of a design pivot. Treat them as legacy to be replaced — **don't** anchor on t
 style, or content; new components follow new designs. The data-flow scaffolding above (loader,
 providers, hooks) stays as-is.
 
-**Current priority — the price-history chart.** Build it as the first new component on
-`/equity/:symbol`. It validates the full data pipeline end-to-end on real DB data
-(loader → `EquityDataContext` → component, reading `useEquityData().price_history`) and seeds
-the pattern subsequent components will follow. While building it, confirm the available-tickers
-flow too: `getAvailableTickers()` → `GET /api/tickers` feeds ticker search/selection and should
-be exercised alongside.
+**First new component — the price-history chart**
+([components/equity/price_history_chart.tsx](components/equity/price_history_chart.tsx)), the
+pattern the rest of the redesign follows. New equity components live under
+`app/components/equity/` (not the legacy `ticker/`). It reads `useEquityData()` end-to-end
+(loader → `EquityDataContext` → component) and renders the close-price area line (OHLCV in the
+tooltip), a `1M…MAX` range selector that filters the loaded history client-side, per-security
+event-annotation lines from `events`, and a VRP-EWMA-21d sub-panel from `volatility_history`.
+Two chart.js gotchas are documented inline and worth reusing: (1) an inline plugin must read its
+data from `chart.options` — react-chartjs-2 does **not** refresh an inline-plugin **closure** on
+re-render, so a closure goes stale and redraws the previous range's data; (2) canvas can't
+resolve CSS variables, so graph colors are literals in the component while shared UI colors live
+in `app/app.css`. `getAvailableTickers()` → `GET /api/tickers` feeds ticker search/selection
+(the search box navigates to `/equity/:symbol`).
 
 **What's available via `useEquityData()`** (`EquitiesPayload` from [utils/database.ts](utils/database.ts)):
 
 | Field | Shape | What it is |
 |---|---|---|
-| `price_history` | `PriceRecord[]` | ~1 year of OHLCV per security — source for the price-history chart |
+| `security` | `SecurityMeta?` | Company name + GICS sector/industry for the page header (resolved from `securities`; present whenever the payload is) |
+| `price_history` | `PriceRecord[]` | Full available OHLCV history per security (paginated; ~12y for older listings) — source for the price-history chart (range selector filters client-side) |
 | `volatility_history` | `VolatilityRecord[]` | ~5 years of vol/IV term structures, VRP wedge, forecast features (full column list in `backend/CLAUDE.md`) |
 | `options_chain` | `OptionRecord[]` | Latest snapshot — strike/expiry/type + bid/ask/iv/delta |
 | `ai_overview` | `AIOverview \| null` | Latest unflagged AI commentary, or null |
 | `latest_shap_snapshot` | `SHAPSnapshot[]` | SHAP feature attributions per horizon |
-| `events` | `EventRecord[]` | Per-security events from the past year |
+| `events` | `EventRecord[]` | Per-security events (full history) — drawn as event-annotation lines on the price chart |
 | `distribution_data` | `DistributionBin[]?` | Currently disabled — see `backend/CLAUDE.md` |
 
 The DB call is non-fatal; consumers **must handle `useEquityData()` returning `null`**.
@@ -106,6 +115,35 @@ The legacy file payload (`useTickerData()` / `loadTickerPayload` / `TickerDataCo
 wired into the loader for the old components. As new components stop reading it, retire the
 file-payload path entirely — including the `/api/tickers/:symbol` endpoint, the dual-fetch in
 the route loader, and `TickerDataContext`.
+
+### Planned — two-phase (progressive) loading for time-series panels
+
+**Not implemented; captured for a future latency pass.** Today the loader awaits the whole
+composite `/api/equity/:symbol` before first paint (~1.4 MB for AAPL: ~1 MB `volatility_history`
++ ~0.5 MB full `price_history`), even though each time-based component initially shows only its
+default window (the price chart's 1Y is ~50–100 KB). Goal: **await a small "core", stream the
+"rest."** React Router v7 has native deferred/streaming loaders, so this needs no new deps.
+
+- **Backend:** make the time-series queries window-aware via a `range` (or `from`/`to`) param on
+  `/api/equity/:symbol`. `range=1Y` → default-window slices (the *core*); `range=max` → full
+  history (today's behavior, the *rest*). Touches `main.py` + `database.py` only.
+- **Loader** ([routes/ticker.tsx](routes/ticker.tsx)): `await` the core fetch (blocks SSR/first
+  paint, small) and return the full fetch as an **un-awaited promise** so React Router streams it
+  after the shell — `return { core: await load(symbol, {range:"1Y"}), full: load(symbol, {range:"max"}) }`.
+- **Context/components:** `EquityDataProvider` holds `{ core, full }` (`full` a promise). A shared
+  hook — e.g. `useEquitySeries(section, range)` — returns the core slice synchronously when the
+  requested `range` fits the core window, else resolves from `full` (already streaming; brief
+  loading state until it lands). One contract for every time-based component: **default range =
+  instant from core; longer ranges = from the streamed full set.** The awaited core window = the
+  union of the above-the-fold components' default ranges.
+
+Tradeoffs: two requests (slightly more total bytes if `full` is always prefetched), but the
+blocking first-paint payload drops ~15–25×; queries must accept a window; needs a "full not here
+yet" state for an early MAX click; real added loader/context complexity. Composes with column
+projection (the core call can be windowed *and* projected → tiny). Lighter variant: await core
+only and have each component background-`fetch` its full history after mount (simpler state, loses
+SSR streaming). The price-history chart would be the reference implementation that establishes the
+`useEquitySeries` contract.
 
 ## Utils & API client
 
@@ -133,6 +171,11 @@ in `backend/CLAUDE.md` — not yet implemented.
 - `routes/<name>.tsx` co-locates the loader and re-exports the page component as default.
   Keeps data loading next to the route declaration without bloating the page component.
 - Page-scoped UI lives under `app/components/<area>/`; shared UI lives under `app/components/ui/`.
+- Redesigned components share primitives in [app.css](app.css): `.panel` (card surface),
+  `.segmented`/`.segmented-btn` (toggle groups), `.badge`/`.badge-sector`/`.badge-neutral`, plus
+  `--text-*` / `--pos` / `--neg` / `--panel-border` tokens (with dark-mode variants). Rule of
+  thumb: **shared UI colors → `app.css`; chart/graph-specific colors → local consts in the
+  component** (canvas can't read CSS vars).
 - Loader data is typed at the page boundary via `useLoaderData() as <T>` (e.g. `TickerLoaderData`
   exported from the route module). The codebase doesn't currently use React Router's generated
   `Route.LoaderData` types — keep that consistent unless migrating intentionally.

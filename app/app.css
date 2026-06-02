@@ -10,6 +10,20 @@
   --logoprimary: #d2be80;
   --logosecondary: #010101;
   --logoaccent: #d2d8d8;
+
+  /* Shared UI tokens for the redesigned components (surfaces, text, accents).
+     Graph-specific colors (line/fill/event hues) live in their components. */
+  --panel-border: #e5e7eb;
+  --track-bg: #f1f3f5;
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-muted: #9ca3af;
+  --pos: #16a34a;
+  --neg: #dc2626;
+  --sector-badge-bg: #fef3c7;
+  --sector-badge-text: #92400e;
+  --neutral-badge-bg: #f1f3f5;
+  --neutral-badge-text: #4b5563;
 }
 
 /* Dark mode: needs testing from somebody that actually uses dark mode */
@@ -18,6 +32,16 @@
     --background: #121212;
     --ui-background: #1E1E1E;
     --border: #333333;
+
+    --panel-border: #2a2a2a;
+    --track-bg: #2a2a2a;
+    --text-primary: #f3f4f6;
+    --text-secondary: #c2c6cc;
+    --text-muted: #8b8f97;
+    --sector-badge-bg: #3b2f12;
+    --sector-badge-text: #e6c478;
+    --neutral-badge-bg: #2a2a2a;
+    --neutral-badge-text: #c2c6cc;
   }
 }
 
@@ -77,4 +101,45 @@ body {
 
 .view-more-button {
   @apply text-blue-500 mt-2;
+}
+
+
+/* === Shared UI primitives (redesigned equity components) === */
+
+/* Card surface used by the redesigned panels. */
+.panel {
+  @apply rounded-xl shadow-sm;
+  background: var(--ui-background);
+  border: 1px solid var(--panel-border);
+}
+
+/* Segmented control (e.g. the price-chart range selector). */
+.segmented {
+  @apply inline-flex items-center gap-0.5 rounded-lg p-0.5;
+  background: var(--track-bg);
+}
+.segmented-btn {
+  @apply cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium transition-colors;
+  color: var(--text-secondary);
+}
+.segmented-btn:hover {
+  color: var(--text-primary);
+}
+.segmented-btn[data-active="true"] {
+  @apply shadow-sm;
+  background: var(--ui-background);
+  color: var(--text-primary);
+}
+
+/* Pill badges (sector / sub-sector and similar metadata tags). */
+.badge {
+  @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium;
+}
+.badge-sector {
+  background: var(--sector-badge-bg);
+  color: var(--sector-badge-text);
+}
+.badge-neutral {
+  background: var(--neutral-badge-bg);
+  color: var(--neutral-badge-text);
 }

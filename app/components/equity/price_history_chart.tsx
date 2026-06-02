@@ -481,7 +481,7 @@ function Header({
     a.href = url;
     a.download = `${symbol}_price_history_${range}.csv`;
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   };
 
   return (

@@ -11,7 +11,8 @@ changes).
 - `app/routes/<name>.tsx` — route modules (loader + default re-export of the page).
 - `app/pages/<Name>.tsx` — page components rendered by their route module.
 - `app/layouts/<Name>.tsx` — layout components (e.g. `ProtectedLayout`).
-- `app/components/<area>/<name>.tsx` — UI grouped by page area (`ticker/`, `dashboard/`, `ui/`).
+- `app/components/<area>/<name>.tsx` — UI grouped by page area (`equity/` = redesigned
+  `/equity/:symbol` components, `ticker/` = legacy/being-replaced, `dashboard/`, `ui/` = shared).
 - `app/context/<Name>Context.tsx` — React contexts + their hooks.
 - `app/utils/` — data fetchers and shared types.
 - `app/supabaseClient.ts` — Supabase JS client (auth only; data flows via FastAPI).
@@ -81,23 +82,31 @@ of a design pivot. Treat them as legacy to be replaced — **don't** anchor on t
 style, or content; new components follow new designs. The data-flow scaffolding above (loader,
 providers, hooks) stays as-is.
 
-**Current priority — the price-history chart.** Build it as the first new component on
-`/equity/:symbol`. It validates the full data pipeline end-to-end on real DB data
-(loader → `EquityDataContext` → component, reading `useEquityData().price_history`) and seeds
-the pattern subsequent components will follow. While building it, confirm the available-tickers
-flow too: `getAvailableTickers()` → `GET /api/tickers` feeds ticker search/selection and should
-be exercised alongside.
+**First new component — the price-history chart**
+([components/equity/price_history_chart.tsx](components/equity/price_history_chart.tsx)), the
+pattern the rest of the redesign follows. New equity components live under
+`app/components/equity/` (not the legacy `ticker/`). It reads `useEquityData()` end-to-end
+(loader → `EquityDataContext` → component) and renders the close-price area line (OHLCV in the
+tooltip), a `1M…MAX` range selector that filters the loaded history client-side, per-security
+event-annotation lines from `events`, and a VRP-EWMA-21d sub-panel from `volatility_history`.
+Two chart.js gotchas are documented inline and worth reusing: (1) an inline plugin must read its
+data from `chart.options` — react-chartjs-2 does **not** refresh an inline-plugin **closure** on
+re-render, so a closure goes stale and redraws the previous range's data; (2) canvas can't
+resolve CSS variables, so graph colors are literals in the component while shared UI colors live
+in `app/app.css`. `getAvailableTickers()` → `GET /api/tickers` feeds ticker search/selection
+(the search box navigates to `/equity/:symbol`).
 
 **What's available via `useEquityData()`** (`EquitiesPayload` from [utils/database.ts](utils/database.ts)):
 
 | Field | Shape | What it is |
 |---|---|---|
+| `security` | `SecurityMeta?` | Company name + GICS sector/industry for the page header (resolved from `securities`; present whenever the payload is) |
 | `price_history` | `PriceRecord[]` | Full available OHLCV history per security (paginated; ~12y for older listings) — source for the price-history chart (range selector filters client-side) |
 | `volatility_history` | `VolatilityRecord[]` | ~5 years of vol/IV term structures, VRP wedge, forecast features (full column list in `backend/CLAUDE.md`) |
 | `options_chain` | `OptionRecord[]` | Latest snapshot — strike/expiry/type + bid/ask/iv/delta |
 | `ai_overview` | `AIOverview \| null` | Latest unflagged AI commentary, or null |
 | `latest_shap_snapshot` | `SHAPSnapshot[]` | SHAP feature attributions per horizon |
-| `events` | `EventRecord[]` | Per-security events from the past year |
+| `events` | `EventRecord[]` | Per-security events (full history) — drawn as event-annotation lines on the price chart |
 | `distribution_data` | `DistributionBin[]?` | Currently disabled — see `backend/CLAUDE.md` |
 
 The DB call is non-fatal; consumers **must handle `useEquityData()` returning `null`**.
@@ -133,6 +142,11 @@ in `backend/CLAUDE.md` — not yet implemented.
 - `routes/<name>.tsx` co-locates the loader and re-exports the page component as default.
   Keeps data loading next to the route declaration without bloating the page component.
 - Page-scoped UI lives under `app/components/<area>/`; shared UI lives under `app/components/ui/`.
+- Redesigned components share primitives in [app.css](app.css): `.panel` (card surface),
+  `.segmented`/`.segmented-btn` (toggle groups), `.badge`/`.badge-sector`/`.badge-neutral`, plus
+  `--text-*` / `--pos` / `--neg` / `--panel-border` tokens (with dark-mode variants). Rule of
+  thumb: **shared UI colors → `app.css`; chart/graph-specific colors → local consts in the
+  component** (canvas can't read CSS vars).
 - Loader data is typed at the page boundary via `useLoaderData() as <T>` (e.g. `TickerLoaderData`
   exported from the route module). The codebase doesn't currently use React Router's generated
   `Route.LoaderData` types — keep that consistent unless migrating intentionally.

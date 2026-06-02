@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -36,6 +37,9 @@ const VRP_FILL = "rgba(176, 141, 62, 0.18)";
 const EVENT_LINE = "rgba(120, 120, 120, 0.45)";
 const EVENT_LABEL = "#8a8a8a";
 const GRID = "rgba(0, 0, 0, 0.05)";
+// Axis tick text. Canvas can't resolve CSS vars, so this mirrors --text-muted (light) as a
+// literal rather than passing "var(--text-muted)" (which the canvas would ignore).
+const AXIS_TEXT = "#9ca3af";
 
 /* ── event-marker plugin ──
    Draws a vertical dashed line + staggered label per event. It reads its markers from
@@ -161,7 +165,7 @@ function DownloadIcon() {
   );
 }
 
-function Card({ children }: { children: React.ReactNode }) {
+function Card({ children }: { children: ReactNode }) {
   return <div className="panel p-5">{children}</div>;
 }
 
@@ -350,7 +354,7 @@ export default function PriceHistoryChart() {
           maxTicksLimit: 8,
           autoSkip: true,
           maxRotation: 0,
-          color: "var(--text-muted)",
+          color: AXIS_TEXT,
           callback(this: Scale, value) {
             const iso = this.getLabelForValue(value as number);
             return showYear ? monthYear(iso) : shortDate(iso);
@@ -365,7 +369,7 @@ export default function PriceHistoryChart() {
           scale.width = 56;
         },
         grid: { color: GRID },
-        ticks: { color: "var(--text-muted)", callback: (v) => usdAxis(Number(v)) },
+        ticks: { color: AXIS_TEXT, callback: (v) => usdAxis(Number(v)) },
       },
     },
   };
@@ -411,7 +415,7 @@ export default function PriceHistoryChart() {
         },
         grid: { color: GRID },
         ticks: {
-          color: "var(--text-muted)",
+          color: AXIS_TEXT,
           maxTicksLimit: 3,
           callback: (v) => Number(v).toFixed(2),
         },

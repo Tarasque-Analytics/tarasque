@@ -116,6 +116,35 @@ wired into the loader for the old components. As new components stop reading it,
 file-payload path entirely — including the `/api/tickers/:symbol` endpoint, the dual-fetch in
 the route loader, and `TickerDataContext`.
 
+### Planned — two-phase (progressive) loading for time-series panels
+
+**Not implemented; captured for a future latency pass.** Today the loader awaits the whole
+composite `/api/equity/:symbol` before first paint (~1.4 MB for AAPL: ~1 MB `volatility_history`
++ ~0.5 MB full `price_history`), even though each time-based component initially shows only its
+default window (the price chart's 1Y is ~50–100 KB). Goal: **await a small "core", stream the
+"rest."** React Router v7 has native deferred/streaming loaders, so this needs no new deps.
+
+- **Backend:** make the time-series queries window-aware via a `range` (or `from`/`to`) param on
+  `/api/equity/:symbol`. `range=1Y` → default-window slices (the *core*); `range=max` → full
+  history (today's behavior, the *rest*). Touches `main.py` + `database.py` only.
+- **Loader** ([routes/ticker.tsx](routes/ticker.tsx)): `await` the core fetch (blocks SSR/first
+  paint, small) and return the full fetch as an **un-awaited promise** so React Router streams it
+  after the shell — `return { core: await load(symbol, {range:"1Y"}), full: load(symbol, {range:"max"}) }`.
+- **Context/components:** `EquityDataProvider` holds `{ core, full }` (`full` a promise). A shared
+  hook — e.g. `useEquitySeries(section, range)` — returns the core slice synchronously when the
+  requested `range` fits the core window, else resolves from `full` (already streaming; brief
+  loading state until it lands). One contract for every time-based component: **default range =
+  instant from core; longer ranges = from the streamed full set.** The awaited core window = the
+  union of the above-the-fold components' default ranges.
+
+Tradeoffs: two requests (slightly more total bytes if `full` is always prefetched), but the
+blocking first-paint payload drops ~15–25×; queries must accept a window; needs a "full not here
+yet" state for an early MAX click; real added loader/context complexity. Composes with column
+projection (the core call can be windowed *and* projected → tiny). Lighter variant: await core
+only and have each component background-`fetch` its full history after mount (simpler state, loses
+SSR streaming). The price-history chart would be the reference implementation that establishes the
+`useEquitySeries` contract.
+
 ## Utils & API client
 
 - [utils/database.ts](utils/database.ts) — **canonical** equity spec. Row interfaces mirror the

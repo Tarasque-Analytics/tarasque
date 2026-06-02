@@ -220,15 +220,17 @@ async def get_shap_snapshot(security_id: int):
 
 
 async def get_events(security_id: int):
-    """Get events for a security over the past year, most recent first"""
-    one_year_ago = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
+    """Get all per-security events (event_history) for a security, oldest -> newest.
 
+    Returns the full history (not just the past year) so the price-history chart can draw
+    event-annotation lines across any selected range; the frontend filters to the visible
+    window. Per-security events are sparse, so a single request suffices.
+    """
     try:
         response = await (supabase.table("event_history")
             .select("*")
             .eq("security_id", security_id)
-            .gte("event_date", one_year_ago)
-            .order("event_date", desc=True)
+            .order("event_date", desc=False)
             .execute()
         )
     except Exception as e:

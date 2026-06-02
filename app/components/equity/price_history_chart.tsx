@@ -53,6 +53,12 @@ const shortDate = (iso: string) =>
   parseDay(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 const longDate = (iso: string) =>
   parseDay(iso).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+// "May '25" — unambiguous month+year for multi-year axes. The apostrophe stops "May 25" from
+// reading as a day-of-month.
+const monthYear = (iso: string) => {
+  const d = parseDay(iso);
+  return `${d.toLocaleDateString("en-US", { month: "short" })} '${String(d.getFullYear()).slice(2)}`;
+};
 
 /* ── range selector config ── */
 type RangeKey = "1M" | "3M" | "6M" | "YTD" | "1Y" | "2Y" | "5Y" | "MAX";
@@ -138,12 +144,30 @@ export default function PriceHistoryChart() {
   }, [equity, range]);
   const hasVrp = volRows.length > 0;
 
-  // Event markers positioned onto the visible category axis (matched by date).
-  const eventMarkers = useMemo(() => {
-    const indexByDate = new Map(rows.map((p, i) => [p.date, i]));
-    return ((equity?.events ?? []) as EventRecord[])
-      .map((e) => ({ index: indexByDate.get(e.event_date), label: e.title }))
-      .filter((m): m is { index: number; label: string } => m.index != null);
+  // Per-security event markers placed on the visible axis. Events (event_history) may not land
+  // exactly on a trading day, so snap each to the nearest visible session; drop events outside
+  // the visible window.
+  const eventMarkers = useMemo<{ index: number; label: string }[]>(() => {
+    if (!rows.length) return [];
+    const times = rows.map((p) => parseDay(p.date).getTime());
+    const first = times[0];
+    const last = times[times.length - 1];
+    const out: { index: number; label: string }[] = [];
+    for (const e of (equity?.events ?? []) as EventRecord[]) {
+      const t = parseDay(e.event_date).getTime();
+      if (t < first || t > last) continue;
+      let best = 0;
+      let bestDiff = Infinity;
+      for (let i = 0; i < times.length; i++) {
+        const diff = Math.abs(times[i] - t);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          best = i;
+        }
+      }
+      out.push({ index: best, label: e.title });
+    }
+    return out;
   }, [equity, rows]);
 
   if (!equity) {
@@ -176,17 +200,28 @@ export default function PriceHistoryChart() {
   const dayChangePct = prev.close ? (dayChange / (prev.close as number)) * 100 : 0;
   const up = dayChange >= 0;
 
-  /* ── event annotation plugin (inline; no extra dependency) ── */
+  /* ── event annotation plugin (inline; no extra dependency) ──
+     Draws a vertical dashed line per event; labels are skipped when they'd collide with the
+     previous one so dense ranges (e.g. MAX) stay legible. */
   const eventPlugin: Plugin<"line"> = {
     id: "eventMarkers",
     afterDatasetsDraw(chart) {
       const { ctx, chartArea, scales } = chart;
       const xScale = scales.x;
       if (!xScale) return;
-      for (const m of eventMarkers) {
+      ctx.save();
+      ctx.font = "600 9px ui-sans-serif, system-ui, sans-serif";
+      ctx.textAlign = "left";
+      // Stagger labels across a few rows so adjacent — or recurring (e.g. a yearly "Q4
+      // Earnings") — labels don't collide and get dropped. Each label takes the first row
+      // whose previous label clears; it's only skipped if every row is occupied at that x.
+      const ROWS = 3;
+      const ROW_H = 11;
+      const rowRight = new Array(ROWS).fill(-Infinity);
+      for (const m of [...eventMarkers].sort((a, b) => a.index - b.index)) {
         const x = xScale.getPixelForValue(m.index);
         if (x < chartArea.left || x > chartArea.right) continue;
-        ctx.save();
+        // vertical dashed line spanning the plot
         ctx.beginPath();
         ctx.setLineDash([4, 4]);
         ctx.moveTo(x, chartArea.top);
@@ -195,16 +230,46 @@ export default function PriceHistoryChart() {
         ctx.lineWidth = 1;
         ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillStyle = EVENT_LABEL;
-        ctx.font = "600 9px ui-sans-serif, system-ui, sans-serif";
-        ctx.textAlign = "left";
-        ctx.fillText(m.label.toUpperCase(), x + 4, chartArea.top + 10);
-        ctx.restore();
+        // place the label in the first row it fits
+        const text = m.label.toUpperCase();
+        const left = x + 4;
+        for (let r = 0; r < ROWS; r++) {
+          if (left > rowRight[r]) {
+            ctx.fillStyle = EVENT_LABEL;
+            ctx.fillText(text, left, chartArea.top + 10 + r * ROW_H);
+            rowRight[r] = left + ctx.measureText(text).width + 6;
+            break;
+          }
+        }
       }
+      ctx.restore();
     },
   };
 
   const labels = rows.map((p) => p.date);
+
+  // Past ~11 months a month name recurs across years; switch the x-axis to month+year so ticks
+  // from different years can't be confused (the tooltip always shows the full date regardless).
+  const spanDays =
+    rows.length > 1
+      ? (parseDay(rows[rows.length - 1].date).getTime() - parseDay(rows[0].date).getTime()) /
+        86_400_000
+      : 0;
+  const showYear = spanDays > 330;
+
+  // Pad the price axis ~6%, but never let the lower bound drop below 0 (some low-priced
+  // equities would otherwise render a negative axis floor). High-priced names keep their
+  // padded, non-zero min so the line isn't compressed against the top.
+  let priceMin = Infinity;
+  let priceMax = -Infinity;
+  for (const p of rows) {
+    const c = p.close as number;
+    if (c < priceMin) priceMin = c;
+    if (c > priceMax) priceMax = c;
+  }
+  const pricePad = (priceMax - priceMin || priceMax) * 0.06;
+  const yMin = Math.max(0, priceMin - pricePad);
+  const yMax = priceMax + pricePad;
 
   const priceData: ChartData<"line", (number | null)[], string> = {
     labels,
@@ -264,13 +329,15 @@ export default function PriceHistoryChart() {
           maxRotation: 0,
           color: "var(--text-muted)",
           callback(this: Scale, value) {
-            return shortDate(this.getLabelForValue(value as number));
+            const iso = this.getLabelForValue(value as number);
+            return showYear ? monthYear(iso) : shortDate(iso);
           },
         },
       },
       y: {
         position: "left",
-        grace: "6%",
+        min: yMin,
+        max: yMax,
         afterFit: (scale) => {
           scale.width = 56;
         },

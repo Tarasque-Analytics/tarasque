@@ -8,7 +8,14 @@ import {
   Tooltip,
   Filler,
 } from "chart.js";
-import type { ChartData, ChartOptions, Plugin, Scale, ScriptableContext } from "chart.js";
+import type {
+  ChartData,
+  ChartOptions,
+  ChartType,
+  Plugin,
+  Scale,
+  ScriptableContext,
+} from "chart.js";
 import { Chart } from "react-chartjs-2";
 import { useEquityData } from "~/context/EquityDataContext";
 import type {
@@ -29,6 +36,63 @@ const VRP_FILL = "rgba(176, 141, 62, 0.18)";
 const EVENT_LINE = "rgba(120, 120, 120, 0.45)";
 const EVENT_LABEL = "#8a8a8a";
 const GRID = "rgba(0, 0, 0, 0.05)";
+
+/* ── event-marker plugin ──
+   Draws a vertical dashed line + staggered label per event. It reads its markers from
+   chart.options (which react-chartjs-2 refreshes on every re-render) rather than a closure —
+   an inline-plugin closure goes stale and keeps re-drawing the markers from the first render,
+   which is why switching range used to plot the wrong year's events. Module-level + stable. */
+type EventMarker = { index: number; label: string };
+
+declare module "chart.js" {
+  interface PluginOptionsByType<TType extends ChartType> {
+    eventMarkers?: { markers: EventMarker[] };
+  }
+}
+
+const eventMarkersPlugin: Plugin<"line"> = {
+  id: "eventMarkers",
+  afterDatasetsDraw(chart) {
+    // chart.options is deeply partial in chart.js's types; we always write full markers.
+    const markers = (chart.options.plugins?.eventMarkers?.markers ?? []) as EventMarker[];
+    if (!markers.length) return;
+    const { ctx, chartArea, scales } = chart;
+    const xScale = scales.x;
+    if (!xScale) return;
+    ctx.save();
+    ctx.font = "600 9px ui-sans-serif, system-ui, sans-serif";
+    ctx.textAlign = "left";
+    // Stagger labels across a few rows so adjacent / recurring labels don't collide and drop.
+    const ROWS = 3;
+    const ROW_H = 11;
+    const rowRight = new Array(ROWS).fill(-Infinity);
+    for (const m of [...markers].sort((a, b) => a.index - b.index)) {
+      const x = xScale.getPixelForValue(m.index);
+      if (x < chartArea.left || x > chartArea.right) continue;
+      // vertical dashed line spanning the plot
+      ctx.beginPath();
+      ctx.setLineDash([4, 4]);
+      ctx.moveTo(x, chartArea.top);
+      ctx.lineTo(x, chartArea.bottom);
+      ctx.strokeStyle = EVENT_LINE;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // place the label in the first row it fits
+      const text = m.label.toUpperCase();
+      const left = x + 4;
+      for (let r = 0; r < ROWS; r++) {
+        if (left > rowRight[r]) {
+          ctx.fillStyle = EVENT_LABEL;
+          ctx.fillText(text, left, chartArea.top + 10 + r * ROW_H);
+          rowRight[r] = left + ctx.measureText(text).width + 6;
+          break;
+        }
+      }
+    }
+    ctx.restore();
+  },
+};
 
 /* ── formatters ── */
 const usd = (n: number | null | undefined) =>
@@ -147,12 +211,12 @@ export default function PriceHistoryChart() {
   // Per-security event markers placed on the visible axis. Events (event_history) may not land
   // exactly on a trading day, so snap each to the nearest visible session; drop events outside
   // the visible window.
-  const eventMarkers = useMemo<{ index: number; label: string }[]>(() => {
+  const eventMarkers = useMemo<EventMarker[]>(() => {
     if (!rows.length) return [];
     const times = rows.map((p) => parseDay(p.date).getTime());
     const first = times[0];
     const last = times[times.length - 1];
-    const out: { index: number; label: string }[] = [];
+    const out: EventMarker[] = [];
     for (const e of (equity?.events ?? []) as EventRecord[]) {
       const t = parseDay(e.event_date).getTime();
       if (t < first || t > last) continue;
@@ -165,7 +229,9 @@ export default function PriceHistoryChart() {
           best = i;
         }
       }
-      out.push({ index: best, label: e.title });
+      // Append the year to each label (debug aid; reads fine on long ranges too).
+      const yy = String(parseDay(e.event_date).getFullYear()).slice(2);
+      out.push({ index: best, label: `${e.title} '${yy}` });
     }
     return out;
   }, [equity, rows]);
@@ -199,52 +265,6 @@ export default function PriceHistoryChart() {
   const dayChange = (latest.close as number) - (prev.close as number);
   const dayChangePct = prev.close ? (dayChange / (prev.close as number)) * 100 : 0;
   const up = dayChange >= 0;
-
-  /* ── event annotation plugin (inline; no extra dependency) ──
-     Draws a vertical dashed line per event; labels are skipped when they'd collide with the
-     previous one so dense ranges (e.g. MAX) stay legible. */
-  const eventPlugin: Plugin<"line"> = {
-    id: "eventMarkers",
-    afterDatasetsDraw(chart) {
-      const { ctx, chartArea, scales } = chart;
-      const xScale = scales.x;
-      if (!xScale) return;
-      ctx.save();
-      ctx.font = "600 9px ui-sans-serif, system-ui, sans-serif";
-      ctx.textAlign = "left";
-      // Stagger labels across a few rows so adjacent — or recurring (e.g. a yearly "Q4
-      // Earnings") — labels don't collide and get dropped. Each label takes the first row
-      // whose previous label clears; it's only skipped if every row is occupied at that x.
-      const ROWS = 3;
-      const ROW_H = 11;
-      const rowRight = new Array(ROWS).fill(-Infinity);
-      for (const m of [...eventMarkers].sort((a, b) => a.index - b.index)) {
-        const x = xScale.getPixelForValue(m.index);
-        if (x < chartArea.left || x > chartArea.right) continue;
-        // vertical dashed line spanning the plot
-        ctx.beginPath();
-        ctx.setLineDash([4, 4]);
-        ctx.moveTo(x, chartArea.top);
-        ctx.lineTo(x, chartArea.bottom);
-        ctx.strokeStyle = EVENT_LINE;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        ctx.setLineDash([]);
-        // place the label in the first row it fits
-        const text = m.label.toUpperCase();
-        const left = x + 4;
-        for (let r = 0; r < ROWS; r++) {
-          if (left > rowRight[r]) {
-            ctx.fillStyle = EVENT_LABEL;
-            ctx.fillText(text, left, chartArea.top + 10 + r * ROW_H);
-            rowRight[r] = left + ctx.measureText(text).width + 6;
-            break;
-          }
-        }
-      }
-      ctx.restore();
-    },
-  };
 
   const labels = rows.map((p) => p.date);
 
@@ -319,6 +339,9 @@ export default function PriceHistoryChart() {
           },
         },
       },
+      // Markers live in options (not a closure) so the stable plugin redraws the right set when
+      // the range changes — see eventMarkersPlugin.
+      eventMarkers: { markers: eventMarkers },
     },
     scales: {
       x: {
@@ -411,7 +434,7 @@ export default function PriceHistoryChart() {
       </div>
 
       <div className="relative h-75">
-        <Chart type="line" data={priceData} options={priceOptions} plugins={[eventPlugin]} />
+        <Chart type="line" data={priceData} options={priceOptions} plugins={[eventMarkersPlugin]} />
       </div>
 
       {hasVrp && (

@@ -4,10 +4,9 @@
   "type": "module",
   "scripts": {
     "build": "react-router build",
+    "dev": "concurrently -k -n FE,BE -c blue,green \"npm:dev:frontend\" \"npm:dev:backend\"",
     "dev:frontend": "react-router dev",
-    "dev:backend": "python -m backend.main",
-    "dev-win": "start \"Frontend\" cmd /k \"npm run dev:frontend\" & start \"Backend\" cmd /k \"npm run dev:backend\"",
-    "dev": "react-router dev",
+    "dev:backend": "python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir backend",
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc",
     "test:backend": "python -m pytest"
@@ -30,6 +29,7 @@
     "@types/node": "^22",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
+    "concurrently": "^10.0.3",
     "supabase": "^2.82.0",
     "tailwindcss": "^4.1.13",
     "typescript": "^5.9.2",

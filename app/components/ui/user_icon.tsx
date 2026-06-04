@@ -65,7 +65,7 @@ export default function UserIcon() {
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        aria-label="Open user menu"
+        aria-label={open ? "Close user menu" : "Open user menu"}
         aria-haspopup="menu"
         className="flex h-9 w-9 cursor-pointer select-none items-center justify-center rounded-full bg-(--text-primary) text-xs font-semibold text-(--ui-background)"
       >

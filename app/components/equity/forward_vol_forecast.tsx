@@ -328,16 +328,19 @@ export default function ForwardVolForecast() {
         <div className="relative h-80 min-w-0 flex-1">
           <Chart type="line" data={data} options={options} plugins={[fvfOverlayPlugin]} />
         </div>
-        <Panel
-          selectedH={selectedH}
-          model={selected?.model ?? null}
-          iv={selected?.iv ?? null}
-          wedge={selWedge}
-          ratio={selRatio}
-        />
+        {/* Right column: info table on top, legend pinned to the bottom (mt-auto). The column
+            stretches to the chart height on lg, so the legend bottom-aligns with the chart. */}
+        <div className="flex flex-col lg:w-56">
+          <Panel
+            selectedH={selectedH}
+            model={selected?.model ?? null}
+            iv={selected?.iv ?? null}
+            wedge={selWedge}
+            ratio={selRatio}
+          />
+          <Legend />
+        </div>
       </div>
-
-      <Legend />
     </Card>
   );
 }
@@ -403,7 +406,7 @@ function Panel({
   ratio: number | null;
 }) {
   return (
-    <div className="w-full self-start rounded-lg border border-(--panel-border) bg-(--track-bg) p-4 lg:w-56">
+    <div className="w-full rounded-lg border border-(--panel-border) bg-(--track-bg) p-4">
       <div className="text-xs font-semibold tracking-wide text-(--text-muted) uppercase">
         At H = {selectedH}d
       </div>
@@ -437,7 +440,7 @@ function PanelRow({
 /* ── custom legend (chart.js legend disabled so we control colors/markers) ── */
 function Legend() {
   return (
-    <div className="mt-4 flex flex-wrap items-center justify-end gap-x-5 gap-y-2 text-xs text-(--text-secondary)">
+    <div className="mt-auto flex flex-col gap-2 pt-4 text-xs text-(--text-secondary)">
       <span className="inline-flex items-center gap-2">
         <svg width="22" height="8" aria-hidden="true">
           <line x1="0" y1="4" x2="22" y2="4" stroke={MODEL_LINE} strokeWidth="2.5" />

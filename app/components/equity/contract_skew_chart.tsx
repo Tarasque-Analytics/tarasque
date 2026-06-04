@@ -1,12 +1,6 @@
 import { useMemo } from "react";
 import type { ReactNode } from "react";
-import {
-  Chart as ChartJS,
-  LinearScale,
-  PointElement,
-  BubbleController,
-  Tooltip,
-} from "chart.js";
+import { Chart as ChartJS, LinearScale, PointElement, BubbleController, Tooltip } from "chart.js";
 import type { ChartData, ChartOptions, ChartType, Plugin, Scale } from "chart.js";
 import { Chart } from "react-chartjs-2";
 import { useEquityData } from "~/context/EquityDataContext";
@@ -247,7 +241,10 @@ function buildView(equity: EquitiesPayload | null): SkewView | null {
   const chain = (equity.options_chain ?? []).filter((o: OptionRecord) => o.iv != null);
   if (!chain.length) return null;
 
-  const snapshotISO = chain.reduce((m, o) => (o.snapshot_date > m ? o.snapshot_date : m), chain[0].snapshot_date);
+  const snapshotISO = chain.reduce(
+    (m, o) => (o.snapshot_date > m ? o.snapshot_date : m),
+    chain[0].snapshot_date,
+  );
   const snap = chain.filter((o) => o.snapshot_date === snapshotISO);
 
   // Expiry nearest 21 DTE.
@@ -407,7 +404,8 @@ export default function ContractSkewChart() {
   // Literal expected-move bands: spot ± vol·spot (bandScale === 1). One commented constant flips
   // this to a DTE-scaled ±1σ move if the literal bands read too wide.
   const s = bandScale(dte);
-  const ivBand = ivAtm != null ? { low: spot - ivAtm * spot * s, high: spot + ivAtm * spot * s } : null;
+  const ivBand =
+    ivAtm != null ? { low: spot - ivAtm * spot * s, high: spot + ivAtm * spot * s } : null;
   const rvBand = rv != null ? { low: spot - rv * spot * s, high: spot + rv * spot * s } : null;
 
   const options: ChartOptions<"bubble"> = {
@@ -529,11 +527,17 @@ function Header({
 
       <div className="flex items-center gap-3 text-xs font-medium text-(--text-secondary)">
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: PUT_FILL, border: `1px solid ${PUT_BORDER}` }} />
+          <span
+            className="inline-block h-2.5 w-2.5 rounded-full"
+            style={{ background: PUT_FILL, border: `1px solid ${PUT_BORDER}` }}
+          />
           Puts
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: CALL_FILL, border: `1px solid ${CALL_BORDER}` }} />
+          <span
+            className="inline-block h-2.5 w-2.5 rounded-full"
+            style={{ background: CALL_FILL, border: `1px solid ${CALL_BORDER}` }}
+          />
           Calls
         </span>
         <span className="text-(--text-muted)">· size = OI</span>
@@ -570,7 +574,7 @@ function BandLegend() {
         <Swatch color={RV_FILL} border={RV_EDGE} /> RV ±1σ band
       </span>
       <span className="flex items-center gap-1.5">
-        <Swatch color={PREMIUM_FILL} /> IV−RV premium
+        <Swatch color={PREMIUM_FILL} /> IV-RV premium
       </span>
       <span className="flex items-center gap-1.5">
         <Swatch color={SMILE} dash /> implied smile

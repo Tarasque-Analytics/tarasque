@@ -198,7 +198,7 @@ export default function ForwardVolForecast() {
     );
   }
 
-  // Y axis: auto-fit to the plotted values with ~12% padding, floored at 0. X axis is fixed.
+  // Y axis: floor pinned at 0, top auto-fit to the plotted values with ~12% padding. X axis fixed.
   const ys: number[] = [];
   for (const p of points) {
     if (p.model != null) ys.push(p.model);
@@ -206,9 +206,7 @@ export default function ForwardVolForecast() {
   }
   const yLo = Math.min(...ys);
   const yHi = Math.max(...ys);
-  const pad = (yHi - yLo || yHi) * 0.12;
-  const yMin = Math.max(0, yLo - pad);
-  const yMax = yHi + pad;
+  const yMax = yHi + (yHi - yLo || yHi) * 0.12;
 
   const isSel = (ctx: ScriptableContext<"line">) =>
     (ctx.raw as { x: number } | undefined)?.x === selectedH;
@@ -292,11 +290,13 @@ export default function ForwardVolForecast() {
     scales: {
       x: {
         type: "linear",
+        // Curves end at the last data point (H=126); the right margin past it mirrors the
+        // pre-21d margin on the left (min=10 → ~11d before the first point), so 126 + 11 ≈ 137.
         min: 10,
-        max: 180,
+        max: 137,
         grid: { display: false },
         afterBuildTicks: (axis: Scale) => {
-          axis.ticks = [21, 63, 126, 180].map((value) => ({ value }));
+          axis.ticks = [21, 63, 126].map((value) => ({ value }));
         },
         ticks: {
           color: AXIS_TEXT,
@@ -305,7 +305,7 @@ export default function ForwardVolForecast() {
         },
       },
       y: {
-        min: yMin,
+        min: 0,
         max: yMax,
         afterFit: (scale) => {
           scale.width = 52;

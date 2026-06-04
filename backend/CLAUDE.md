@@ -151,6 +151,17 @@ Two separate event sources; do not conflate them:
 
 - Ticker symbols are normalized to uppercase at the API boundary.
 - DB helpers raise `HTTPException` on query failure and print a `flush=True` diagnostic.
+  - **Log the raw exception server-side, return a generic client `detail`.** The `flush=True`
+    `print(f"Exception at <fn>: {e}")` is the server-side log; the `HTTPException` `detail`
+    returned to the caller must **not** interpolate `{e}` — doing so leaks internal
+    Supabase/PostgREST error text and schema details to API clients (flagged in review on
+    `get_latest_model_run`). Pattern: `detail="Error fetching from <table> table"` (no `: {e}`).
+  - **Known debt:** the other helpers in `database.py` (`get_security_data`,
+    `get_volatility_history`, `get_price_history`, `get_options_chain`, `get_ai_overview`,
+    `get_shap_snapshot`, `get_events`) still echo `{e}` in their `detail`. **Don't do a sweeping
+    fix** — there are open PRs modifying `database.py`, and a file-wide edit would collide with
+    them. Instead, drop `: {e}` from each helper's `detail` (keep the server-side `print`)
+    opportunistically, in whatever PR/call is already touching that helper.
 - `/api/equity/{symbol}` re-raises `HTTPException` as-is to preserve status codes.
 
 ## Testing

@@ -259,10 +259,12 @@ async def get_latest_model_run():
             .execute()
         )
     except Exception as e:
+        # Log the raw error server-side; return a generic detail so internal Supabase/PostgREST
+        # error text (schema/table internals) isn't leaked to API clients.
         print(f"Exception at get_latest_model_run: {str(e)}", flush=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Error fetching from model_runs table: {e}"
+            detail="Error fetching from model_runs table"
         )
 
     return response.data[0] if response.data else None

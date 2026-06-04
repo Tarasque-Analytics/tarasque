@@ -67,7 +67,6 @@ export default function UserIcon() {
         onClick={() => setOpen((prev) => !prev)}
         aria-label="Open user menu"
         aria-haspopup="menu"
-        aria-expanded={open ? "true" : "false"}
         className="flex h-9 w-9 cursor-pointer select-none items-center justify-center rounded-full bg-(--text-primary) text-xs font-semibold text-(--ui-background)"
       >
         {initials}

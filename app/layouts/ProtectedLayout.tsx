@@ -33,10 +33,14 @@ export default function ProtectedLayout() {
     checkAuth();
   }, []);
 
+  // Navbar sits at the top with no padding above it so its `sticky top-0` pins flush to the
+  // viewport; page content gets the padding via `.protected-content`.
   return (
     <div className="protected-layout">
       <Navbar />
-      <Outlet />
+      <main className="protected-content">
+        <Outlet />
+      </main>
     </div>
   );
 }

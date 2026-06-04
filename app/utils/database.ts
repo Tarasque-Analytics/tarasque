@@ -161,3 +161,25 @@ export async function loadEquityData(symbol: string): Promise<EquitiesPayload> {
     throw error;
   }
 }
+
+// Latest model run — feeds the navbar version pill + "Last refresh" date (GET /api/model-runs/latest)
+export interface ModelRun {
+  model_version: string | null;
+  run_date: string | null;
+}
+
+/**
+ * Load the latest model run for the navbar (version + run date).
+ * Non-fatal: returns null on any failure so the navbar can render a placeholder instead of
+ * breaking (consistent with how the equity components handle missing data).
+ */
+export async function loadLatestModelRun(): Promise<ModelRun | null> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/model-runs/latest`);
+    if (!response.ok) return null;
+    return (await response.json()) as ModelRun;
+  } catch (error) {
+    console.error("Error loading latest model run:", error);
+    return null;
+  }
+}

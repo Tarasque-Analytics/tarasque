@@ -19,12 +19,7 @@ import type {
 } from "chart.js";
 import { Chart } from "react-chartjs-2";
 import { useEquityData } from "~/context/EquityDataContext";
-import type {
-  PriceRecord,
-  VolatilityRecord,
-  EventRecord,
-  SecurityMeta,
-} from "~/utils/database";
+import type { PriceRecord, VolatilityRecord, EventRecord, SecurityMeta } from "~/utils/database";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Filler);
 
@@ -256,7 +251,14 @@ export default function PriceHistoryChart() {
   if (allRows.length === 0) {
     return (
       <Card>
-        <Header name={name} symbol={equity.symbol} sec={sec} range={range} onRange={setRange} rows={[]} />
+        <Header
+          name={name}
+          symbol={equity.symbol}
+          sec={sec}
+          range={range}
+          onRange={setRange}
+          rows={[]}
+        />
         <div className="flex h-90 items-center justify-center text-sm text-(--text-secondary)">
           No price history available for {equity.symbol}.
         </div>
@@ -401,8 +403,7 @@ export default function PriceHistoryChart() {
       tooltip: {
         callbacks: {
           title: (items) => (items.length ? longDate(items[0].label) : ""),
-          label: (ctx) =>
-            `VRP EWMA 21d: ${ctx.parsed.y == null ? "—" : ctx.parsed.y.toFixed(3)}`,
+          label: (ctx) => `VRP EWMA 21d: ${ctx.parsed.y == null ? "—" : ctx.parsed.y.toFixed(3)}`,
         },
       },
     },
@@ -425,7 +426,14 @@ export default function PriceHistoryChart() {
 
   return (
     <Card>
-      <Header name={name} symbol={equity.symbol} sec={sec} range={range} onRange={setRange} rows={rows} />
+      <Header
+        name={name}
+        symbol={equity.symbol}
+        sec={sec}
+        range={range}
+        onRange={setRange}
+        rows={rows}
+      />
 
       <div className="mt-2 mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="text-4xl font-bold text-(--text-primary)">{usd(latest.close)}</span>

@@ -269,7 +269,8 @@ export default function ForwardVolForecast() {
           afterBody: (items) => {
             const p = points.find((pt) => pt.h === items[0]?.parsed.x);
             if (!p || p.model == null || p.iv == null) return [];
-            return ["", `Wedge: ${pp(p.iv - p.model)}`, `Ratio: ${ratioFmt(p.iv / p.model)}`];
+            const r = p.model === 0 ? null : p.iv / p.model;
+            return ["", `Wedge: ${pp(p.iv - p.model)}`, `Ratio: ${ratioFmt(r)}`];
           },
         },
       },

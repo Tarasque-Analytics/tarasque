@@ -432,7 +432,7 @@ export default function PriceHistoryChart() {
         <span className={`text-sm font-semibold ${up ? "text-(--pos)" : "text-(--neg)"}`}>
           {up ? "+" : "−"}
           {usd(Math.abs(change))} ({up ? "+" : "−"}
-          {Math.abs(changePct).toFixed(2)}%)
+          {Math.abs(changePct).toFixed(2)}%) {range}
         </span>
         <span className="text-sm text-(--text-muted)">· as of {longDate(latest.date)} · close</span>
       </div>

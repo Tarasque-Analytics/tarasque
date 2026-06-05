@@ -213,8 +213,8 @@ async def get_shap_snapshot(security_id: int):
 #     except Exception as e:
 #         print(f"Exception at get_distribution: {str(e)}", flush=True)
 #         raise HTTPException(
-#             status_code=404,
-#             detail=f"Error calling get_distribution RPC: {e}"
+#             status_code=500,
+#             detail="Error fetching from get_distribution RPC"
 #         )
 #     return response.data
 

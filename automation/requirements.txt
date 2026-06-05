@@ -1,0 +1,20 @@
+# automation pipeline dependencies (PLAN §11, §12).
+# Pin versions when the implementation lands; left loose during scaffolding.
+#
+# Install (from repo root):
+#   pip install -r automation/requirements.txt
+
+# DB write client — service-role Supabase (same SDK as backend; NOT supabase-py). PLAN §6.
+supabase
+
+# Market data — stock bars + options chain (OPRA). PLAN §1, §4.3.
+alpaca-py
+
+# AI overviews — first provider (Claude). Other providers add their SDK here. PLAN §8.
+anthropic
+
+# Env loading (repo-root .env). Matches model/backend usage.
+python-dotenv
+
+# Data shaping for artifact parsing / row building. PLAN §7.4.
+pandas

@@ -39,10 +39,23 @@ class FeatureBuilder:
         self,
         ticker: str,
         raw_data: Dict[str, pd.DataFrame],
+        drop_nan_targets: bool = True,
     ) -> pd.DataFrame:
         """
         Master build: returns a DatetimeIndex DataFrame with all features
         and forward-looking target columns.
+
+        Parameters
+        ----------
+        drop_nan_targets : bool, default True
+            If True (backtest-style), drop the last ~max_horizon rows where
+            forward y_target values are NaN. Required for training (every
+            row needs a known target).
+
+            If False (prediction-time, used by daily_forecast and
+            extend_predictions), keep those rows. Predictions can be made
+            with features only; y_targets are backfilled as the horizon
+            elapses.
         """
         # 1. Prepare OHLCV pivots
         ohlcv = raw_data["ohlcv"].copy()
@@ -106,8 +119,10 @@ class FeatureBuilder:
 
         # Drop rows where ANY target is NaN (tail rows that lack enough future
         # data for the longer horizons, e.g. last 126 rows for y_126).
+        # Skip this when building features for inference (drop_nan_targets=False).
         target_cols = [f"y_{h}" for h in self.mc.horizons if f"y_{h}" in df.columns]
-        df = df.dropna(subset=target_cols)
+        if drop_nan_targets:
+            df = df.dropna(subset=target_cols)
 
         return df
 
@@ -197,13 +212,16 @@ class FeatureBuilder:
         # CRSP 'ret' is already adjusted for splits and dividends.
         # Reconstruct adjusted close: cumulative product of (1+ret) forward,
         # then scale so that adj_close[-1] == close[-1].
-        # ffill(limit=1) avoids propagating stale returns over long gaps.
+        #
+        # Defensive: where ret is NA (Alpaca-appended rows past the CRSP
+        # cutoff), fill from raw close.pct_change(). The root-cause fix
+        # lives in data_loader.append_recent_data, but this keeps the
+        # pipeline correct if a stale parquet ever leaks through.
         if "ret" in ohlcv.columns:
-            rets = (
-                ohlcv.pivot(index="date", columns="ticker", values="ret")
-                .ffill(limit=1)
-                .fillna(0.0)
-            )
+            rets = ohlcv.pivot(index="date", columns="ticker", values="ret")
+            close_pct = closes.pct_change()
+            rets = rets.where(rets.notna(), close_pct)
+            rets = rets.ffill(limit=1).fillna(0.0)
             cum = (1.0 + rets).cumprod()
             # Scale per-ticker so adj_close[-1] == close[-1]
             last_raw = closes.iloc[-1]
@@ -222,17 +240,49 @@ class FeatureBuilder:
     # ═══════════════════════════════════════════════════════════════════
 
     def _add_rv_features(self, df, ticker, closes, highs, lows, opens, adj_closes):
-        """Garman-Klass RV at multiple windows.
+        """Realized vol features at multiple windows.
 
-        GK uses raw same-day H/L/O/C (intraday ratios, unaffected by splits).
-        EWMA vol uses adj_closes for cross-day returns (split-safe).
+        Estimator selected via `ModelConfig.vol_estimator`:
+          - 'gk': Garman-Klass (intraday only — original; misses overnight gaps)
+          - 'yz': Yang-Zhang (overnight + open-to-close + Rogers-Satchell intraday)
+
+        Both use raw same-day H/L/O/C for the per-day estimator (unaffected by
+        splits). EWMA vol uses adj_closes for cross-day returns (split-safe).
         """
-        log_hl = np.log(highs[ticker] / lows[ticker])
-        log_co = np.log(closes[ticker] / opens[ticker])
-        gk_var = 0.5 * (log_hl ** 2) - (2 * np.log(2) - 1) * (log_co ** 2)
+        estimator = getattr(self.mc, "vol_estimator", "gk").lower()
+        h = highs[ticker]
+        l = lows[ticker]
+        o = opens[ticker]
+        c = closes[ticker]
 
-        for w in self.mc.rv_windows:
-            df[f"rv_{w}d"] = np.sqrt(gk_var.rolling(window=w).mean()) * np.sqrt(252)
+        if estimator == "yz":
+            # Yang-Zhang (2000): drift-independent estimator that combines
+            #   sigma2_O  = var of overnight returns ln(O_t / C_{t-1})
+            #   sigma2_CO = var of open-to-close returns ln(C_t / O_t)
+            #   sigma2_RS = mean of Rogers-Satchell intraday var
+            # Optimal weight k = 0.34 / (1.34 + (n+1)/(n-1))
+            c_prev = c.shift(1)
+            ln_oc_prev = np.log(o / c_prev)      # overnight log return
+            ln_co      = np.log(c / o)            # open-to-close log return
+            rs         = np.log(h / c) * np.log(h / o) \
+                       + np.log(l / c) * np.log(l / o)
+
+            for w in self.mc.rv_windows:
+                sigma2_o  = ln_oc_prev.rolling(w).var(ddof=1)
+                sigma2_co = ln_co.rolling(w).var(ddof=1)
+                sigma2_rs = rs.rolling(w).mean()
+                k = 0.34 / (1.34 + (w + 1) / (w - 1)) if w > 1 else 0.34
+                sigma2_yz = sigma2_o + k * sigma2_co + (1 - k) * sigma2_rs
+                # Clip tiny negative values from sample noise before sqrt
+                sigma2_yz = sigma2_yz.clip(lower=1e-12)
+                df[f"rv_{w}d"] = np.sqrt(sigma2_yz) * np.sqrt(252)
+        else:
+            # Default: Garman-Klass intraday-only estimator
+            log_hl = np.log(h / l)
+            log_co = np.log(c / o)
+            gk_var = 0.5 * (log_hl ** 2) - (2 * np.log(2) - 1) * (log_co ** 2)
+            for w in self.mc.rv_windows:
+                df[f"rv_{w}d"] = np.sqrt(gk_var.rolling(window=w).mean()) * np.sqrt(252)
 
         # Canonical target RV (21d) used by the backtest
         df["rv_TARGET"] = df["rv_21d"]

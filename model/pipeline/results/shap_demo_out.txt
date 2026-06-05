@@ -1,0 +1,116 @@
+=== H=21 ===
+base=-1.6254  pred=-1.6735  vol_approx=0.1876
+  -  Realized vol (21d)                      v=   +0.1655  shap=-0.0565
+  +  EWMA vol                                v=   +0.2521  shap=+0.0161
+  +  Realized vol (126d)                     v=   +0.2230  shap=+0.0103
+  +  Price regime                            v=   -0.1344  shap=+0.0069
+  -  Earnings proximity                      v=   +0.1171  shap=-0.0063
+  -  Yield curve slope (10y − 3m)            v=   +0.0130  shap=-0.0059
+  +  Vol of vol                              v=   +0.0195  shap=+0.0057
+  -  Residual vol velocity                   v=   +0.1110  shap=-0.0051
+  -  5Y breakeven inflation                  v=   +1.8543  shap=-0.0051
+  -  USO momentum (21d)                      v=   -0.0292  shap=-0.0044
+
+=== H=63 ===
+base=-1.5929  pred=-1.6502  vol_approx=0.1920
+  -  Realized vol (21d)                      v=   +0.1655  shap=-0.0234
+  -  Realized vol (63d)                      v=   +0.2364  shap=-0.0208
+  +  SPY beta                                v=   +1.4169  shap=+0.0143
+  -  Yield curve slope (10y − 3m)            v=   +0.0130  shap=-0.0133
+  -  5Y breakeven inflation                  v=   +1.8543  shap=-0.0105
+  +  Residual vol                            v=   +0.8374  shap=+0.0054
+  -  HYG momentum (21d)                      v=   +0.0030  shap=-0.0047
+  +  Realized vol (126d)                     v=   +0.2230  shap=+0.0046
+  +  Vol regime z-score                      v=   +0.1808  shap=+0.0039
+  -  IV Z-score                              v=   -0.3341  shap=-0.0037
+
+=== H=126 ===
+base=-1.5668  pred=-1.5544  vol_approx=0.2113
+  +  Realized vol (126d)                     v=   +0.2230  shap=+0.0211
+  +  SPY beta                                v=   +1.4169  shap=+0.0089
+  -  Sector correlation (252d)               v=   +0.7343  shap=-0.0078
+  +  Residual vol                            v=   +0.8374  shap=+0.0068
+  -  5Y breakeven inflation                  v=   +1.8543  shap=-0.0058
+  -  Yield curve slope (10y − 3m)            v=   +0.0130  shap=-0.0058
+  -  Price regime                            v=   -0.1344  shap=-0.0057
+  +  Inflation (5y5y fwd)                    v=   +2.1156  shap=+0.0042
+  +  Vol regime z-score                      v=   +0.1808  shap=+0.0036
+  -  HY credit spread                        v=   +4.8391  shap=-0.0036
+
+=== JSON blob H=21 ===
+{
+  "base_value": -1.625414,
+  "predicted_value": -1.673513,
+  "features": [
+    {
+      "name": "rv_21d",
+      "display": "Realized vol (21d)",
+      "value": 0.16552702170128147,
+      "shap": -0.05653673906484676,
+      "abs_shap": 0.05653673906484676
+    },
+    {
+      "name": "ewma_vol",
+      "display": "EWMA vol",
+      "value": 0.2521164727986538,
+      "shap": 0.01610026674774547,
+      "abs_shap": 0.01610026674774547
+    },
+    {
+      "name": "rv_126d",
+      "display": "Realized vol (126d)",
+      "value": 0.2229814193581547,
+      "shap": 0.01031664756869668,
+      "abs_shap": 0.01031664756869668
+    },
+    {
+      "name": "price_regime",
+      "display": "Price regime",
+      "value": -0.13437460272148544,
+      "shap": 0.0069433145598310885,
+      "abs_shap": 0.0069433145598310885
+    },
+    {
+      "name": "event_earn_gravity",
+      "display": "Earnings proximity",
+      "value": 0.11710862268442157,
+      "shap": -0.006280805665669813,
+      "abs_shap": 0.006280805665669813
+    },
+    {
+      "name": "macro_yield_curve_slope",
+      "display": "Yield curve slope (10y \u2212 3m)",
+      "value": 0.012957363112235009,
+      "shap": -0.0058776496790576135,
+      "abs_shap": 0.0058776496790576135
+    },
+    {
+      "name": "vol_of_vol",
+      "display": "Vol of vol",
+      "value": 0.01949739759315116,
+      "shap": 0.005741003737141865,
+      "abs_shap": 0.005741003737141865
+    },
+    {
+      "name": "res_vol_vel",
+      "display": "Residual vol velocity",
+      "value": 0.11103547466887222,
+      "shap": -0.005085301882387183,
+      "abs_shap": 0.005085301882387183
+    },
+    {
+      "name": "macro_breakeven_5y",
+      "display": "5Y breakeven inflation",
+      "value": 1.8543303645659759,
+      "shap": -0.005054655716152287,
+      "abs_shap": 0.005054655716152287
+    },
+    {
+      "name": "mom21_USO",
+      "display": "USO momentum (21d)",
+      "value": -0.029222347142870742,
+      "shap": -0.004371506788491165,
+      "abs_shap": 0.004371506788491165
+    }
+  ]
+}

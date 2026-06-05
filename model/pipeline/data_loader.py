@@ -755,6 +755,28 @@ def append_recent_data(
             combined = combined.drop_duplicates(
                 subset=["date", "ticker"], keep="last",
             )
+
+            # ── Backfill `ret` on Alpaca-appended rows ───────────────────
+            # Alpaca bars don't carry CRSP's split-and-dividend-adjusted `ret`
+            # column, so rows from Alpaca arrive with ret=NA. Downstream
+            # features.py computes adj_close via cumprod of (1+ret) and any
+            # NA→0 fill flattens the cumulative product, warping the
+            # close[-1]/cum[-1] anchor scale across the entire series.
+            # Fix: where ret is missing, fill from abs(prc).pct_change()
+            # per ticker. abs() handles CRSP's negative-price (bid/ask mid)
+            # convention so the cross-boundary pct_change stays clean.
+            combined = combined.sort_values(["ticker", "date"]).reset_index(drop=True)
+            if "ret" in combined.columns and "prc" in combined.columns:
+                fallback_ret = combined.groupby("ticker", observed=True, sort=False)["prc"].transform(
+                    lambda s: s.abs().pct_change()
+                )
+                na_before = int(combined["ret"].isna().sum())
+                combined["ret"] = combined["ret"].fillna(fallback_ret)
+                na_after = int(combined["ret"].isna().sum())
+                if na_before > na_after:
+                    print(f"[CONTINUE] Backfilled `ret` on {na_before - na_after:,} rows "
+                          f"from prc.pct_change()")
+
             store.save(combined, "ohlcv", partition_cols=["ticker"])
             existing_data["ohlcv"] = combined
             print(f"[CONTINUE] OHLCV extended to {combined['date'].max()}")

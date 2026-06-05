@@ -1,14 +1,14 @@
 {
-  "run_id": 1,
-  "run_date": "2026-05-18",
+  "run_id": 5,
+  "run_date": "2026-05-31",
   "model_version": "v10+",
   "spec_hash": "0356b9d",
-  "n_tickers": 1,
+  "n_tickers": 93,
   "horizons": [
     21,
     63,
     126
   ],
   "notes": "v10+ corpus run \u2014 exported via export_for_webapp.py",
-  "generated_at": "2026-05-18T21:12:04Z"
+  "generated_at": "2026-05-31T18:35:05Z"
 }

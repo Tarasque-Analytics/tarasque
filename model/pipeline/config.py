@@ -108,8 +108,16 @@ class ModelConfig:
 
     horizons: List[int] = field(default_factory=lambda: [21, 63, 126])
 
-    # Garman-Klass RV windows — 126 needed for clean H=126 target (no overlap)
+    # Realized vol windows — 126 needed for clean H=126 target (no overlap)
     rv_windows: List[int] = field(default_factory=lambda: [5, 10, 21, 63, 126])
+
+    # Vol estimator for rv_* features AND rv_TARGET.
+    # 'gk' = Garman-Klass (intraday only, misses overnight gaps — original default)
+    # 'yz' = Yang-Zhang (overnight + open-to-close + Rogers-Satchell intraday;
+    #        captures earnings/event overnight moves that GK misses)
+    # Switch to 'yz' after 2026-05-27 reframe: GK target undermeasures earnings vol
+    # and structurally underweights event_gravity features in loss.
+    vol_estimator: str = "gk"   # "gk" | "yz"
 
     # Walk-forward analysis
     wfa_splits: int = 5

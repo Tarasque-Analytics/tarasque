@@ -1,0 +1,7 @@
+curv_window_w,type,n_events,fwd_vol_h42_mean,fwd_vol_h42_lift
+8,concave->convex (pre-heating),53,0.19885574268095565,0.9414322154623677
+8,convex->concave (pre-cooling),52,0.2120806394735842,1.0040421442423515
+12,concave->convex (pre-heating),40,0.20547202211614485,0.9748354728544444
+12,convex->concave (pre-cooling),39,0.21428035385065136,1.0166254652000337
+16,concave->convex (pre-heating),34,0.20934972269742827,0.9922821200914977
+16,convex->concave (pre-cooling),33,0.21540996412234403,1.0210066348981066

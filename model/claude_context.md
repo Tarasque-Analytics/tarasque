@@ -1,5 +1,5 @@
 # Tarasque / Volarbear — Claude Working Context
-_Last updated: 2026-05-05 | Model: claude-opus-4-7_
+_Last updated: 2026-05-27 | Model: claude-opus-4-7_
 
 ---
 
@@ -14,6 +14,321 @@ _Last updated: 2026-05-05 | Model: claude-opus-4-7_
 5. **What NOT to record**: Code patterns derivable from reading the files, git history, ephemeral task details.
 
 Leo's instruction: *"you should be adding information to this file to give context for next iterations of yourself: work plans, implementation stages, checklist, progress percentages, next actions — always update this same document and tell the next iteration of yourself to do this"*
+
+---
+
+## 🔥 PICK UP HERE (state as of 2026-05-27)
+
+**v1 backend is LIVE on Supabase with overnight weekly_extend complete.** 284K rows of step_days=20-cadence predictions pushed last night (was 270K under single-retrain extension). Pipeline ran cleanly 23:11 → 00:56. All 93 tickers extended through today's date with proper WFA cadence.
+
+**Live Supabase row counts (verified 2026-05-27 morning):**
+```
+volatility_history  : 283,796   (+13,206 vs yesterday — step_20 cadence retrains)
+prices_history      : 283,797
+securities          :      94   (93 prod + 1 leftover test row)
+event_history       :   6,948
+macro_calendar      :  10,124
+model_runs          :       4   (id=4 created last night, current canonical)
+```
+
+**Live Supabase URL:** `https://kynrztmoshssqduxhdsb.supabase.co`
+
+### 🚨 2026-05-27 foundational finding: the wedge isn't what we thought
+
+Four discriminating tests showed our +0.40 IC "VRP signal" is **NOT** what the project
+framing assumed. Honest reframe:
+
+| Test | Finding | Implication |
+|---|---|---|
+| A: variance decomposition | 98.6% idiosyncratic but per-ticker idio median IC = -0.05 | Signal lives in cross-sectional structure, not time-series wiggle |
+| B: macro correlation | Agg wedge: +0.59 dollar, +0.56 breakeven, -0.49 yield slope, +0.17 SPY vol | Tracks macro liquidity cycle, NOT equity fear |
+| C: regime-conditional IC | Calm +0.42, normal +0.44, **stress +0.36** | True VRP should strengthen in stress; ours weakens |
+| D: event-orthogonal | Raw IC +0.40 → residual +0.14 after calendar-week demean | 65% of predictive power is earnings-season clustering |
+
+**The signal is real (+0.40 IC, validated across 11 years × 267k obs) but it's a
+combination of cross-sectional structural ranking + earnings-season patterns + macro-
+liquidity-cycle correlations — NOT per-stock real-time fear premium.** Product framing
+must change accordingly. See [RESEARCH_TODO §12](model/RESEARCH_TODO.md) for full
+test write-up.
+
+**The β_mz aggregate signal IS the genuine market-fear early warning** (separately
+validated 2026-05-27: caught 7 of 8 major US vol shocks 2015-2026, +1.13× lift on
+down→up sign-change events at H=21d). This belongs on the Macro page as "Universe
+Calibration Drift" — frame it product-side as the early-warning indicator, NOT
+the per-stock wedge.
+
+**Test E + F closure (2026-05-27)**: doubly-residualized wedge (strip calendar-week
++ cross-sectional mean) has SLIGHTLY NEGATIVE IC (-0.10), confirming there is NO
+hidden per-stock fear-premium signal to recover. Path-length target gives identical
+IC to vol-std target (+0.003 delta), so target choice isn't a hidden lever. Final
+verdict: the +0.40 IC lives entirely in the 30%-of-variance seasonality + macro
+component. Question closed. See [RESEARCH_TODO §12](model/RESEARCH_TODO.md) for
+the complete decomposition.
+
+**YZ migration tested and rejected (2026-05-27)**: rigorous WFA POC (15 tickers ×
+5 folds × full ensemble × 2 estimators = 150 trainings) showed YZ degrades
+R² (mean Δ = −0.64) despite marginally increasing event-gravity importance.
+**Economic reason**: earnings overnight gaps are largely surprises — model can
+know the date but not the magnitude. YZ adds unpredictable variance to the
+target. GK was actually a defensible choice all along by implicitly defining a
+more learnable forecasting problem. **Decision: don't do full corpus YZ retrain.**
+The wedge framing IS what it is regardless of target; YZ doesn't rescue per-stock
+fear-premium isolation. See [RESEARCH_TODO §12 YZ closure](model/RESEARCH_TODO.md).
+
+**The reframe from earlier in this session is now empirically LOCKED IN.** Every
+plausible architectural change we tested (forward IV-prediction, YZ migration,
+residual-after-seasonality, path-length targets, ticker-relative thresholds,
+trail dynamics) failed to reveal a hidden per-stock fear-premium signal. The
+wedge is structural + seasonal + macro patterns. The project's strongest
+single signal is the β_mz Universe Calibration Drift indicator (the macro-level
+early warning).
+
+**β_mz Universe Calibration Drift Signal — VALIDATED AS DEFENSIVE OVERLAY (2026-05-27)**
+
+The β_mz aggregate signal passed every test we ran. Receipts:
+
+- **Monte Carlo hypothesis test (N=1000)**: p < 0.001 on Sharpe; p = 0.012 on max DD;
+  p = 0.021 on total return. Real strategy beats every single random-shuffle null.
+- **Multi-index generalization**: 7/8 ETFs see Sharpe improvement; **8/8 see max
+  DD reduction** (SPY, QQQ, IWM, XLF, XLE, XLK, XLV, XLI all tested).
+- **Cost-modeled backtest (5 bps/flip)**: $300,680 ending value vs $230,992 BH on
+  $100k starting; Sharpe 0.92 vs 0.43; max DD -17.7% vs -36.1%.
+- **Subperiod robustness**: works in calm/COVID/inflation regimes separately;
+  COVID most dramatic (BH -36% DD → overlay -11% DD same year).
+- **Slope IC against forward drawdown**: -0.146 (strongest single-signal DD
+  predictor we have).
+- **Caught 7 of 8 major US vol shocks 2015-2026** (qualitative receipts).
+- **Cumulative finding**: HY spread alone is a stronger SINGLE signal (2.70× lift),
+  but β_mz adds value as part of a multi-signal framework. Smart combination
+  (logistic regression composite) is the path to a meaningfully better signal
+  than HY alone.
+
+**Why this signal exists** (best explanation per session discussion):
+1. It's a **second-order signal** (about how vol models systematically fail
+   before regime transitions), not first-order market state
+2. **Academic VRP literature is biased toward alpha generation**, not drawdown
+   prediction — defensive signals don't get published as much
+3. **Infrastructure prerequisite is unusual** — needs per-stock vol forecasting
+   at scale + WFA calibration tracking + cross-stock aggregation + defensive
+   reframe, all at once. Signal lives in the gap between research domains.
+
+**Productionization**: SWE-ready spec at
+[model/DASHBOARD_SPEC_MACRO_REGIME.md](model/DASHBOARD_SPEC_MACRO_REGIME.md)
+with data shapes, component layouts, copy, tooltips, and what-to-claim-vs-not.
+This is the new HEADLINE FEATURE of the platform. The per-stock VRP wedge
+panel is now supporting infrastructure; the Macro β_mz panel is the centerpiece.
+
+### 🔬 Additional findings from extended session (2026-05-27 late)
+
+**Signal direction asymmetry (statistical significance)**: UP→DOWN (calm-coming)
+direction is meaningfully more reliable than DOWN→UP (stress-coming).
+- SPY 21d hit rate: UP→DOWN 79% (vs 67% baseline), DOWN→UP 56% (vs 33% baseline)
+- Cross-direction t-test on SPY 21d returns: spread +4.66pp, **p = 0.033** (significant)
+- Same significant pattern on IWM (p=0.036), marginal on QQQ (p=0.078)
+- Economic logic: vol mean reversion is empirically more predictable than vol
+  spikes. Bullish calm-coming signals have persistence; bearish stress signals
+  predict unforecastable shocks.
+- **Implication**: when sizing positions, trust UP→DOWN MORE than DOWN→UP.
+  Asymmetric overlay variants (lean long on cooling, only mildly defensive on
+  heating) outperform symmetric ones.
+
+**VIXY trading variants (Test 19 in signal_context/README.md catalog)**:
+- DOWN→UP buy VIXY (21d): 56% hit rate, mean +17.5% (COVID was +244%, drives
+  the mean — winsorized to +6.2%). Tail-event protection trade.
+- **UP→DOWN short VIXY (21d): 89% hit rate** — highest precision signal in
+  the project. Mean +7.9% per signal; winsorized +8.6% (signal is ROBUST,
+  not COVID-dependent). Combination of high signal precision + structural
+  VIXY contango decay = consistent short-side win.
+- Caveats: VIXY vol ~60-80% annualized → position sizing must be small.
+  Short squeeze risk catastrophic (Volmageddon liquidated XIV).
+
+**25% tilt strategy on SPY (the headline deployment)**: Variant A wins on
+EVERY metric vs BH SPY (2015-2026, $100k starting, 5 bps/flip + 50 bps borrow):
+| Strategy | Ending Value | Sharpe | Max DD |
+|---|---|---|---|
+| BH SPY | $365,637 | 0.68 | -34.1% |
+| **25% TILT leveraged** | **$464,303** | **0.94** | **-21.0%** |
+| 25% short only (no lev) | $347,173 | 0.89 | -19.0% |
+
+Variant A: heating → 75% long + 25% short = 50% net; cooling → 125% long
+(uses leverage). The leverage during high-confidence COOLING captures
+bull-market upside while shorts during HEATING protect downside.
+Chart: `signal_context/charts/beta_mz_25pct_tilt_strategy.png`.
+
+**Per-index optimal overlay variant (multi-index test)**:
+- SPY: CASH or 50/50 wins on Sharpe
+- QQQ: 70/30 L/S wins (light shorting works; full cash gives up too much
+  growth-market upside)
+- IWM: AGGRESSIVE shorting (30/70 or FULL_FLIP) wins on both Sharpe AND
+  total return ($496k vs $242k BH using FULL_FLIP)
+- XLK (tech): defensive overlay is suboptimal (concentrated tech rallies
+  cost too much during cooling periods)
+
+**Winsorization revealed signal-component asymmetry (Test 20)**:
+- UP→DOWN long is ROBUST — raw mean ≈ trimmed mean (SPY: +2.48% → +2.29%).
+  Reliable mean-reversion alpha, NOT COVID-dependent.
+- DOWN→UP short is COVID-dependent — raw mean drops 50%+ when winsorized
+  (SPY: +2.18% → +0.82%; VIXY long: +17.5% → +6.2%).
+- **Honest reframe**: signal has two components doing different jobs.
+  - UP→DOWN = "reliable income" (mean-reversion harvest)
+  - DOWN→UP = "tail-event insurance" (COVID-magnified, modest in normal times)
+
+**Friday-cadence + witching + Monday-lag analysis (Test 22)**:
+- All signal dates fall on Friday (W-FRI snapshot frequency in aggregator)
+- Signal computable POST-Friday-close; earliest tradeable Monday open
+- β_mz AND 12-week slope BOTH computed weekly (daily β_mz never tested → Open Test G)
+- Witching Friday rate 8.1% vs baseline 7.7% → NOT over-represented
+- **Monday-lag costs ~0.34% per signal = ~14% of average PNL**
+- **Implication for honest claims**: backtest assumes Friday-close execution
+  (institutional). Retail Monday-open execution → adjusted Sharpe ~0.27
+  improvement (not +0.34). Adjusted max DD reduction ~10pp (not 13pp).
+- **Open Test H**: clean re-backtest using Monday-open execution
+
+**HY spread is a stronger SINGLE-signal early warning than β_mz** (humbling but
+important finding):
+- HY spread Z > 1: 2.70× lift on forward DD > 10% in 42 BD
+- β_mz level low (Q1): 1.11× lift
+- Naive combinations (AND/OR) don't help — β_mz adds noise to HY
+- **Open Test A**: train logistic regression composite of β_mz + HY + yield curve
+  + breakeven. Likely path to a signal meaningfully better than HY alone.
+
+### 📂 signal_context/ — the canonical archive
+
+[`model/signal_context/`](model/signal_context/) is a self-contained archive of all β_mz signal work:
+- `README.md` — orientation + complete 22-test catalog with question, method, result, data file per test
+- `analysis_scripts/` — 8 reproducible Python scripts
+- `validation_data/` — 19 CSV outputs including `beta_mz_full_event_table_with_vixy.csv` (every signal event with SPY/QQQ/XLF/VIXY 21d PNL scaled by direction)
+- `charts/` — the 25% tilt equity curve chart
+- `specs/` — `DASHBOARD_SPEC_MACRO_REGIME.md`
+
+If you're picking up this signal work in a future session, start at
+`signal_context/README.md`.
+
+Full validation history + research extensions in [RESEARCH_TODO §14](model/RESEARCH_TODO.md).
+
+---
+
+### Original headline (now reframed): vrp_ewma at +0.40 IC is forward-vol predictive
+
+Comprehensive 8-predictor × 4-target × 3-horizon IC suite on 267k (ticker, date) observations
+([model/pipeline/analysis/vrp_ic.py](model/pipeline/analysis/vrp_ic.py), full results
+in [results/validation/vrp_ic_summary.md](model/pipeline/results/validation/vrp_ic_summary.md)).
+
+| Predictor | Pooled IC vs fwd vol h=21 | Per-ticker median IC | % tickers \|IC\|>0.10 |
+|---|---|---|---|
+| **vrp_ewma** | **+0.396** | +0.179 | 69% |
+| **vrp_raw** | +0.332 | **+0.227** | **99%** |
+| vrp_ewma_slope5 | +0.149 | +0.155 | 85% |
+| vrp_pct_own | +0.148 | +0.167 | 87% |
+| vrp_zscore_own | +0.146 | +0.164 | 83% |
+| vrp_sign | +0.057 | +0.011 | 14% (noise) |
+
+**Quintile-lift on forward 21d vol**: top quintile of vrp_ewma → 38.5% realized fwd vol; bottom quintile → 20.9%. **Spread = +17.6 vol-points.** This is the project's actionable read — `get_distribution()` RPC + a dedicated VRP panel on the equity page should surface this.
+
+**Key implications:**
+1. VRP isn't a supporting feature — it's the centerpiece. ~50% stronger than the regime classifier (+0.27 IC) and stronger than the forecast itself.
+2. EWMA smoothing extracts more signal than raw (+0.40 vs +0.33 pooled at H=21).
+3. **Sign is useless** — magnitude is what matters. Don't engineer sign-based features.
+4. **Pct/zscore underperform raw** at the pooled level (see "bounded-ordinal principle" below).
+
+### 🎯 The bounded-ordinal principle (new mental model from this session)
+
+The ticker-relative percentile framing (Leo's VRP-percentile intuition) is **not universal**. Across two IC tests on the regime classifier and 8 IC tests on VRP variants, the pattern is clear:
+
+| Signal type | Apply ticker-relative percentile? | Examples |
+|---|---|---|
+| **Unitless ratios already cross-ticker comparable** | NO — keep absolute | β_mkt, β_mz, IC, percentile-of-percentile, Sharpe |
+| **Magnitude depends on ticker baseline** | YES — but test first | VRP_wedge (turns out NO at pooled level; ticker-relative still helps per-ticker), raw residuals (untested) |
+
+`β_mz = 1.5` means "model under-predicts by 50%" regardless of ticker — normalizing destroys cross-ticker info. Same for any unitless slope/ratio. VRP is a borderline case — pct_own modestly helps per-ticker median but loses at pooled level. **When in doubt, test absolute vs relative.**
+
+### 🧪 Resolved research questions (don't re-litigate)
+
+1. **Step_days cadence (Phase 2 cadence experiments)**: 4-config test on 10-ticker preview (step_10, step_20, dynamic single-trigger, multi-trigger). Pooled R² deltas across all configs were within ±0.02 of each other. **step_days=20 is fine for production.** Faster retraining doesn't materially help; dynamic triggers (2σ residual shock) don't fire enough; multi-trigger (bias + RMSE + ceiling) targets correct tickers but doesn't fix structural model failures on ORCL/MU/COST. **The real bottleneck is features, not cadence.** See [model/RESEARCH_TODO.md §4-8](model/RESEARCH_TODO.md) for parked research directions (residual auto-corrector, EMV/EPU features, per-ticker news sentiment).
+
+2. **Trail dynamics IC test** ([analysis/trail_dynamics_ic.py](model/pipeline/analysis/trail_dynamics_ic.py)): tested whether trail velocity / drift_mz_6mo / drift_mkt_6mo / direction_angle add IC over the static quadrant_rank. **They don't.** Static quadrant has +0.26 to +0.29 IC vs forward vol; dynamics features either zero or wrong-sign. Specifically, `drift_mz_6mo` has WRONG sign (rising β_mz = past shocks already hit the 252-BD window → forward vol mean-reverts down). **The slug trail is good viz, not good feature.** Don't engineer drift-as-feature.
+
+3. **Relative quadrant thresholds** ([analysis/relative_quadrant_ic.py](model/pipeline/analysis/relative_quadrant_ic.py)): tested per-ticker median-based thresholds for β_mkt × β_mz quadrant classifier vs absolute β=1.0 cutoffs. **Absolute wins decisively**: rel_full and rel_exp either kill the IC (0.23 → 0.02 at H=21) or flip its sign (H=63/126). Both schemes give nearly identical numbers, so lookahead leak isn't doing the work — the relative framing genuinely fails for this signal type (β_mz is already a unitless ratio).
+
+### 🐛 Pipeline bug fixes shipped this session
+
+1. **[analysis/mz_overlay.py](model/pipeline/analysis/mz_overlay.py):195-197** — Split mask into `fit_mask` (requires y_true) and `apply_mask` (just needs valid y_pred). Was setting y_cal=NaN on every row without observable y_true → forecast y_cal stopped ~h BD before today for every horizon. Now extends through forecast horizon.
+2. **[export_for_webapp.py:133](model/pipeline/export_for_webapp.py)** — Changed `dropna(subset=['y_true_21'])` to `dropna(subset=['y_pred_21'])`. Was dropping recent forecast rows because their y_true_21 hadn't materialized yet (cutoff ~21 BD before today). Now forward forecasts make it into per-ticker CSVs.
+3. **[scripts/weekly_extend.bat](scripts/weekly_extend.bat)** — Rewired to use `cadence_experiment --step-days 20` instead of single-retrain `extend_predictions`. 6-step pipeline: refresh → cadence → merge → rebuild → overlay → push. Validated by overnight 00:56 completion.
+4. **[scripts/merge_cadence_to_canonical.py](model/pipeline/scripts/merge_cadence_to_canonical.py)** (new) — Splices `cadence_experiment/step_N/predictions_<TICKER>.csv` into the canonical per-ticker files, preserving pre-extension backtest rows.
+5. **[scripts/daily_refresh.bat](scripts/daily_refresh.bat)** — Now 6 steps (added rebuild_aggregates + mz_overlay between daily_forecast and export). Push uses `--append-only` for cheap idempotent incremental.
+6. **[model/sql/migrations/005_get_distribution_rpc.sql](model/sql/migrations/005_get_distribution_rpc.sql) + 006** — `get_distribution()` RPC implemented (was stub). 30-bin × 3-scope histogram + current_value + current_percentile. 006 dropped a stale 4-arg overload that PostgREST couldn't disambiguate. Live and verified via [scripts/test_get_distribution.py](model/pipeline/scripts/test_get_distribution.py).
+
+### 🎨 UI design proposal: VRP Signal panel (HTML mockup in [results/webapp_export/mockups/equity_with_vrp_panel.html](model/pipeline/results/webapp_export/mockups/equity_with_vrp_panel.html))
+
+Given VRP's +0.40 IC, current equity page treatment (small subgraph under price chart + buried as one toggle in distribution panel) is insufficient. Mockup shows "Option C" — a full main-content panel between Forward Vol Forecast and Contracts/Skew with:
+- Gauge needle pointing into quintile arc (P82 of own 1Y for XOM example)
+- 1Y sparkline of VRP_ewma with σ bands + sector rank + slope direction
+- Quintile-lift table showing "you are here at Q5 → 38.5% expected fwd vol vs Q1 baseline 20.9%"
+
+Frontend SWE handoff item. User reviewed and is gravitating toward this. Amber/gold visual identity reserved for VRP-related elements throughout the page.
+
+### What's left
+
+| Priority | Task | Status |
+|---|---|---|
+| 🔝 | User runs `scripts\register_daily_task.ps1` as Admin → daily + weekly automation goes live | Pending — pipeline tested, just needs admin elevation |
+| 🔝 | Frontend builds **Macro page β_mz panel** (the new headline feature) | Spec ready: `DASHBOARD_SPEC_MACRO_REGIME.md`; add nightly compute job |
+| ⭐ | Frontend builds VRP Signal panel (reframed as structural/seasonal/macro context, NOT fear gauge) | Mockup at `results/webapp_export/mockups/equity_with_vrp_panel.html` |
+| ⭐ | Frontend wires get_distribution() RPC into Historical Distribution panel | RPC live, frontend integration pending |
+| research | β_mz Open Tests A-H — see signal_context/README.md "Tests we DIDN'T run". Top priority: Test A (logistic regression multi-signal composite β_mz + HY spread) | Parked |
+| research | See [RESEARCH_TODO.md](model/RESEARCH_TODO.md) §4 (half-residual corrector), §7 (EMV/EPU), §10 (dual-head loss), §11 (IV-prediction) | Parked w/ priorities |
+| optional | Re-map sequential security_ids 1000-1091 to real SEC CIKs | Cosmetic; v1 works fine |
+
+### Specific gotchas to remember (cumulative)
+
+- **`security_id` convention is MIXED**: AAPL=320193 (SEC CIK), other 92 tickers = sequential ids 1000-1091. Frontend should map by ticker, not assume id pattern.
+- **`prices_history.volume` is `bigint` in Postgres but CSV has float** — `fetch_ohlcv` in `export_for_webapp.py` coerces to nullable Int64. Don't remove.
+- **`pd.NaT` is its own type** — `isinstance(v, pd.Timestamp)` doesn't catch it. `db.py._df_to_records` has explicit type-name check. Don't remove.
+- **`event_history` (singular, lead-dev redesign)** — security-keyed via FK. FOMC events go in `macro_calendar` ONLY (Option A).
+- **`upsert_event_history` does within-batch dedupe** — Compustat duplicates. Don't remove.
+- **`features.build(..., drop_nan_targets=False)`** — pass False for prediction-time use. Default True for backtest training.
+- **SHAP is concurrent-only** — backtest predictions have `shap_h*_top10 = NULL`. Daily forecast writes parallel `forecasts/<TICKER>_shap.csv`.
+- **XGB SHAP via `booster.predict(pred_contribs=True)` + force `device='cpu'`** — CUDA boosters hang on `pred_contribs` for single-sample inputs.
+- **Forward premium math uses 252/365 ratio** to convert IV calendar-day anchors to trading-day axis.
+- **`days_to_dividend` (no 's')** — migration 003 fixed original typo.
+- **`mz_overlay` mask split** (NEW 2026-05-26) — fit_mask uses y_true; apply_mask doesn't. Don't merge them back.
+- **Export pivot uses `dropna(y_pred_21)`** (NEW 2026-05-26) — not y_true_21. Don't switch back.
+- **`weekly_extend.bat` swaps `extend_predictions` for `cadence_experiment --step-days 20`** (NEW 2026-05-26) — Phase 2 validated cadence; don't revert to single-retrain.
+
+### To pick up next session
+
+1. Verify Supabase still live: `python -m model.pipeline.db` (should print "schema verified")
+2. Confirm `scripts\register_daily_task.ps1` was run as admin (check `Get-ScheduledTask Tarasque*`)
+3. **Read `signal_context/README.md`** — the β_mz Universe Calibration Drift signal is the
+   project's strongest validated result and is the new headline product feature. The README
+   has the complete 22-test catalog with all numbers + 8 reproducible scripts + the open-test queue.
+4. Pick a direction:
+   - **Productionize**: hand the Macro β_mz panel spec to the SWE; build nightly compute job
+   - **Research**: β_mz Open Test A (logistic-regression multi-signal composite), or Test B
+     (true out-of-sample 2015-20 train / 2021-26 test), or Test G (daily-cadence β_mz)
+   - **Honesty pass**: β_mz Open Test H (re-backtest with Monday-open execution to lock in
+     the ~14%-lower realistic claim)
+
+### The big-picture arc of the 2026-05-27 session (so the story isn't lost)
+
+The project began the day trying to **isolate VRP for the equity page**. Through rigorous
+self-questioning we discovered:
+1. The per-stock VRP wedge is NOT a fear-premium isolator — it's 30% earnings seasonality +
+   macro liquidity cycle + cross-sectional structural ranking. The +0.40 IC is real but
+   misframed. (Tests A-F, locked in.)
+2. Every architectural rescue attempt failed: IV-prediction reframe (mixed), YZ migration
+   (degrades R²), residual-after-seasonality (slight negative IC), ticker-relative thresholds
+   (absolute wins), trail dynamics (no IC), path-length target (identical IC).
+3. **The genuine win that emerged**: the β_mz Universe Calibration Drift signal — a
+   corpus-level second-order signal (about how the 93-model ensemble systematically
+   miscalibrates before regime shifts). Validated as a defensive overlay: Monte Carlo
+   p<0.001, 8/8 ETF DD reduction, 25%-tilt strategy beats SPY BH on every metric
+   ($464k vs $366k, Sharpe 0.94 vs 0.68, max DD -21% vs -34%).
+4. **Product repositioning**: Macro β_mz panel is the new headline feature; per-stock VRP
+   wedge is supporting "context engine" infrastructure (structural + seasonal + macro,
+   not fear gauge). Honest claims documented. The reframe is a STRONGER product story
+   because it's defensible and survives scrutiny.
 
 ---
 
@@ -768,6 +1083,8 @@ After corpus run + post-processing:
 | 2026-04-29 (Leo, claude-opus-4-6) | **Tier 0 audit sweep + Step A decomposition -- step_days=63 confirmed as sole cause of v8 R2 regression.** (1) **TS inversion fix (bug #28)**: added second H21-H63 pass in mz_overlay.py enforce_term_structure() after H63-H126 enforcement. Inversions 70.4%->51.1%, still above <10% target -- needs isotonic regression replacement. (2) **Coverage q15 calibration (coverage_check.py)**: per-ticker scalar offset to bring coverage to 0.85. All 91/91 tickers hit target. Average delta ~0.01 (1% ann vol). Outliers: TSLA/NFLX/AMD/CRM. Output: q15_coverage_offsets.csv. (3) **Signal strength full 91-ticker corpus**: pooled lift 3.45x at P80+ (248k obs). Replaces 3-ticker "5.4x" claim. Top: AMGN 60x, BA 31x, BMY 25x, SLB 15x, XOM 14x. Weak: NFLX 0.39x, SCHW 0.83x. (4) **VRP return conditional full corpus**: confirmed at scale. Hi-ret + hi-VRP = +6.8%/+7.6% fwd vol (5d/21d). Q1 median VRP=0.062 vs Q5=0.035. (5) **Unicode fix (bug #27)**: arrow chars in vrp_return_conditional.py crashed cp1252. (6) **MZ overlay re-run** with TS fix. (7) **Step A decomposition -- DEFINITIVE**: 6-ticker canary (AAPL/JPM/XOM/BA/AMZN/NVDA) with step_days=25 (current config) vs v8 step_days=63. **All 18/18 ticker-horizon combinations improved.** H=21 R2 0.279->0.391 (+0.112), beta 0.863->0.995 (near-perfect). H=63 R2 0.260->0.406, H=126 0.295->0.467. R2 exceeded v6 levels. Ensemble weights were NOT hardcoded (audit doc was wrong -- 0.33 was payload placeholder, actual predictions use inverse-RMSE from train_wfa()). step_days=25 already in config.py. **v9 = v8 + step_days=25, no architecture changes needed.** (8) Second 6-ticker smoke test (PG/GOOGL/CVX/C/NFLX/NEE) launched overnight. |
 | 2026-04-30 (Leo, claude-opus-4-6) | **v10 feature build + AAPL canary + deployment planning.** (1) **OI data pipeline built**: fetch_oi_25delta() in data_loader.py queries opprcd{YEAR} tables (NOT vsurfd -- audit plan was wrong about vsurfd having open_interest). SQL aggregates SUM(open_interest) and OI-weighted IV per (secid, date, cp_flag) with filters |delta| 0.20-0.30, DTE 20-40. Fixed SECID duplication bug in merge (drop_duplicates on secid before merge). AAPL test pull: 7,068 rows, 2011-2025. Saved to oi_25delta parquet. (2) **CPI/NFP calendar added to utils.py**: CPI_DATES (156 dates, ~13th of month, nearest weekday) and NFP_DATES (156 dates, first Friday). days_to_next_cpi() and days_to_next_nfp() functions. Programmatically generated 2014-2026, +/-2 day accuracy is negligible for 1/(days+1) gravity. (3) **5 new features in features.py**: event_cpi_gravity, event_nfp_gravity (in _add_event_features), oi_put_call_ratio_25d, fear_intensity_25d (skew x log(OI ratio)), oi_hedge_pressure_chg_5d (in new _add_oi_features method). get_predictor_columns updated with "oi_" and "fear_" prefixes. build() updated with step 9b for OI features. 50->55 total predictors. (4) **AAPL v10 canary**: neutral result -- H21 R2 +0.004, H63 +0.002, H126 -0.008. Expected for liquid mega-cap where IV skew already captures most OI signal. ElasticNet correctly shrinks new features near zero when unhelpful. No overfitting damage. (5) **Deployment plan formalized**: v9 is the deployment model (12-ticker validated). v10 is research-stage. Four-phase plan: (Phase 1) fix TS enforcement to isotonic + wire coverage offsets in mz_overlay.py, (Phase 2) full v9 91-ticker corpus run, (Phase 3) apply mz_overlay post-processing, (Phase 4) validate and deploy. Key insight: things that would embarrass are presentation-layer (inverted TS, systematic underprediction, aggressive vol floor), not model math. All fixable without retraining. |
 | 2026-04-11 to 2026-04-16 (Leo, claude-sonnet-4-6) | **v6 full corpus run, post-hoc audit, MZ overlay, benchmark comparison, OI/pinball discussion.** (1) **Full 97-ticker corpus run**: two-pass overnight via batch_backtest.py. First pass: 48 tickers, 17.8 hours (AAPL→WMT). Second pass: 49 remaining tickers, 13.6 hours. Both passes via ProcessPoolExecutor parallel_tickers=4. 291 prediction files generated (97 tickers × 3 horizons). (2) **Post-hoc validity audit (audit.py)**: 9-test suite run on full corpus. Key findings: 97/97 tickers beat naive persistence at H63/H126 (DM test); H21 R²=0.374, H63=0.319, H126=0.458 corpus mean; EW MZ betas 0.97-0.98 in current regime (COVID dominates flat OLS making it look 24% calibrated — EW correct); tail asymmetry -0.12 systematic underprediction of severe events (structural rolling-window lag, not worth patching separately); 64.8% term structure inversion rate pre-overlay (calibration drift artifact not real inversions). (3) **backtest_results.csv rebuild**: batch runner overwrites on each run — only had WMT. Rebuilt from 291 individual prediction files using rsplit('_H', 1) to correctly parse HD/HON names. 291 rows, all metrics recomputed. (4) **MZ overlay (mz_overlay.py)**: EW MZ calibration (lambda=0.003) + soft isotonic term structure enforcement (tol=5%). Beta cap at 2.0 prevents extreme corrections (VZ H126 raw=2.619, capped to 2.0). Write-back used merge-based approach to fix numpy.datetime64 vs pd.Timestamp dict-key mismatch bug. TS inversions reduced from 64.8% to 55.6%. Secondary violation bug identified (sequential H21-H63 then H63-H126 can create new H21>H63 inversions) — not yet fixed. (5) **Benchmark comparison (benchmark_models.py)**: HAR-RV (Corsi 2009) + GARCH(1,1) walk-forward vs ensemble. Ensemble lift over HAR: +0.135/+0.200/+0.432 mean ΔR² at H21/63/126. GARCH negative R² at all horizons (mean -0.33 to -1.20) — multi-step GARCH converges to unconditional mean from high-vol history, poor beyond daily. HAR gets 60% of ensemble signal at H21, collapses at longer horizons; ensemble IV/macro/event features provide the gap. (6) **OI differential discussion**: 25δ put vs call open interest as positioning signal (quantity vs price of protection). Mechanism: large put OI = market makers short gamma = vol amplification. vsurfd has no OI column — needs separate WRDS OptionMetrics pull before access expires. (7) **Pinball loss discussion**: tau=0.85/0.90 quantile regression to structurally address -0.12 tail underprediction. XGBoost supports `objective="reg:quantileerror"`. Would serve as "risk upper bound" signal alongside point forecast. (8) **VZ data quality**: H126 EW beta=2.619, calibrated vol 124% annualized — likely Frontier Communications 2024 acquisition artifact. Added EW_BETA_CAP=2.0 guard but needs investigation before production inclusion. |
+| 2026-05-26 (Leo, claude-opus-4-7) | **DB cutover day — first live push of full 93-ticker corpus to Supabase.** All four end-to-end stages green. (1) **Live integration test PASSED on AAPL** — `test_daily_append.py --live --ticker AAPL --cleanup` ran all 6 steps clean: schema verified, security_id resolved (320193 = AAPL's SEC CIK — lead dev seeded with CIK convention), full upload (2,973 rows each into prices_history + volatility_history), simulated next-day append (+1 row), idempotent re-run (0 new rows), cleanup removed all test rows. (2) **Two upsert bugs squashed mid-test**: (a) `prices_history.volume` is bigint but CSV had "14820614.0" — fixed `fetch_ohlcv` in `export_for_webapp.py` to coerce `volume.round().astype('Int64')` so CSV writes whole numbers; (b) `pd.NaT` from missing `next_dividend_date` / `next_earnings_date` wasn't caught by the Timestamp/datetime64 isinstance check in `db.py._df_to_records` — added explicit `v is pd.NaT or type(v).__name__ == 'NaTType'` check + defensive catch-all using pd.isna with try/except for non-scalar safety. (3) **Lead dev's schema redesign — `events_history` → `event_history`**: now security-keyed via FK to securities (was generic scope_value string). Severity + scope_value + symbol columns dropped. Restructured writer `write_event_history()` accepts `ticker_to_security_id` dict, drops FOMC events (market-wide events live in `macro_calendar` only — Option A), uses `(security_id, event_date, event_type)` natural-key UNIQUE from migration 004 for idempotent upserts. Updated `db.py` EXPECTED_COLUMNS, TABLE_CONFLICT_COLUMNS, and renamed `upsert_events_history` → `upsert_event_history` (with backward-compat alias). (4) **`ai_overview` EXPECTED_COLUMNS updated** to match lead dev's simpler schema (dropped `date`, `risk_tier`, `input_hash`, `input_tokens`, `output_tokens`, `flagged_reason` from our expectation — they're not in the live table and we don't write to ai_overview anyway). (5) **Migrations 003 + 004 applied by user**: 003 fixed `days_to_dividend` typo, added macro_calendar.event_date, added 3 SHAP JSONB cols to volatility_history, added events_history natural-key UNIQUE. 004 added event_history natural-key UNIQUE after the lead dev's rename. (6) **Migration 002 (forward premium scalars)** applied — 5 `fwd_premium_*` cols on volatility_history. Frontend splines the 7 anchors client-side via d3.curveMonotoneX. (7) **Full corpus push to live Supabase**: 270,590 rows in volatility_history + 270,591 in prices_history = ~93 tickers × ~2,973 days × 2 tables. Took ~60 min wall. (8) **securities table seed**: AAPL pre-existed at security_id=320193 (CIK). Seeded remaining 92 tickers with sequential security_ids starting at 1000 (sequential placeholder — user plans to manually re-map to CIKs later). (9) **`get_distribution()` RPC body** still pending — user flagged this as top frontend priority but architecture work has consumed the session. ~50 lines of PL/pgSQL. (10) **Task Scheduler scripts** ready (`scripts/daily_refresh.bat`, `scripts/weekly_extend.bat`, `scripts/register_daily_task.ps1`) but NOT yet registered. Need: enable `--push-to-supabase --append-only` flag in daily_refresh.bat (currently CSV-only), then user runs PowerShell-as-admin to register. (11) **The 2026-05-25 file lists Path B chain ran end-to-end this morning** (refresh_data → fetch_alpaca_vsurfd → daily_forecast --all → predictions through today 2026-05-26 for all 93 tickers + SHAP per ticker). Predictions table is now the canonical "single source of truth" with rows from 2014-01-06 → 2026-05-26 per ticker. (12) **Open after this session**: register Task Scheduler, write `get_distribution()` RPC, optionally re-map sequential security_ids to CIKs (or accept the mixed scheme as v1). Web dev can start building against live data NOW. |
+| 2026-05-25 (Leo, claude-opus-4-7) | **HUGE session: full S&P 500 sneakernet from laptop, root-cause `ret` bug fix, Phases 2/3/4 all landed, SHAP working, predictions extended to today.** Backend integration now wired end-to-end. (1) **Sneakernet executed** — laptop's `H:\Tarasque_DB` (622MB, full SP500 WRDS pull from laptop's earlier run) copied to rig's `data_cache/`. Final corpus state: **ohlcv 528 tickers through 2026-05-20**, **vsurfd 503 tickers** (WRDS data ends 2025-08-29 — OptionMetrics publication lag, confirmed empty post-Aug), **oi_25delta 495 tickers**, **earnings 29,433 rows / dividends 5,576 rows** (Compustat, `(tic, datadate, rdq)` schema). 93 prod tickers fully covered (`C` and `GOOGL` missing from OI only — reclassified secids). `cp -r` left duplicate parquet files in each partition (UUID-named, coexist instead of overwriting) — one-shot dedupe removed 96.6M duplicate vsurfd rows. **Memory worth keeping**: future sneakernets should `rm -rf` target dir first. (2) **Root-cause fix for `ret = NA` bug** — `features._pivot_ohlcv` uses `(1+ret).cumprod()` for adj_close. When Alpaca-appended rows have NA ret, `fillna(0)` was flattening cum and warping the close[-1]/cum[-1] anchor scale across the whole series. Three-part fix: (a) `data_loader.append_recent_data` now backfills `ret` from `abs(prc).pct_change()` per ticker at append time (root cause); (b) `features._pivot_ohlcv` does the same defensive fill (belt-and-suspenders); (c) one-shot backfill on existing parquet filled 182,321 NA-`ret` rows (131K in 2025, 50K in 2026 — all from Alpaca splices). **Impact on v10+ results**: minimal because log-return-based features (ret_TARGET, ewma_vol, factor returns) are scale-invariant, and RSI/MACD pass through StandardScaler. v10+ headline R² stays valid. Bug only would have biased recent-edge forecasts. (3) **Phase 2 complete — real data flowing through `export_for_webapp.py`**: yfinance→CRSP parquet swap (matches training-data methodology), `iv_atm_30/60/91/182d` from vsurfd via `merge_asof` with 120-day tolerance to bridge the WRDS→Alpaca dead zone, `ewma_vol` + `vrp_wedge_ewma_21d` computed inline, `next_earnings_date` from Compustat `rdq` with per-ticker median-lag forward projection (AAPL projects 2026-07-28 vs mockup's 2026-07-29 — within 1 day), `events_history.csv` populated from earnings+dividends+FOMC (181 rows for AAPL), `macro_calendar.csv` from utils.py FOMC/CPI/NFP calendars (9,818 rows per export, 3,651 BDays × 3 event types), `model_runs` seed + FK wiring. `next_dividend_date` remains NULL pending Alpaca corporate-actions integration. (4) **Phase 3 — forward premium scalars (5 new columns + migration 002)**: `model/pipeline/premium_curve.py` implements PCHIP-on-total-variance interpolation. Model anchors at trading days [21, 63, 126], market anchors at calendar days [30, 60, 91, 182] converted to trading days via 252/365 ratio so all math happens on one axis. Five scalars added to volatility_history: `fwd_premium_21d`, `fwd_premium_63d`, `fwd_premium_126d`, `fwd_premium_21_to_63d`, `fwd_premium_63_to_126d`. Sign convention: `IV − Model` (positive = market premium, matches mockup "Wedge +6.6pp" framing). Frontend splines the 7 anchor points directly via d3.curveMonotoneX — no JSONB needed. AAPL corpus-wide mean premiums: +6.8/+6.0/+5.6pp (cumulative), +5.6/+5.2pp (isolated forward windows) — consistent with VRP literature. `model/sql/migrations/002_forward_premium_columns.sql` drafted, additive + idempotent. (5) **Phase 4 — SHAP wired (concurrent-only, NOT backtest)**: `model/pipeline/shap_explainer.py` computes ensemble SHAP via weighted combination of XGB (via XGBoost's native `booster.predict(pred_contribs=True)`, with `device='cpu'` forced — CUDA boosters hang on pred_contribs for single-sample inputs), RF (via `shap.TreeExplainer`, with array-aware `expected_value` handling for newer shap versions), ElasticNet (exact via `coef · (x − μ)`). Combined: `ensemble_shap = Σ_m w_m · shap_m`. Top-10 features by `|shap|`, JSON blob matches SUPABASE_SCHEMA.md §2. **`FEATURE_DISPLAY_NAMES` dict** maps all 55 internal names → user-facing labels per mockup vocabulary: `inflation_forward_5y5y → "Inflation (5y5y fwd)"`, `treasury_10y → "10Y Treasury yield"`, `hy_spread → "HY credit spread"`, etc. (6) **Daily forecast architecture (Pattern A from design discussion)**: `model/pipeline/daily_forecast.py` — per-ticker: load latest joblib → build features → predict → append row to `predictions_<TICKER>.csv` (y_true=NaN) → compute SHAP → append to `forecasts/<TICKER>_shap.csv` (parallel file) → backfill y_true on stale rows where horizon elapsed. **Predictions CSV is single source of truth for predictions**, SHAP lives in parallel file (concurrent-only architecture). `export_for_webapp.py` updated to NULL `shap_h*_top10` on backtest rows and merge in SHAP from `forecasts/<TICKER>_shap.csv` via `load_shap_blob_file()` + pivot. (7) **`extend_predictions.py` — closes Oct 29 → today gap**: backtest's `dropna(subset=target_cols)` truncates feature_df at `data_max − 126 BDays`, leaving predictions stale 6 months. New script trains ONE ensemble per ticker on data through last-existing-prediction-date (clean OOS for the gap), predicts every date in the gap, backfills y_true where horizon elapsed, saves joblib for daily_forecast. **Critical fix in `features.build()`**: added `drop_nan_targets=False` parameter — backtest still uses True (default), but `extend_predictions` and `daily_forecast` use False so they get features for all dates including recent ones. AAPL canary: 378 new prediction rows (126 dates × 3 horizons), now extends to 2026-05-20, joblib `AAPL_model_2026-05-25.joblib` saved. (8) **WRDS access expired** — confirmed via the laptop's pull failing on vsurfd2026 (doesn't exist as a WRDS table) and vsurfd2025 having no rows past 2025-08-29. **Alpaca options splice path established** via `model/pipeline/scripts/fetch_alpaca_vsurfd.py` (`OptionChainRequest` → 4×5 grid extraction → vsurfd append). Adds 1 day of grid per ticker per call. Useful for daily forward signal but doesn't backfill the WRDS-Alpaca dead zone (Sep 2025 → May 2026). (9) **Supabase migrations drafted, not yet applied**: `001_supabase_schema_fixes.sql` (existing — adds `excluded_reason`, creates `model_runs` + `macro_calendar`, adds 11 cols to `volatility_history`, fixes `shap_snapshot` PK, etc.) + `002_forward_premium_columns.sql` (new — adds 5 fwd_premium cols). Both additive-only, idempotent. **User to apply via Supabase SQL editor + provide real creds in model/.env before live test.** (10) **`model/pipeline/results/shap_waterfall_AAPL.png`** generated — 3-panel waterfall (H=21/63/126) showing top-10 SHAP contributions for synthetic AAPL feature row. Validates SHAP output is well-formed. AAPL H=21 dominant feature: rv_21d (-0.057), then ewma_vol (+0.016). H=126 dominated by rv_126d (+0.021) — short-horizon model anchored to short RV, long-horizon to long RV. Sensibility check passed. (11) **Full extend_predictions running on all 93 tickers in background** — ETA ~3-4 hours. After: run `export_for_webapp --all` to produce fresh bundle with wedge series through 2026-05-20 + scalar premiums + null SHAP (filled by next daily_forecast). (12) **Task Scheduler scripts pending** — user wants daily refresh automated post-extend, will set up in next session. Proposed: nightly 5:30 PM ET for daily_forecast + export_for_webapp (push to Supabase once creds land); weekly Sunday 2 AM for extend_predictions (incremental WFA cadence refresh). |
 | 2026-05-05 (Leo, claude-opus-4-7) | **Batch 4 (29 tickers) → corpus at 55/91, then quick-validation sanity-checks confirm headline R² is real skill, not horizon mechanics.** (1) **Batch 4**: ABBV/ABT/ADBE/AEP/AMGN/APD/AXP/BAC/BKNG/BLK/BMY/COST/CSCO/CVS/DE/EQIX/FCX/GILD/INTC/LOW/MO/MRK/MS/NKE/ORCL/QCOM/RTX/SO/TXN/UPS — 29 names across financials/industrials/materials/REITs/consumer/utilities/healthcare/semis. Total v10+ corpus now 55 tickers (60% of 91-ticker target). Final aggregate: H=21 mean β=0.980 std=0.094 (54/55 in [0.7,1.3], 98%), R²=0.460. H=63 β=1.066 (54/55, 98%), R²=0.451. H=126 β=1.117 (50/55, 91%), R²=0.555. Cross-horizon mean R²≈0.489. Lone outlier UPS H=21 β=0.52 (logistics name, structural feature gap). v8→v10+ R² lifts: WFC +0.573, UPS +0.559, XOM +0.547, GE +0.521, INTC +0.516. (2) **`scripts/rebuild_aggregates.py` re-run** to merge per-ticker outputs after batch 4. all_predictions.csv had been stale at 29 tickers (not auto-rebuilt by `_run_sector_sweep`). Now 476,667 rows × 55 tickers, dates 2014-01-06 → 2025-10-29. (3) **Quick validation infra built**: `analysis/quick_validation.py` runs 3 sanity tests on the in-sample WFA prediction set. Outputs to `results/validation/quick_validation_summary.md` + 4 CSVs. (4) **Test 1 — naive long-window baseline (lagged 252d rolling mean of y_true)**: model beats naive by ΔR²=+0.240/+0.309/+0.476 at H=21/63/126. Pooled model R²=0.528/0.560/0.672 (pooled across all ticker×date pairs, naturally higher than mean per-ticker R² which is 0.460/0.451/0.555). **Resolves prior concern that H=126 R²=0.55 was "long horizons are easy" — naive baseline scores 0.196 at H=126, model is doing real work.** (5) **Test 2 — period-stratified R²**: pre-2020 vs 2020-2021 vs post-2021. H=21 R² 0.666 / 0.260 / 0.631. H=63 R² 0.678 / 0.232 / 0.719. H=126 R² 0.654 / 0.538 / 0.822. **Counterintuitive finding: post-2021 R² ≥ pre-2020 R² across all horizons** — model is improving with data, not staling. 2020-2021 drag is the COVID regime break (no model handles regime shifts well at the moment of the shift); model recovered fully and now exceeds pre-COVID accuracy. (6) **Test 4 — calm/normal/stress regime stratification (SPY 21d RV terciles, cutoffs 9.3% / 14.7%)**: H=21 R² 0.634 / 0.513 / 0.437 (typical pattern: calmer = more accurate). **At H=63 and H=126 the pattern INVERTS**: H=63 stress R²=0.608 > calm R²=0.528. H=126 stress R²=0.768 > calm R²=0.661. Model is most accurate at long horizons exactly when accuracy matters most. Mechanism hypothesis: stress regimes mean-revert to ~25% vol on a 6-month horizon predictably; calm periods have more idiosyncratic 6-month noise. Model bias consistently negative across regimes (-0.7pp to -1.8pp) — slight underforecasting, not regime-conditional. (7) **What these 3 tests can NOT diagnose**: in-sample WFA leakage. The held-out OOS slice (Test 3) and feature-group ablation (Test 5) are documented in the new "Deferred Validation Tests" section below. Tests 3 and 5 are launch-ready follow-ups, not blockers. (8) **38 tickers remain to hit 100% corpus coverage** — finishing in 1-2 more batches still planned but pending user go-ahead. |
 | 2026-05-02 to 05-04 (Leo, claude-opus-4-7) | **v10+ launch validation campaign: 26-ticker stress canary across 12 sectors + meeting-ready aggregation + wedge research finding.** (1) **Reverted event_tech_gravity** from features.py after AAPL+XOM canary showed near-zero net effect on AAPL (its intended target) with -0.015 R² regression at H=63. TECH_EVENT_DATES + days_to_next_tech_event remain in utils.py as research artifacts for v11+ event-window analysis. Predictor count back to 55 (or 52 for tickers without OI data). (2) **Stress canary 1 (4 tickers, 2026-05-02)**: MSFT/LLY/KO/CAT — chosen because v8 had them catastrophically broken at H=63 (LLY β=-0.138 R²=0.010, KO R²=0.005, CAT R²=0.024) and MSFT was untested. v10+ results: H=21 4/4 in [0.7, 1.3] (MSFT 1.04, LLY 0.96, KO 1.06, CAT 0.96), R² gains 0.16-0.45 vs v8. LLY H=63 went R²=0.010→0.455 (45× lift). DUK-style confirmation that v9 step_days fix generalizes to corpus tail names. (3) **Stress canary 2 / batch 2 (8 tickers, 2026-05-02)**: JNJ/GS/TSLA/HON/DUK/AMT/MO/AMD across 8 sectors. v10+ results: H=21 8/8 in band, mean β=0.940 std=0.095, mean R²=0.297. H=63 8/8 in band. H=126 6/8 in band. Standout: DUK H=126 R² went from 0.003 (totally broken) to 0.406 (135× lift). TSLA H=126 R²=0.477 vs v8 R²=0.011 (43× lift). (4) **Batch 3 (12 tickers, 2026-05-03 to 05-04)**: PFE/UNH/AVGO/CRM/WMT/HD/MCD/SLB/GE/WFC/PLD/DIS — wider sector coverage including healthcare insurance, semis, software, retail, restaurants, oilfield services, industrial conglomerate, REIT, media. H=21 12/12 in band, mean β=0.985 std=0.091, mean R²=0.368. H=63 10/12 in band. H=126 8/12 in band. WMT H=63 went from R²=0.000 (broken) to 0.264. WFC R²=0.008→0.467 (58× lift), GE 0.008→0.502 (63× lift), PLD 0.005→0.375 (75× lift). (5) **Aggregate v10+ across 26 tickers (post-batch 3 + AAPL/XOM from May 1)**: H=21 26/26 in [0.7, 1.3] (100%, mean β=0.991 std=0.057, mean R²=0.471), H=63 25/26 in band (96%, mean β=1.058, R²=0.460), H=126 24/26 in band (92%, mean β=1.099, R²=0.551). v10+ launch spec is bulletproof at 28% of corpus coverage — no name catastrophically miscalibrated. (6) **New analysis infra**: `analysis/aggregate_canaries.py` — combines local v10+ predictions + SSD v9 canary into unified MZ table + side-by-side v8 comparison + meeting-ready markdown brief (`v10_canary_summary.md`). `analysis/wedge_price_panel.py` — 3-panel viz per ticker showing price + EWMA(VRP_wedge, 21/63/126d) + z-score. Outputs to `wedge_panels/`. `analysis/beta_regime.py` extended with `--mz-source` and `--beta-col` args to support alternate MZ inputs. (7) **VRP wedge research finding**: when EWMA-21d wedge is in top decile of own history, forward 21d return on growth names runs +5-12% above bottom decile. TSLA: +12.6% top vs +5.5% bottom (7.2pt spread). NVDA: +8.7% vs +3.6% (5.2pt). KO: +1.9% vs +0.7% (1.2pt). AAPL: ~flat. The signal works on momentum names where high VRP correlates with vol-seller premium harvest opportunity, less on staples/mega-caps. **Caveats**: in-sample, period-specific (2020-2021 dominates), needs OOS validation. Real enough to be a "vol seller setup" tile in the web app. (8) **Decision: launch spec locked as v10+ with no further model changes.** event_tech_gravity dropped, weighted-MSE/exp-weighting interventions dropped (v9 already addresses over-forecast cluster). Loss-function research deferred to post-launch v11+ exploration. (9) **Regime 2×2 + slug trail outputs refreshed for the 26-ticker v10+ set** (`regime_2x2_v10canary_h21/63/126.png`, `regime_trail/{TICKER}_trail.png` x 26). Quadrant breakdown at H=21: 11 Q3 genuinely-calm, 7 Q1 stealth event-risk (DUK/KO/AMT/HD/SLB/PFE/MSFT-edge), 5 Q4 mega-cap-buffer (AMD/AVGO/TSLA/CAT/GS), 3 Q2 idiosync+systematic (AAPL/GE/WFC). **Externals vs internals retail framing crystallized** (β_mz>1=externals-driven, β_mz<1=internals-driven; β_mkt>1=systematic, β_mkt<1=decoupled). Decision-actionable hedging guidance: external-dominated names need single-stock options, internal-dominated need broad market hedges. |
 | 2026-05-01 evening (Leo, claude-opus-4-7) | **v9 canary data found on sneakernet (H:\); confirms launch readiness; bundler infra built.** (1) **Sneakernet investigation**: sneakernet SSD at H:\volarbmodel\model\pipeline\results\ has 36 v9 per-ticker per-horizon prediction CSVs (predictions_TICKER_Hh.csv, dated 2026-04-29) covering the 12 v9 canary tickers (AAPL/AMZN/BA/JPM/NVDA/XOM/C/CVX/GOOGL/NEE/NFLX/PG). Stacked via new `analysis/stack_v9_canary.py` into `v9_canary_predictions.csv` (99,165 rows) + `v9_canary_mz_calibration.csv` (raw OLS + EW betas at lambda=0.003). (2) **v9 calibration verified at corpus scale**: 12-ticker OLS β: H=21 mean=0.972 std=0.079 (12/12 in [0.7,1.3]), H=63 mean=1.006 std=0.126 (11/12), H=126 mean=1.034 std=0.106 (12/12). EW β slightly biased low (mean 0.85/0.81/0.99) reflecting recent over-forecast regime drift — not a model defect, MZ overlay corrects post-hoc. (3) **Rolling β-over-time on v9 reveals dynamic story**: most v9 tickers' rolling 252d β at most recent date is BELOW 0.7 (over-forecasting) even though full-history aggregate is in band. Example: JPM static OLS β=0.94 H=21, but rolling-window current β=0.57. The model is anchored to longer-term vol levels; 2024-2025 has been calmer than training-era for most names. **This validates the regime-as-signal framing — the residual β IS the regime classifier, not a calibration defect to train away.** (4) **Decision: NO loss-function intervention before launch.** Static training is fine; dynamic regime drift is the regime signal; MZ overlay handles dynamic correction. Both Canary A (exp_weight_lambda) and Canary B (vol_weight_alpha) dropped from the launch plan. (5) **Two-stage launch architecture**: Phase A = 91-ticker corpus on existing data (gated by tech-event-gravity 6-ticker canary first), ships as beta. Phase B = 500-ticker expansion requiring fresh WRDS pull for ~400 net-new tickers (time-sensitive, mid-June expiry). (6) **Bundler infra built**: `scripts/rebuild_aggregates.py` (merges per-ticker outputs from multi-machine corpus run into all_predictions.csv + backtest_results.csv with corpus-level β stats), `scripts/bundle_risk_payloads.py` (per-ticker `{TICKER}_Risk.json` matching launch plan §6A: forecast + current_state + structural + lifetime_stats + history; one-ticker-per-document storage convention matching supabase target). Smoke-tested on v9 canary stacked to per-ticker form — 12 Risk.json files written, schema verified end-to-end. (7) **gitignore overhaul**: model/pipeline/results/ derived outputs (predictions_*, forecasts/, payloads/, regime_trail/, beta_over_time/, etc.) all gitignored going forward. Existing committed history preserved; future corpus runs won't pollute git. logs/ also gitignored. |

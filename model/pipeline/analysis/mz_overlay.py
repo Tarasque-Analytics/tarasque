@@ -173,10 +173,11 @@ def run(lam: float = EW_LAM, tol: float = TS_TOL):
     # ── Fit EW MZ per (ticker, horizon) ─────────────────────────────────────
     cal_rows = []
     for (ticker, horizon), df in data.items():
-        mask = np.isfinite(df["y_true"]) & np.isfinite(df["y_pred"]) & \
-               (df["y_pred"] > 0) & (df["y_true"] > 0)
-        yt = df.loc[mask, "y_true"].values
-        yp = df.loc[mask, "y_pred"].values
+        # fit_mask: rows used to estimate alpha/beta (need observed y_true)
+        fit_mask = np.isfinite(df["y_true"]) & np.isfinite(df["y_pred"]) & \
+                   (df["y_pred"] > 0) & (df["y_true"] > 0)
+        yt = df.loc[fit_mask, "y_true"].values
+        yp = df.loc[fit_mask, "y_pred"].values
 
         alpha, beta, r2, n = ew_mz(yt, yp, lam)
 
@@ -191,8 +192,12 @@ def run(lam: float = EW_LAM, tol: float = TS_TOL):
             alpha = ybar_ew - beta_capped * xbar_ew
         beta = beta_capped
 
-        # Apply calibration; floor at small positive, ceiling at sanity cap
-        y_cal = np.where(mask,
+        # apply_mask: any row with a valid prediction (y_true may be NaN for
+        # forward forecasts). Calibrating these is the whole point — without
+        # this split y_cal goes NaN ~h BD before today and the webapp loses
+        # the current forecast.
+        apply_mask = np.isfinite(df["y_pred"]) & (df["y_pred"] > 0)
+        y_cal = np.where(apply_mask,
                          np.clip(alpha + beta * df["y_pred"].values, 1e-4, CAL_MAX),
                          np.nan)
         data[(ticker, horizon)] = df.assign(y_cal=y_cal)

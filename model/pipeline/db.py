@@ -53,7 +53,7 @@ TABLE_CONFLICT_COLUMNS = {
     'options_chain':      'security_id,snapshot_date,expiry,strike,option_type',
     'ai_overview':        'security_id,date,model_ver,prompt_ver',
     'shap_snapshot':      'security_id,retrain_date,horizon,snapshot_date',
-    'events_history':     'id',  # surrogate
+    'event_history':      'security_id,event_date,event_type',  # natural-key UNIQUE per migration 004
     'macro_calendar':     'date,event_type',
 }
 
@@ -76,6 +76,9 @@ EXPECTED_COLUMNS = {
         'pfv_21', 'pfv_63', 'pfv_126',
         'pfv_q15_21', 'pfv_q15_63', 'pfv_q15_126',
         'pfv_cal_21', 'pfv_cal_63', 'pfv_cal_126',
+        'fwd_premium_21d', 'fwd_premium_63d', 'fwd_premium_126d',
+        'fwd_premium_21_to_63d', 'fwd_premium_63_to_126d',
+        'fwd_premium_ewma_21d', 'fwd_premium_ewma_63d', 'fwd_premium_ewma_126d',
         'next_earnings_date', 'days_to_earnings',
         'next_dividend_date', 'days_to_dividend',
         'model_run_id',
@@ -85,19 +88,21 @@ EXPECTED_COLUMNS = {
         'adj_close', 'volume',
     ],
     'ai_overview': [
-        'id', 'security_id', 'date', 'model_ver', 'prompt_ver',
-        'headline', 'risk_tier', 'content',
-        'input_hash', 'input_tokens', 'output_tokens',
-        'generated_at', 'flagged', 'flagged_reason',
+        # Matches the lead-dev redesign (no `date`, no risk_tier/input_hash/
+        # token-count/flagged_reason cols; PK is (id, generated_at)).
+        # Model side does not write here — this list is just for verify_schema.
+        # If/when the LLM pipeline lands, add its columns here.
+        'id', 'security_id', 'model_ver', 'prompt_ver',
+        'headline', 'content', 'generated_at', 'flagged',
     ],
     'shap_snapshot': [
         'security_id', 'retrain_date', 'horizon', 'snapshot_date',
         'base_value', 'predicted_value', 'feature_data',
     ],
-    'events_history': [
-        'id', 'event_date', 'event_type', 'severity',
-        'scope', 'scope_value', 'symbol',
-        'title', 'description', 'source',
+    'event_history': [
+        'security_id', 'event_date', 'title', 'description',
+        'event_type', 'scope', 'source',
+        # event_id is BIGINT GENERATED ALWAYS AS IDENTITY — DB assigns, not us
     ],
     'macro_calendar': [
         'date', 'event_type', 'event_date', 'days_to_event',
@@ -247,7 +252,13 @@ class SupabaseClient:
         # Coerce any remaining numpy types and datetimes to JSON-safe
         for r in records:
             for k, v in list(r.items()):
-                if isinstance(v, (pd.Timestamp, np.datetime64)):
+                # pd.NaT is its own type (NaTType) — catch it BEFORE the
+                # Timestamp/datetime64 check since it's not an instance of those
+                if v is pd.NaT or (
+                    type(v).__name__ == 'NaTType'
+                ):
+                    r[k] = None
+                elif isinstance(v, (pd.Timestamp, np.datetime64)):
                     if pd.isna(v):
                         r[k] = None
                     else:
@@ -260,6 +271,13 @@ class SupabaseClient:
                     r[k] = bool(v)
                 elif isinstance(v, float) and np.isnan(v):
                     r[k] = None
+                # Defensive catch-all for any other pd-NA flavor
+                elif v is not None and v is not False and v is not True:
+                    try:
+                        if pd.isna(v):
+                            r[k] = None
+                    except (TypeError, ValueError):
+                        pass  # not a scalar — leave alone
         return records
 
     def _upsert_chunked(
@@ -365,12 +383,40 @@ class SupabaseClient:
     def upsert_shap_snapshots(self, df: pd.DataFrame) -> int:
         return self._upsert_chunked('shap_snapshot', df)
 
-    def upsert_events_history(self, df: pd.DataFrame) -> int:
+    def upsert_event_history(self, df: pd.DataFrame) -> int:
+        """Upsert per-security event rows. Idempotent via natural-key UNIQUE
+        constraint (security_id, event_date, event_type) added in migration 004.
+
+        Rows without a resolved security_id are dropped with a warning — these
+        usually mean a ticker that's not in the securities table yet.
+
+        Also dedupes within-batch on the natural key — Compustat earnings can
+        have multiple datadate entries producing the same rdq per ticker,
+        which Postgres rejects with "ON CONFLICT DO UPDATE command cannot
+        affect row a second time".
+        """
         if df.empty:
             return 0
-        # events_history uses a surrogate PK; no conflict resolution by natural key.
-        # Caller is responsible for deduping before inserting.
-        return self._upsert_chunked('events_history', df, on_conflict=None)
+        unmapped = df['security_id'].isna().sum() if 'security_id' in df.columns else 0
+        if unmapped > 0:
+            print(f'[db] event_history: dropping {unmapped} rows with NULL security_id '
+                  f'(ticker not seeded in securities table)')
+            df = df.dropna(subset=['security_id'])
+        # Within-batch dedupe on the natural-key UNIQUE constraint
+        before = len(df)
+        df = df.drop_duplicates(
+            subset=['security_id', 'event_date', 'event_type'], keep='last'
+        )
+        if before > len(df):
+            print(f'[db] event_history: deduped {before - len(df)} '
+                  f'within-batch duplicate rows')
+        if df.empty:
+            return 0
+        return self._upsert_chunked('event_history', df)
+
+    # Backward-compat alias
+    def upsert_events_history(self, df: pd.DataFrame) -> int:
+        return self.upsert_event_history(df)
 
     def upsert_macro_calendar(self, df: pd.DataFrame) -> int:
         return self._upsert_chunked('macro_calendar', df)

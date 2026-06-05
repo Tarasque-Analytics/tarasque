@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tarasque — XOM with VRP Signal panel (mockup)</title>
+<style>
+  :root {
+    --bg: #faf8f3;
+    --panel: #ffffff;
+    --ink: #1a1a1a;
+    --muted: #6b6b6b;
+    --border: #e6e2da;
+    --accent-amber: #b8860b;
+    --accent-amber-bg: #fcefc7;
+    --accent-red: #c74848;
+    --accent-red-bg: #fce5e5;
+    --accent-green: #4a8c4a;
+    --accent-blue: #5a7da1;
+    --vrp-gold: #b6862d;
+    --vrp-gold-bg: #fff4d6;
+    --mono: 'SF Mono', 'Menlo', 'Consolas', 'Liberation Mono', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    --serif: 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 13px; line-height: 1.45; margin: 0; padding: 0; }
+  .topbar { display: flex; align-items: center; padding: 10px 24px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  .topbar .brand { font-family: var(--serif); font-weight: 600; font-size: 14px; letter-spacing: 0.5px; }
+  .topbar .brand small { color: var(--muted); font-weight: 400; margin-left: 8px; letter-spacing: 1px; font-size: 10px; }
+  .topbar .nav { display: flex; gap: 18px; margin-left: 32px; color: var(--muted); }
+  .topbar .nav span { cursor: pointer; }
+  .topbar .nav .active { color: var(--ink); font-weight: 600; border-bottom: 2px solid var(--ink); padding-bottom: 4px; }
+  .topbar .right { margin-left: auto; display: flex; gap: 16px; align-items: center; color: var(--muted); font-size: 11px; }
+  .topbar .live { color: var(--accent-green); font-weight: 600; }
+
+  .layout { display: grid; grid-template-columns: 240px 1fr 320px; gap: 16px; padding: 16px 24px; }
+
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; }
+  .panel h3 { margin: 0 0 10px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); font-weight: 600; }
+  .panel h3 .meta { float: right; font-weight: 400; text-transform: none; letter-spacing: normal; }
+
+  /* Left sidebar */
+  .sidebar { display: flex; flex-direction: column; gap: 12px; }
+  .sidebar .search { padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); font-size: 11px; color: var(--muted); }
+  .sidebar dl { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; margin: 0; font-size: 11px; }
+  .sidebar dt { color: var(--muted); }
+  .sidebar dd { margin: 0; font-family: var(--mono); }
+  .watchlist .row { display: flex; justify-content: space-between; padding: 6px 8px; border-radius: 4px; cursor: pointer; }
+  .watchlist .row.active { background: var(--vrp-gold-bg); border-left: 2px solid var(--vrp-gold); }
+  .watchlist .row:hover { background: #f4f1ea; }
+  .watchlist .ticker { font-weight: 600; }
+  .watchlist .name { font-size: 10px; color: var(--muted); }
+  .watchlist .price { font-family: var(--mono); text-align: right; font-size: 11px; }
+  .watchlist .chg.up { color: var(--accent-green); }
+  .watchlist .chg.down { color: var(--accent-red); }
+
+  /* Main content */
+  .main { display: flex; flex-direction: column; gap: 16px; }
+
+  /* Header block */
+  .ticker-head { display: grid; grid-template-columns: 1fr auto; gap: 16px; padding: 14px 18px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; }
+  .ticker-head .h-left h1 { font-family: var(--serif); font-size: 22px; margin: 0 0 4px 0; font-weight: 600; }
+  .ticker-head .h-left h1 .symbol { color: var(--muted); font-weight: 400; margin-left: 8px; font-size: 16px; }
+  .ticker-head .h-left h1 .tags { font-size: 11px; color: var(--muted); margin-left: 14px; font-weight: 400; vertical-align: middle; }
+  .ticker-head .price { font-family: var(--mono); font-size: 26px; font-weight: 600; }
+  .ticker-head .chg { font-family: var(--mono); font-size: 13px; color: var(--accent-green); }
+  .ticker-head .asof { font-size: 10px; color: var(--muted); margin-top: 2px; text-align: right; }
+
+  /* Price chart placeholder */
+  .chart-placeholder { height: 240px; background: linear-gradient(180deg, #fafafa 0%, #fff 100%); border: 1px dashed var(--border); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 11px; }
+
+  /* === THE NEW VRP PANEL (Option C) === */
+  .vrp-panel { background: var(--panel); border: 1px solid var(--vrp-gold); border-radius: 6px; padding: 18px 20px; position: relative; box-shadow: 0 1px 4px rgba(184, 134, 11, 0.08); }
+  .vrp-panel::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--vrp-gold); border-radius: 6px 6px 0 0; }
+  .vrp-panel .vrp-head { display: grid; grid-template-columns: 1fr auto; align-items: start; margin-bottom: 18px; }
+  .vrp-panel .vrp-title { font-family: var(--serif); font-size: 18px; font-weight: 600; }
+  .vrp-panel .vrp-title .sub { color: var(--muted); font-size: 11px; font-weight: 400; margin-left: 10px; font-family: var(--sans); }
+  .vrp-panel .vrp-summary { text-align: right; }
+  .vrp-panel .vrp-regime { display: inline-block; background: var(--vrp-gold-bg); color: var(--vrp-gold); font-weight: 700; padding: 4px 10px; border-radius: 4px; font-size: 12px; letter-spacing: 0.5px; }
+  .vrp-panel .vrp-pctile { color: var(--muted); font-size: 11px; margin-top: 4px; font-family: var(--mono); }
+
+  .vrp-body { display: grid; grid-template-columns: 180px 1fr 1fr; gap: 24px; }
+
+  /* Gauge */
+  .gauge { display: flex; flex-direction: column; align-items: center; }
+  .gauge .arc { position: relative; width: 160px; height: 90px; }
+  .gauge .arc svg { width: 100%; height: 100%; }
+  .gauge .value { font-family: var(--mono); font-size: 22px; font-weight: 600; margin-top: -28px; text-align: center; }
+  .gauge .unit { font-size: 10px; color: var(--muted); text-align: center; margin-top: 2px; }
+  .gauge .labels { display: flex; justify-content: space-between; width: 100%; margin-top: 6px; font-size: 9px; color: var(--muted); font-family: var(--mono); }
+
+  /* Trail sparkline */
+  .trail { display: flex; flex-direction: column; }
+  .trail .trail-label { color: var(--muted); font-size: 10px; margin-bottom: 6px; }
+  .trail .trail-fig { background: #fafafa; border: 1px solid var(--border); border-radius: 4px; height: 100px; padding: 8px; position: relative; }
+  .trail svg { width: 100%; height: 100%; }
+
+  /* Forward-vol implication */
+  .implication { background: #fcfaf3; border: 1px solid var(--vrp-gold); border-radius: 4px; padding: 12px 14px; }
+  .implication .imp-title { font-size: 10px; color: var(--vrp-gold); text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; margin-bottom: 8px; }
+  .implication .imp-narrative { font-size: 11px; color: var(--ink); margin-bottom: 10px; line-height: 1.4; }
+  .implication .imp-rows { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 10px; font-family: var(--mono); font-size: 11px; }
+  .implication .imp-rows .label { color: var(--muted); }
+  .implication .imp-rows .bar { background: var(--border); height: 8px; border-radius: 2px; align-self: center; position: relative; }
+  .implication .imp-rows .bar > span { display: block; height: 100%; border-radius: 2px; }
+  .implication .imp-rows .here { color: var(--vrp-gold); font-weight: 700; }
+  .implication .imp-footer { margin-top: 10px; padding-top: 8px; border-top: 1px dotted var(--border); font-size: 10px; color: var(--muted); display: flex; justify-content: space-between; }
+
+  /* Other panels (placeholders for context) */
+  .placeholder-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; }
+  .placeholder-panel h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); font-weight: 600; margin: 0 0 8px 0; }
+
+  /* Right sidebar */
+  .right { display: flex; flex-direction: column; gap: 12px; }
+  .ai-overview .tags { margin: 8px 0; }
+  .ai-overview .tag { display: inline-block; padding: 2px 8px; background: var(--vrp-gold-bg); color: var(--vrp-gold); border-radius: 3px; font-size: 10px; margin-right: 4px; font-weight: 600; }
+  .ai-overview .tag.beta { background: #e8f0e8; color: var(--accent-green); }
+  .ai-overview p { font-size: 11px; line-height: 1.5; margin: 0 0 8px 0; color: var(--ink); }
+  .ai-overview p strong { color: var(--vrp-gold); }
+  .ai-overview .meta { font-size: 10px; color: var(--muted); margin-top: 8px; }
+
+  .shap-mini .row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; font-size: 11px; padding: 3px 0; align-items: center; }
+  .shap-mini .row .bar { height: 6px; background: var(--accent-red-bg); border-radius: 2px; min-width: 30px; }
+  .shap-mini .row .val { font-family: var(--mono); color: var(--muted); }
+
+  .footer-meta { padding: 6px 24px; font-size: 9px; color: var(--muted); font-family: var(--mono); border-top: 1px solid var(--border); margin-top: 16px; display: flex; justify-content: space-between; }
+
+  .annot { position: absolute; top: 4px; right: 8px; background: var(--accent-red-bg); color: var(--accent-red); font-size: 9px; padding: 2px 6px; border-radius: 3px; font-weight: 600; }
+  .new-badge { display: inline-block; background: var(--vrp-gold); color: white; font-size: 9px; padding: 1px 6px; border-radius: 3px; margin-left: 8px; font-weight: 700; letter-spacing: 0.5px; vertical-align: middle; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">Tarasque <small>RISK & ANALYTICS</small></div>
+  <div class="nav">
+    <span class="active">Equities</span>
+    <span>Sectors</span>
+    <span>Macro</span>
+    <span>Backtests</span>
+    <span>Research</span>
+  </div>
+  <div class="right">
+    <span class="live">● V10+ · LIVE</span>
+    <span>Last refresh 14:02:11 ET</span>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- LEFT SIDEBAR -->
+  <div class="sidebar">
+    <div class="search">Search ticker, e.g. NVDA ⌘K</div>
+
+    <div class="panel">
+      <h3>Equity Classes</h3>
+      <dl>
+        <dt>Sector</dt><dd>Energy</dd>
+        <dt>Sub-sector</dt><dd>Integ. Oil&Gas</dd>
+        <dt>Market cap</dt><dd>$742B</dd>
+        <dt>GICS</dt><dd>10101010</dd>
+      </dl>
+    </div>
+
+    <div class="panel">
+      <h3>Reference</h3>
+      <dl>
+        <dt>Beta (3y)</dt><dd>0.82</dd>
+        <dt>Avg spread</dt><dd>0.03%</dd>
+        <dt>Next earnings</dt><dd>2026-07-29</dd>
+        <dt>Next dividend</dt><dd>2026-06-10</dd>
+      </dl>
+    </div>
+
+    <div class="panel watchlist">
+      <h3>Watchlist</h3>
+      <div class="row active">
+        <div><div class="ticker">XOM</div><div class="name">Exxon Mobil</div></div>
+        <div class="price">$177.01<div class="chg up">+1.34%</div></div>
+      </div>
+      <div class="row">
+        <div><div class="ticker">CVX</div><div class="name">Chevron</div></div>
+        <div class="price">$162.40<div class="chg up">+0.92%</div></div>
+      </div>
+      <div class="row">
+        <div><div class="ticker">COP</div><div class="name">ConocoPhillips</div></div>
+        <div class="price">$121.88<div class="chg down">-0.41%</div></div>
+      </div>
+      <div class="row">
+        <div><div class="ticker">NVDA</div><div class="name">NVIDIA</div></div>
+        <div class="price">$138.42<div class="chg up">+2.61%</div></div>
+      </div>
+      <div class="row">
+        <div><div class="ticker">AAPL</div><div class="name">Apple</div></div>
+        <div class="price">$224.18<div class="chg down">-0.34%</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <div class="ticker-head">
+      <div class="h-left">
+        <h1>Exxon Mobil Corp. <span class="symbol">XOM</span><span class="tags">Energy · Integrated Oil & Gas</span></h1>
+      </div>
+      <div>
+        <div class="price">$177.01</div>
+        <div class="chg">+$2.34 (+1.34%)</div>
+        <div class="asof">as of 2026-05-22 16:00 ET</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Price <span class="meta">1Y · w/ event annotations · VRP·21d subgraph</span></h3>
+      <div class="chart-placeholder">[ price chart + VRP·21d subgraph — unchanged from current ]</div>
+    </div>
+
+    <!-- ====== NEW VRP PANEL (Option C) ====== -->
+    <div class="vrp-panel">
+      <div class="vrp-head">
+        <div class="vrp-title">Volatility Risk Premium<span class="sub">21d EWMA · own-history percentile · IC +0.40 vs forward vol</span><span class="new-badge">NEW</span></div>
+        <div class="vrp-summary">
+          <div class="vrp-regime">▲ ELEVATED</div>
+          <div class="vrp-pctile">P82 of own 1Y · 3.6× wedge</div>
+        </div>
+      </div>
+
+      <div class="vrp-body">
+
+        <!-- Gauge -->
+        <div class="gauge">
+          <div class="arc">
+            <svg viewBox="0 0 160 90" preserveAspectRatio="none">
+              <!-- Background arc segments: cold→warm gradient via 5 quintile slices -->
+              <path d="M 15 85 A 65 65 0 0 1 41 32" stroke="#cfe1cf" stroke-width="14" fill="none" stroke-linecap="round"/>
+              <path d="M 47 28 A 65 65 0 0 1 75 18"  stroke="#e6e2da" stroke-width="14" fill="none" stroke-linecap="round"/>
+              <path d="M 85 18 A 65 65 0 0 1 113 28" stroke="#f4e0a8" stroke-width="14" fill="none" stroke-linecap="round"/>
+              <path d="M 119 32 A 65 65 0 0 1 145 85" stroke="#e2b15a" stroke-width="14" fill="none" stroke-linecap="round"/>
+              <!-- Pointer at ~82nd percentile -->
+              <line x1="80" y1="80" x2="124" y2="34" stroke="#b6862d" stroke-width="2.5" stroke-linecap="round"/>
+              <circle cx="80" cy="80" r="3" fill="#b6862d"/>
+            </svg>
+          </div>
+          <div class="value">0.066</div>
+          <div class="unit">VRP_ewma · vol-pts</div>
+          <div class="labels">
+            <span>−1σ</span><span>0</span><span>+1σ</span>
+          </div>
+        </div>
+
+        <!-- 1Y trail sparkline -->
+        <div class="trail">
+          <div class="trail-label">1Y trail of VRP_ewma·21d · ● = current</div>
+          <div class="trail-fig">
+            <svg viewBox="0 0 280 80" preserveAspectRatio="none">
+              <!-- Sigma bands -->
+              <line x1="0" y1="40" x2="280" y2="40" stroke="#e6e2da" stroke-dasharray="2,3" stroke-width="1"/>
+              <text x="2" y="38" font-size="7" fill="#999" font-family="monospace">mean</text>
+              <line x1="0" y1="25" x2="280" y2="25" stroke="#e6e2da" stroke-dasharray="2,3" stroke-width="1"/>
+              <text x="2" y="23" font-size="7" fill="#999" font-family="monospace">+1σ</text>
+              <line x1="0" y1="15" x2="280" y2="15" stroke="#e6e2da" stroke-dasharray="2,3" stroke-width="1"/>
+              <text x="2" y="13" font-size="7" fill="#999" font-family="monospace">+2σ</text>
+              <!-- VRP path (squiggle with elevation toward right) -->
+              <path d="M 0 38 L 18 42 L 36 35 L 54 39 L 72 33 L 90 41 L 108 36 L 126 31 L 144 28 L 162 33 L 180 27 L 198 24 L 216 28 L 234 22 L 252 19 L 270 18"
+                    stroke="#b6862d" stroke-width="2" fill="none" stroke-linejoin="round"/>
+              <!-- Current point -->
+              <circle cx="270" cy="18" r="4" fill="#b6862d" stroke="white" stroke-width="2"/>
+              <!-- Calendar marks -->
+              <text x="10" y="78" font-size="7" fill="#999">May</text>
+              <text x="60" y="78" font-size="7" fill="#999">Aug</text>
+              <text x="115" y="78" font-size="7" fill="#999">Nov</text>
+              <text x="170" y="78" font-size="7" fill="#999">Feb</text>
+              <text x="225" y="78" font-size="7" fill="#999">Apr</text>
+              <text x="258" y="78" font-size="7" fill="#999">now</text>
+            </svg>
+          </div>
+          <div class="trail-label" style="margin-top:8px;">
+            Sector rank (Energy): <strong>2 of 8</strong> ·
+            Slope (5d): <strong style="color:var(--vrp-gold)">+0.012</strong> (rising)
+          </div>
+        </div>
+
+        <!-- Forward-vol implication -->
+        <div class="implication">
+          <div class="imp-title">Forward-vol implication</div>
+          <div class="imp-narrative">
+            Names in this VRP regime (Q5 of own history) have historically realized:
+          </div>
+          <div class="imp-rows">
+            <div class="label here">Q5 ← you</div>
+            <div class="bar"><span style="width:96%;background:var(--vrp-gold)"></span></div>
+            <div class="here">38.5%</div>
+
+            <div class="label">Q4</div>
+            <div class="bar"><span style="width:74%;background:#e2b15a"></span></div>
+            <div>29.6%</div>
+
+            <div class="label">Q3</div>
+            <div class="bar"><span style="width:60%;background:#cdb98a"></span></div>
+            <div>23.9%</div>
+
+            <div class="label">Q2</div>
+            <div class="bar"><span style="width:53%;background:#bfc7b8"></span></div>
+            <div>21.2%</div>
+
+            <div class="label">Q1 (calm)</div>
+            <div class="bar"><span style="width:52%;background:#a8c2a3"></span></div>
+            <div>20.9%</div>
+          </div>
+          <div class="imp-footer">
+            <span>Q5−Q1 spread: <strong>+17.6 pp</strong></span>
+            <span>Spearman IC +0.40 · 267k obs</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <!-- ====== END VRP PANEL ====== -->
+
+    <div class="panel">
+      <h3>Forward Vol Forecast <span class="meta">pfv_cal · term structure · IV overlay</span></h3>
+      <div class="chart-placeholder">[ existing forward vol forecast chart — wedge area now shaded amber for emphasis ]</div>
+    </div>
+
+    <div class="panel">
+      <h3>Contracts & Skew · Supply / Demand <span class="meta">OI-weighted IV · 30-120 DTE</span></h3>
+      <div class="chart-placeholder">[ existing skew/OI chart — unchanged ]</div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT SIDEBAR -->
+  <div class="right">
+
+    <div class="panel ai-overview">
+      <h3>AI Overview <span class="meta">tarasque-llm · 126d</span></h3>
+      <div class="tags">
+        <span class="tag">Elevated wedge</span>
+        <span class="tag beta">Energy beta</span>
+      </div>
+      <p>XOM implied vol is trading <strong>3.6× above</strong> the model's calibrated forward forecast (σ̂=0.31 vs IV 0.41) at the 126-day horizon — the widest dispersion in this regime since the Q4 '25 OPEC+ cuts.</p>
+      <p>The wedge is driven primarily by <strong>put-side skew</strong> and HY credit spreads (412 bp, +52 bp WoW), not realized vol.</p>
+      <p>Demand-side decomposition suggests ~58% reflects dealer-side hedging into Q3 expiries; remainder is genuine tail-risk pricing of a Hormuz scenario.</p>
+      <div class="meta">Sector rank in Energy: 2 of 23 · Model confidence: 0.78</div>
+    </div>
+
+    <div class="panel">
+      <h3>Historical Distribution <span class="meta">3M window · VRP·21d default</span></h3>
+      <div class="chart-placeholder" style="height:140px">[ histogram with current-value dashed line ]</div>
+    </div>
+
+    <div class="panel shap-mini">
+      <h3>SHAP · Top 6 <span class="meta">126d horizon</span></h3>
+      <div class="row"><div>Skew slope (Δ−10 vs Δ−25)</div><div class="bar" style="width:60px"></div><div class="val">+1.8σ</div></div>
+      <div class="row"><div>Credit spread (HY OAS)</div><div class="bar" style="width:48px"></div><div class="val">412 bp</div></div>
+      <div class="row"><div>VRP wedge (EWMA 21d)</div><div class="bar" style="width:54px"></div><div class="val">3.6×</div></div>
+      <div class="row"><div>Realized vol (21d)</div><div class="bar" style="width:38px"></div><div class="val">0.221</div></div>
+      <div class="row"><div>Term spread (10y−2y)</div><div class="bar" style="width:28px;background:#e8f0e8"></div><div class="val">+38 bp</div></div>
+      <div class="row"><div>Sector mom (XLE)</div><div class="bar" style="width:24px;background:#e8f0e8"></div><div class="val">+4.2%</div></div>
+    </div>
+
+  </div>
+</div>
+
+<div class="footer-meta">
+  <span>retrain v10+ · 2026-05-19 · cache 622 MB · 528 tickers · OOS R² (126d) 0.419 · HAR win rate 99/99</span>
+  <span>© Tarasque · internal build · mockup with VRP panel (Option C)</span>
+</div>
+
+</body>
+</html>

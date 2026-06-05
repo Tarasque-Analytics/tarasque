@@ -28,7 +28,8 @@ from backend.database import (
     get_ai_overview,
     get_shap_snapshot,
     # get_distribution,  # TODO: re-enable once finance defines distribution structure (separate PR)
-    get_events
+    get_events,
+    get_latest_model_run
 )
 
 
@@ -229,6 +230,18 @@ async def get_equity_data(symbol: str):
         raise HTTPException(status_code=500, detail=f"Equity data cannot be found for {symbol}: {str(e)}")
     
     
+
+@app.get("/api/model-runs/latest")
+async def get_latest_model_run_data():
+    """Latest model run for the navbar status bubble: {model_version, run_date}.
+
+    Drives the version pill + "Last refresh" date. 404 if no runs exist yet (the frontend
+    falls back to a placeholder).
+    """
+    run = await get_latest_model_run()
+    if run is None:
+        raise HTTPException(status_code=404, detail="No model runs found")
+    return run
 
 @app.get("/api/dashboard")
 async def get_dashboard():

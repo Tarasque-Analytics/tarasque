@@ -241,3 +241,30 @@ async def get_events(security_id: int):
         )
 
     return response.data
+
+
+async def get_latest_model_run():
+    """Latest model run (version + run date) for the navbar status bubble.
+
+    Returns the most recent row from model_runs as {model_version, run_date}, or None if the
+    table is empty. model_runs needs the anon SELECT RLS policy to be readable through the Data
+    API (already applied; same gotcha as event_history — see backend/CLAUDE.md).
+    """
+    try:
+        response = await (supabase.table("model_runs")
+            .select("model_version, run_date")
+            .order("run_date", desc=True)
+            .order("id", desc=True)
+            .limit(1)
+            .execute()
+        )
+    except Exception as e:
+        # Log the raw error server-side; return a generic detail so internal Supabase/PostgREST
+        # error text (schema/table internals) isn't leaked to API clients.
+        print(f"Exception at get_latest_model_run: {str(e)}", flush=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Error fetching from model_runs table"
+        )
+
+    return response.data[0] if response.data else None

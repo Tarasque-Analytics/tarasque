@@ -254,7 +254,7 @@ export default function ForwardVolForecast() {
     responsive: true,
     maintainAspectRatio: false,
     animation: false,
-    interaction: { mode: "index", intersect: false },
+    interaction: { mode: "x", intersect: false },
     plugins: {
       legend: { display: false },
       tooltip: {

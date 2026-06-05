@@ -109,7 +109,8 @@ async def get_available_tickers():
         return {"tickers": tickers, "count": len(tickers)}
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching tickers: {str(e)}")
+        print(f"Exception at get_available_tickers: {str(e)}", flush=True)
+        raise HTTPException(status_code=500, detail="Error fetching tickers")
 
 
 @app.get("/api/tickers/{symbol}")
@@ -149,14 +150,16 @@ async def get_ticker_data(symbol: str):
         return data
     
     except json.JSONDecodeError as e:
+        print(f"Exception at get_ticker_data (JSONDecodeError) for {symbol}: {str(e)}", flush=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Invalid JSON format for {symbol}: {str(e)}"
+            detail=f"Invalid JSON format for {symbol}"
         )
     except Exception as e:
+        print(f"Exception at get_ticker_data for {symbol}: {str(e)}", flush=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Error fetching data for {symbol}: {str(e)}"
+            detail=f"Error fetching data for {symbol}"
         )
 
 @app.get("/api/equity/{symbol}")
@@ -227,7 +230,7 @@ async def get_equity_data(symbol: str):
     except Exception as e:
         print(f"Exception thrown: {str(e)}", flush=True)
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Equity data cannot be found for {symbol}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Equity data cannot be found for {symbol}")
     
     
 

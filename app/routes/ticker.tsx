@@ -38,7 +38,11 @@ export async function loader({ params }: LoaderFunctionArgs): Promise<TickerLoad
   if (equityResult.status === "fulfilled") {
     equity = equityResult.value;
   } else {
-    console.error(`Equity data unavailable for ${symbol}:`, equityResult.reason);
+    if (import.meta.env.DEV) {
+      console.error(`Equity data unavailable for ${symbol}:`, equityResult.reason);
+    } else {
+      console.error(`Equity data unavailable for ${symbol}`);
+    }
   }
 
   return { payload: payloadResult.value, equity };

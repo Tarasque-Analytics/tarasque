@@ -180,7 +180,7 @@ function Card({ children }: { children: ReactNode }) {
 export default function PriceHistoryChart() {
   const equity = useEquityData();
   const [range, setRange] = useState<RangeKey>("1Y");
-
+  const [isChecked, setIsChecked] = useState(false);
   const allRows = useMemo<PriceRecord[]>(
     () => (equity?.price_history ?? []).filter((p) => p.close != null),
     [equity],
@@ -326,6 +326,7 @@ export default function PriceHistoryChart() {
     animation: false,
     interaction: { mode: "index", intersect: false },
     plugins: {
+      // eventMarkers: isChecked ? { markers: eventMarkers} : false,
       legend: { display: false },
       tooltip: {
         callbacks: {
@@ -345,7 +346,7 @@ export default function PriceHistoryChart() {
       },
       // Markers live in options (not a closure) so the stable plugin redraws the right set when
       // the range changes — see eventMarkersPlugin.
-      // eventMarkers: { markers: eventMarkers },
+      eventMarkers: isChecked ? { markers: eventMarkers }: undefined,
     },
     scales: {
       x: {
@@ -426,7 +427,6 @@ export default function PriceHistoryChart() {
   return (
     <Card>
       <Header name={name} symbol={equity.symbol} sec={sec} range={range} onRange={setRange} rows={rows} />
-
       <div className="mt-2 mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="text-4xl font-bold text-(--text-primary)">{usd(latest.close)}</span>
         <span className={`text-sm font-semibold ${up ? "text-(--pos)" : "text-(--neg)"}`}>
@@ -435,6 +435,8 @@ export default function PriceHistoryChart() {
           {Math.abs(dayChangePct).toFixed(2)}%)
         </span>
         <span className="text-sm text-(--text-muted)">· as of {longDate(latest.date)} · close</span>
+        <p className = "text-gray-500">toggle event labels</p>
+        <input checked={isChecked} type = "checkbox" onChange={() => setIsChecked(!isChecked)}></input>
       </div>
 
       <div className="relative h-75">

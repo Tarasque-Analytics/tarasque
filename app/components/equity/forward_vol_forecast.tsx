@@ -293,8 +293,8 @@ export default function ForwardVolForecast() {
         type: "linear",
         // Curves end at the last data point (H=126); the right margin past it mirrors the
         // pre-21d margin on the left (min=10 → ~11d before the first point), so 126 + 11 ≈ 137.
-        min: 10,
-        max: 137,
+        min: HORIZONS[0].h - 11,
+        max: HORIZONS.at(-1)!.h + 11,
         grid: { display: false },
         afterBuildTicks: (axis: Scale) => {
           axis.ticks = HORIZONS.map((d) => ({ value: d.h }));

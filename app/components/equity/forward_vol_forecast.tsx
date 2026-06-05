@@ -296,7 +296,7 @@ export default function ForwardVolForecast() {
         max: 137,
         grid: { display: false },
         afterBuildTicks: (axis: Scale) => {
-          axis.ticks = [21, 63, 126].map((value) => ({ value }));
+          axis.ticks = HORIZONS.map((d) => ({ value: d.h }));
         },
         ticks: {
           color: AXIS_TEXT,

@@ -345,7 +345,7 @@ export default function PriceHistoryChart() {
       },
       // Markers live in options (not a closure) so the stable plugin redraws the right set when
       // the range changes — see eventMarkersPlugin.
-      eventMarkers: { markers: eventMarkers },
+      // eventMarkers: { markers: eventMarkers },
     },
     scales: {
       x: {

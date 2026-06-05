@@ -2,7 +2,7 @@
 // # on the bottom i want to show the top ten predictors by a metric of Prob. of profit and getEnabledCategorie
 import { useTickerData } from "~/context/TickerDataContext";
 import Placeholder from "../ui/placeholder";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Chart as ChartJS,
   LinearScale,
@@ -19,8 +19,23 @@ ChartJS.register(LinearScale, PointElement, LineElement, Title, Tooltip, Legend)
 export default function Options() {
   const { opportunities, meta } = useTickerData();
   const [selectedExpiry, setSelectedExpiry] = useState<string | null>(null);
+  const [isDark, setIsDark] = useState(false);
 
   const spotPrice = meta?.spot_price;
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    setIsDark(mq.matches);
+    
+    const handler = (e: MediaQueryListEvent) => setIsDark(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  const textColor = isDark ? "#ffffff" : "#111111";
+  const mutedText = isDark ? "#aaaaaa" : "#555555";
+  const gridColor = isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)";
+  const spotColor = isDark ? "#ffffff" : "#000000";
 
   // Get unique expiry dates and sort them
   const expiryDates = useMemo(() => {
@@ -106,7 +121,7 @@ export default function Options() {
       const spotX = xScale.getPixelForValue(spotPrice);
 
       chart.ctx.save();
-      chart.ctx.strokeStyle = "black";
+      chart.ctx.strokeStyle = spotColor;
       chart.ctx.setLineDash([5, 5]);
       chart.ctx.lineWidth = 2;
       chart.ctx.beginPath();
@@ -116,7 +131,7 @@ export default function Options() {
 
       // Draw label
       chart.ctx.font = "bold 12px Arial";
-      chart.ctx.fillStyle = "black";
+      chart.ctx.fillStyle = spotColor;
       chart.ctx.textAlign = "right";
       chart.ctx.fillText(`Spot Price: $${spotPrice.toFixed(2)}`, spotX - 12, yScale.top + 20);
 
@@ -174,9 +189,13 @@ export default function Options() {
       title: {
         display: true,
         text: `Options Chain - Expiry: ${selectedExpiry}`,
+        color: textColor,
       },
       legend: {
         position: "top" as const,
+        labels: {
+          color: textColor,
+        },
       },
       tooltip: {
         callbacks: {
@@ -192,6 +211,13 @@ export default function Options() {
         title: {
           display: true,
           text: "Strike Price ($)",
+          color: textColor,
+        },
+        ticks: {
+          color: mutedText,
+        },
+        grid: {
+          color: gridColor,
         },
         type: "linear" as const,
       },
@@ -199,6 +225,13 @@ export default function Options() {
         title: {
           display: true,
           text: "Option Price ($)",
+          color: textColor,
+        },
+        ticks: {
+          color: mutedText,
+        },
+        grid: {
+          color: gridColor,
         },
       },
     },
@@ -226,7 +259,7 @@ export default function Options() {
       </div>
 
       {selectedExpiry && filteredData.length > 0 && (
-        <Scatter data={chartData} options={chartOptions} plugins={[spotPriceLinePlugin]} />
+        <Scatter key={isDark ? "dark-scatter" : "light-scatter"} data={chartData} options={chartOptions} plugins={[spotPriceLinePlugin]} />
       )}
     </div>
   );

@@ -264,11 +264,11 @@ export default function PriceHistoryChart() {
     );
   }
 
-  const latest = allRows[allRows.length - 1];
-  const prev = allRows.length > 1 ? allRows[allRows.length - 2] : latest;
-  const dayChange = (latest.close as number) - (prev.close as number);
-  const dayChangePct = prev.close ? (dayChange / (prev.close as number)) * 100 : 0;
-  const up = dayChange >= 0;
+  const latest = rows[rows.length - 1];
+  const oldest = rows.length > 1 ? rows[0] : latest;
+  const change = (latest.close as number) - (oldest.close as number);
+  const changePct = oldest.close ? (change / (oldest.close as number)) * 100 : 0;
+  const up = change >= 0;
 
   const labels = rows.map((p) => p.date);
 
@@ -431,8 +431,8 @@ export default function PriceHistoryChart() {
         <span className="text-4xl font-bold text-(--text-primary)">{usd(latest.close)}</span>
         <span className={`text-sm font-semibold ${up ? "text-(--pos)" : "text-(--neg)"}`}>
           {up ? "+" : "−"}
-          {usd(Math.abs(dayChange))} ({up ? "+" : "−"}
-          {Math.abs(dayChangePct).toFixed(2)}%)
+          {usd(Math.abs(change))} ({up ? "+" : "−"}
+          {Math.abs(changePct).toFixed(2)}%)
         </span>
         <span className="text-sm text-(--text-muted)">· as of {longDate(latest.date)} · close</span>
       </div>

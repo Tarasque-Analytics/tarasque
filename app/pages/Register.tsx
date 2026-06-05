@@ -60,13 +60,13 @@ export default function Register() {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100">
-      <div className="bg-white p-8 rounded-lg shadow-lg w-96">
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="p-8 rounded-lg shadow-lg w-96 bg-gray-100 dark:bg-neutral-800">
         <h1 className="text-2xl font-bold text-center mb-6">Register</h1>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
             <input
               type="email"
               placeholder="Enter your email"
@@ -81,11 +81,11 @@ export default function Register() {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
-            {emailError ? <p className="text-xs text-red-500 mt-1">{emailError}</p> : null}
+            {emailError ? <p className="text-xs text-red-500 dark:text-red-400 mt-1">{emailError}</p> : null}
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
             <input
               type="password"
               placeholder="Enter your password"
@@ -101,34 +101,22 @@ export default function Register() {
           </div>
 
           <div>
-            <label
-              className="block text-xs font-medium text-gray-700 mb-1"
-              style={{ color: password.length >= 8 ? "green" : "red" }}
-            >
+            <label className={`block text-xs font-medium mb-1 ${password.length >= 8 ? "text-green-500 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
               Must be at least 8 characters long
             </label>
-            <label
-              className="block text-xs font-medium text-gray-700 mb-1"
-              style={{ color: hasUpperLowerCase ? "green" : "red" }}
-            >
+            <label className={`block text-xs font-medium mb-1 ${hasUpperLowerCase ? "text-green-500 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
               Must include uppercase and lowercase letters
             </label>
-            <label
-              className="block text-xs font-medium text-gray-700 mb-1"
-              style={{ color: hasNumber ? "green" : "red" }}
-            >
+            <label className={`block text-xs font-medium mb-1 ${hasNumber ? "text-green-500 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
               Must include at least one number
             </label>
-            <label
-              className="block text-xs font-medium text-gray-700 mb-1"
-              style={{ color: hasSpecialChar ? "green" : "red" }}
-            >
+            <label className={`block text-xs font-medium mb-1 ${hasSpecialChar ? "text-green-500 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
               Must include a special character
             </label>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confirm Password</label>
             <input
               type="password"
               placeholder="Confirm your password"
@@ -139,9 +127,9 @@ export default function Register() {
             />
             {reenterPassword ? (
               password === reenterPassword ? (
-                <p className="text-xs text-green-600 mt-1">Passwords match</p>
+                <p className="text-xs text-green-600 dark:text-green-400 mt-1">Passwords match</p>
               ) : (
-                <p className="text-xs text-red-500 mt-1">Passwords do not match</p>
+                <p className="text-xs text-red-500 dark:text-red-400 mt-1">Passwords do not match</p>
               )
             ) : null}
           </div>

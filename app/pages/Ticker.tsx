@@ -27,20 +27,18 @@ export default function TickerView() {
           {/* Center col*/}
           <div className="col-span-2 flex flex-col gap-6">
             <PriceHistoryChart />
+            <ForwardVolForecast />
           </div>
           {/* Right col*/}
           <div className="flex flex-col gap-6"></div>
         </div>
 
 
-        <div className="flex flex-col gap-6">
-          {/* Redesigned equity page — new components go here, top-down. */}
-          <PriceHistoryChart />
-          <ForwardVolForecast />
-
           {/* Legacy components below: slated for near-complete rewrite as the redesign
               proceeds. Kept temporarily so the page stays functional; remove as each is
               replaced (and retire the file-payload path once nothing reads it). */}
+        <div className="flex flex-col gap-6">
+
           <div className="grid grid-cols-4 grid-rows-2 gap-4 opacity-60">
             <div>
               <Attributes />

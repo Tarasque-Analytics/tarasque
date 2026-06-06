@@ -8,7 +8,7 @@ import { useMemo } from "react";
 function formatMarketCap(marketCap: number | null | undefined): string {
   if (!marketCap) return "—";
   const b = marketCap / 1e9;
-  if (b >= 200) return `Mega-cap ($${(b / 1000).toFixed(1)}T)`;
+  if (b >= 200) return `Mega-cap ($${(b).toFixed(1)}B)`;
   if (b >= 10) return `Large-cap ($${b.toFixed(0)}B)`;
   if (b >= 2) return `Mid-cap ($${b.toFixed(1)}B)`;
   if (b >= 0.3) return `Small-cap ($${(b * 1000).toFixed(0)}M)`;
@@ -17,9 +17,9 @@ function formatMarketCap(marketCap: number | null | undefined): string {
 
 function DataRow({ label, value }: { label: string; value: string | number | null }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-(--panel-border) py-2.5 first:pt-0 last:border-0 last:pb-0">
-      <span className="text-sm text-(--text-secondary)">{label}</span>
-      <span className="text-sm font-semibold text-(--text-primary)">{value ?? "N/A"}</span>
+    <div className="data-row">
+      <span className="data-row-label">{label}</span>
+      <span className="data-row-value">{value ?? "N/A"}</span>
     </div>
   );
 }
@@ -56,13 +56,13 @@ export default function EquityClasses() {
   const beta = useMemo(() => getBeta(security.ticker), [security.ticker]);
   const avg_spread = useMemo(() => getAvgSpread(security.ticker), [security.ticker])
   return (
-    <div className="space-y-5">
+    <div className="equity-classes-container">
       {/* Equity Classes */}
       <div>
-        <h3 className="text-xs font-semibold tracking-wide text-(--text-muted) uppercase mb-3">
+        <h3 className="equity-section-title">
           Equity Classes
         </h3>
-        <div className="space-y-0">
+        <div className="equity-section">
           <DataRow label="Sector" value={sector} />
           <DataRow label="Sub-sector" value={subindustry || industry} />
           <DataRow label="Market cap" value={marketCap ? formatMarketCap(marketCap) : null} />
@@ -72,13 +72,13 @@ export default function EquityClasses() {
 
       {/* Reference */}
       {(beta != null || next_earnings || next_dividend || avg_spread) && (
-        <div className="mt-8">
-          <h3 className="text-xs font-semibold tracking-wide text-(--text-muted) uppercase mb-3">
+        <div className="equity-reference-section">
+          <h3 className="equity-section-title">
             Reference
           </h3>
-          <div className="space-y-0">
+          <div className="equity-section">
             <DataRow label="Beta (3y)" value={beta != null ? beta.toFixed(2) : null} />
-            <DataRow label="Avg spread" value={avg_spread != null ? avg_spread.toFixed(2) : null} />
+            <DataRow label="Avg spread" value={avg_spread != null ? avg_spread.toFixed(2) + "%" : null} />
             <DataRow label="Next earnings" value={next_earnings ?? null} />
             <DataRow label="Next dividend" value={next_dividend ?? null} />
           </div>

@@ -15,10 +15,22 @@ export default function TickerView() {
   return (
     <TickerDataProvider data={payload}>
       <EquityDataProvider data={equity}>
+        {/* Redesigned equity page — new components go here */}
+        <div className="grid grid-cols-4 gap-4">
+          {/* Left col*/}
+          <div>
+            <EquityClasses /> 
+          </div>
+          {/* Center col*/}
+          <div className="col-span-2">
+            <PriceHistoryChart />
+          </div>
+          {/* Right col*/}
+          <div></div>
+        </div>
+
+        
         <div className="flex flex-col gap-6">
-          {/* Redesigned equity page — new components go here, top-down. */}
-          <PriceHistoryChart />
-          <EquityClasses />
           {/* Legacy components below: slated for near-complete rewrite as the redesign
               proceeds. Kept temporarily so the page stays functional; remove as each is
               replaced (and retire the file-payload path once nothing reads it). */}

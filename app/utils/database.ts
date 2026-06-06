@@ -197,9 +197,9 @@ export function getBeta(symbol: string): number {
 }
 
 export function getMarketCap(symbol: string): number {
-  return Math.random() * 1000
+  return Math.random() * 1000000000000
 }
 
 export function getAvgSpread(symbol: string): number {
-  return Math.random()
+  return Math.random() * 100
 }

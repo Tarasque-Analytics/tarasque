@@ -166,3 +166,43 @@ body {
   background: var(--neutral-badge-bg);
   color: var(--neutral-badge-text);
 }
+
+/* === Equity Classes Component === */
+
+.equity-classes-container {
+  @apply space-y-5;
+}
+
+.equity-section {
+  @apply space-y-0;
+}
+
+.equity-section-title {
+  @apply text-xs font-semibold tracking-wide uppercase mb-3;
+  color: var(--text-muted);
+}
+
+.data-row {
+  @apply flex items-center justify-between gap-3 border-b py-2.5;
+  border-color: var(--panel-border);
+}
+.data-row:first-child {
+  @apply pt-0;
+}
+.data-row:last-child {
+  @apply border-0 pb-0;
+}
+
+.data-row-label {
+  @apply text-sm;
+  color: var(--text-secondary);
+}
+
+.data-row-value {
+  @apply text-sm font-semibold;
+  color: var(--text-primary);
+}
+
+.equity-reference-section {
+  @apply mt-12;
+}

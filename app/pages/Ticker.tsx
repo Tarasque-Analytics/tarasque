@@ -4,6 +4,7 @@ import MonteCarlo from "~/components/ticker/monte_carlo";
 import Options from "../components/ticker/options";
 import Predictors from "../components/ticker/predictors";
 import PriceHistoryChart from "../components/equity/price_history_chart";
+import EquityClasses from "~/components/equity/equity_classes";
 import { TickerDataProvider } from "../context/TickerDataContext";
 import { EquityDataProvider } from "../context/EquityDataContext";
 import type { TickerLoaderData } from "../routes/ticker";
@@ -17,7 +18,7 @@ export default function TickerView() {
         <div className="flex flex-col gap-6">
           {/* Redesigned equity page — new components go here, top-down. */}
           <PriceHistoryChart />
-
+          <EquityClasses />
           {/* Legacy components below: slated for near-complete rewrite as the redesign
               proceeds. Kept temporarily so the page stays functional; remove as each is
               replaced (and retire the file-payload path once nothing reads it). */}

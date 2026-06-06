@@ -191,3 +191,15 @@ export async function loadLatestModelRun(): Promise<ModelRun | null> {
     return null;
   }
 }
+
+export function getBeta(symbol: string): number {
+  return Math.random() * 3
+}
+
+export function getMarketCap(symbol: string): number {
+  return Math.random() * 1000
+}
+
+export function getAvgSpread(symbol: string): number {
+  return Math.random()
+}

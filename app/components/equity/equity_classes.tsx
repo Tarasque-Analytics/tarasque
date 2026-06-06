@@ -56,7 +56,7 @@ export default function EquityClasses() {
   const beta = useMemo(() => getBeta(security.ticker), [security.ticker]);
   const avg_spread = useMemo(() => getAvgSpread(security.ticker), [security.ticker])
   return (
-    <div className="equity-classes-container">
+    <div className="equity-classes-container panel p-5">
       {/* Equity Classes */}
       <div>
         <h3 className="equity-section-title">

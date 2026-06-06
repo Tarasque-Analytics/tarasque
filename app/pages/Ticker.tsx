@@ -6,6 +6,7 @@ import Search from "~/components/ui/search";
 import Predictors from "../components/ticker/predictors";
 import PriceHistoryChart from "../components/equity/price_history_chart";
 import EquityClasses from "~/components/equity/equity_classes";
+import ForwardVolForecast from "../components/equity/forward_vol_forecast";
 import { TickerDataProvider } from "../context/TickerDataContext";
 import { EquityDataProvider } from "../context/EquityDataContext";
 import type { TickerLoaderData } from "../routes/ticker";
@@ -33,6 +34,10 @@ export default function TickerView() {
 
 
         <div className="flex flex-col gap-6">
+          {/* Redesigned equity page — new components go here, top-down. */}
+          <PriceHistoryChart />
+          <ForwardVolForecast />
+
           {/* Legacy components below: slated for near-complete rewrite as the redesign
               proceeds. Kept temporarily so the page stays functional; remove as each is
               replaced (and retire the file-payload path once nothing reads it). */}

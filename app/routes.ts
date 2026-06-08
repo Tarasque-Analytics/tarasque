@@ -22,6 +22,7 @@ export default [
     route("sector", "./routes/sector_landing.tsx"),
     route("sector/:sector", "./routes/sector.tsx"),
     route("model", "./routes/model_landing.tsx"),
+    route("model/:symbol", "./routes/model.tsx"),
   ]),
 
   // Wildcard route for 404/unmatched routes

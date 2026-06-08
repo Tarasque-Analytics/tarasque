@@ -1,5 +1,6 @@
 // Lists the model information of a run: version, run/retrain date, n_tickers, horizons, notes
 // in a nice box with each piece of information on a seperate line
+// Contains a search bar for symbols that redirects you to model/:symbol
 
 function DataRow({ label, value }: { label: string; value: string | number | null }) {
   return (
@@ -10,19 +11,11 @@ function DataRow({ label, value }: { label: string; value: string | number | nul
   );
 }
 
-function SectionHeader({ title }: { title: string }) {
-  return (
-    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mt-4 mb-3">
-      {title}
-    </h3>
-  );
-}
-
 export default function ModelInfo() {
   return (
     <div className="panel p-5 space-y-0 text-sm">
       {/* Model Run Info */}
-      <DataRow label="Version" value="67.67.67"/>
+      <DataRow label="Version" value="67.420.69"/>
       <DataRow label="Date Ran" value="6/8/2026"/>
       <DataRow label="Horizons" value="[21, 63, 126]"/>
       <DataRow label="Notes" value="These are placebo values for now"/>

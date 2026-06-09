@@ -29,7 +29,8 @@ from backend.database import (
     get_shap_snapshot,
     # get_distribution,  # TODO: re-enable once finance defines distribution structure (separate PR)
     get_events,
-    get_latest_model_run
+    get_latest_model_run,
+    get_model_runs,
 )
 
 
@@ -245,6 +246,74 @@ async def get_latest_model_run_data():
     if run is None:
         raise HTTPException(status_code=404, detail="No model runs found")
     return run
+
+@app.get("/api/model")
+async def getModel():
+    """Fetch all historical model runs with metadata.
+    
+    Returns a comprehensive list of all model runs including version information,
+    execution dates, and other relevant run metadata. Supports the model dashboard
+    and historical model performance tracking.
+    
+    Returns:
+        list[dict]: All model runs with structure:
+            {
+                "model_version": str,
+                "run_date": str,
+            }
+    
+    Raises:
+        HTTPException: 404 if no model runs exist in the database.
+    """
+    
+    try:
+        # NOTE: as we decide on the shape of the payload, just add or subtract fields here
+        allRuns = await asyncio.gather(get_model_runs())
+    except Exception as e:
+        print(f"Exception thrown: {str(e)}", flush=True)
+        raise HTTPException(status_code=500, detail=f"Model data could not be found")
+    
+    # NOTE: and here
+    return  {
+        "runs": allRuns
+    }
+
+@app.get("/api/model/{symbol}")
+async def getModelDataForSymbol(symbol: str):
+    """Fetch model output data (SHAP features) for a specific ticker symbol.
+    
+    Retrieves the latest SHAP (SHapley Additive exPlanations) snapshot for a given symbol,
+    which provides feature importance and model interpretability for model predictions
+    across different horizons. Used by the /model/:symbol page.
+    
+    Args:
+        symbol (str): Ticker symbol (case-insensitive). E.g., 'AAPL', 'msft'
+    
+    Returns:
+        dict: Model output payload with structure:
+            {
+                "shap": list[dict]  # Latest SHAP features per horizon
+            }
+    
+    Raises:
+        HTTPException: 404 if the ticker symbol is not found or has no model data.
+        HTTPException: 500 if model data cannot be retrieved.
+    """
+    try:
+        security_metadata = await get_security_data(symbol)
+        sec_id = security_metadata["security_id"]
+        
+        # NOTE: as we decide on the shape of the payload, just add or subtract fields here
+        latest_shap_snapshot = await asyncio.gather(get_shap_snapshot(sec_id))
+        
+        # NOTE: and here
+        return {
+            "shap": latest_shap_snapshot
+        }
+        
+    except Exception as e:
+        print(f"Exception thrown: {str(e)}", flush=True)
+        raise HTTPException(status_code=500, detail=f"Model data could not be found for symbol: {symbol}")
 
 @app.get("/api/dashboard")
 async def get_dashboard():

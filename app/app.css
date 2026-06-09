@@ -166,3 +166,30 @@ body {
   background: var(--neutral-badge-bg);
   color: var(--neutral-badge-text);
 }
+
+/* === Model Components === */
+
+.model-search-input {
+  @apply w-full rounded-lg border bg-white px-4 py-2.5 text-sm outline-none shadow-sm transition-colors;
+  border-color: var(--panel-border);
+  background: var(--ui-background);
+  color: var(--text-primary);
+}
+.model-search-input::placeholder {
+  color: var(--text-muted);
+}
+.model-search-input:disabled {
+  @apply cursor-not-allowed opacity-60;
+}
+
+.model-data-row {
+  @apply flex justify-between py-1;
+}
+.model-data-row-label {
+  @apply text-sm;
+  color: var(--text-muted);
+}
+.model-data-row-value {
+  @apply text-sm font-medium;
+  color: var(--text-primary);
+}

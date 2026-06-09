@@ -6,6 +6,8 @@
  * GET /api/equity/:symbol. Numeric columns that are nullable in the DB are typed `| null`.
  */
 
+import type { LargeNumberLike } from "crypto";
+
 const API_BASE_URL = "http://localhost:8000/api";
 
 // Volatility and forecasting data (volatility_history)
@@ -125,6 +127,12 @@ export interface EventRecord {
   source?: string | null;
 }
 
+// Latest model run — feeds the navbar version pill + "Last refresh" date (GET /api/model-runs/latest)
+export interface ModelRun {
+  model_version: string | null;
+  run_date: string | null;
+}
+
 // Complete payload from GET /api/equity/:symbol
 export interface EquitiesPayload {
   symbol: string;
@@ -166,12 +174,6 @@ export async function loadEquityData(symbol: string): Promise<EquitiesPayload> {
   }
 }
 
-// Latest model run — feeds the navbar version pill + "Last refresh" date (GET /api/model-runs/latest)
-export interface ModelRun {
-  model_version: string | null;
-  run_date: string | null;
-}
-
 /**
  * Load the latest model run for the navbar (version + run date).
  * Non-fatal: returns null on any failure so the navbar can render a placeholder instead of
@@ -191,3 +193,23 @@ export async function loadLatestModelRun(): Promise<ModelRun | null> {
     return null;
   }
 }
+
+
+//These functions may, in the endm not be necessary as we could potentially just package the same
+// information inside the equities payload
+
+// TODO: PROVIDE ACTUAL IMPLEMENTATION WHEN WE KNOW WHERE BETA IS COMING FROM
+export function getBeta(symbol: string): number {
+  return Math.random() * 3
+}
+
+// TODO: PROVIDE ACTUAL IMPLEMENTATION WHEN WE KNOW WHERE MARKET CAP IS COMING FROM
+export function getMarketCap(symbol: string): number {
+  return Math.random() * 1000000000000
+}
+
+// TODO: PROVIDE ACTUAL IMPLEMENTATION WHEN WE KNOW WHERE AVG_SPREAD IS COMING FROM
+export function getAvgSpread(symbol: string): number {
+  return Math.random() * 100
+}
+

@@ -194,22 +194,20 @@ export async function loadLatestModelRun(): Promise<ModelRun | null> {
   }
 }
 
-
 //These functions may, in the endm not be necessary as we could potentially just package the same
 // information inside the equities payload
 
 // TODO: PROVIDE ACTUAL IMPLEMENTATION WHEN WE KNOW WHERE BETA IS COMING FROM
 export function getBeta(symbol: string): number {
-  return Math.random() * 3
+  return Math.random() * 3;
 }
 
 // TODO: PROVIDE ACTUAL IMPLEMENTATION WHEN WE KNOW WHERE MARKET CAP IS COMING FROM
 export function getMarketCap(symbol: string): number {
-  return Math.random() * 1000000000000
+  return Math.random() * 1000000000000;
 }
 
 // TODO: PROVIDE ACTUAL IMPLEMENTATION WHEN WE KNOW WHERE AVG_SPREAD IS COMING FROM
 export function getAvgSpread(symbol: string): number {
-  return Math.random() * 100
+  return Math.random() * 100;
 }
-

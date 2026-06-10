@@ -1,6 +1,6 @@
 /**
  * Placeholder for model search
- * 
+ *
  * Jumps the user to /model/:symbol
  * As of now there currently isn't any data available to pull from to support the aforementioned page (shap components or any other model outputs for specific tickers)
  * TODO: fetch all available tickers that have model outputs and navigate to /model/:symbol
@@ -8,10 +8,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 
-
 export default function ModelSearch() {
-  const [ticker, setTicker] = useState("")
-  const navigate = useNavigate()  
+  const [ticker, setTicker] = useState("");
+  const navigate = useNavigate();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -38,7 +38,7 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #121212;
-    --ui-background: #1E1E1E;
+    --ui-background: #1e1e1e;
     --border: #333333;
 
     --panel-border: #2a2a2a;
@@ -119,13 +119,11 @@ body {
   @apply font-bold;
 } */
 
-
 /* === Miscellaneous === */
 
 .view-more-button {
   @apply text-blue-500 mt-2;
 }
-
 
 /* === Shared UI primitives (redesigned equity components) === */
 

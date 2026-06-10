@@ -2,7 +2,7 @@
 // in a nice box with each piece of information on a seperate line
 // Contains a search bar for symbols that redirects you to model/:symbol
 import { useEffect, useState } from "react";
-import { loadLatestModelRun } from "~/utils/database"
+import { loadLatestModelRun } from "~/utils/database";
 
 function DataRow({ label, value }: { label: string; value: string | number | null }) {
   return (
@@ -27,8 +27,8 @@ export default function ModelInfo() {
   return (
     <div className="panel p-5 space-y-0 text-sm">
       {/* Model Run Info */}
-      <DataRow label="Version" value={version}/>
-      <DataRow label="Date Ran" value={runDate}/>
+      <DataRow label="Version" value={version} />
+      <DataRow label="Date Ran" value={runDate} />
     </div>
-  )
+  );
 }

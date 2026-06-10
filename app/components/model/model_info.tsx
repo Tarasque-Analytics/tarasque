@@ -16,12 +16,14 @@ function DataRow({ label, value }: { label: string; value: string | number | nul
 export default function ModelInfo() {
   const [runDate, setRunDate] = useState("")
   const [version, setVersion] = useState("")
+  
   useEffect(() => {
     loadLatestModelRun().then((run) => {
       setRunDate(run?.run_date || "")
       setVersion(run?.model_version || "")
     })
-  })
+  }, [])
+
   return (
     <div className="panel p-5 space-y-0 text-sm">
       {/* Model Run Info */}

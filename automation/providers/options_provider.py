@@ -73,6 +73,10 @@ class OptionsProvider(Protocol):
         """Latest underlying price (for strike-band scoping + BS delta)."""
         ...
 
+    def latest_session_date(self) -> Optional[date]:
+        """The most recent trading-session date the source's data belongs to (stamps snapshot_date)."""
+        ...
+
     def fetch_chain(
         self, ticker: str, expiries: list[date], *,
         snapshot_date: date, security_id: int, scope: "OptionsScope",
@@ -192,6 +196,24 @@ class YFinanceOptionsProvider:
             return None
 
         return self._retry(_spot, f"{ticker} spot", is_empty=lambda r: r is None)
+
+    def latest_session_date(self, proxy: str = "SPY") -> Optional[date]:
+        """
+        The most recent trading session, from a liquid proxy's last daily bar.
+
+        Self-correcting for time-of-day / weekends / holidays: yfinance only has a daily bar for a
+        session that has *begun*, so the last bar's date is the session the current snapshot belongs
+        to — intraday/after-close → today; overnight/weekend/holiday → the last real session. This is
+        what stamps `snapshot_date`, so a midnight run doesn't mislabel yesterday's close as today.
+        """
+        def _fetch() -> Optional[date]:
+            hist = self._ticker(proxy).history(period="5d")  # 5d spans long weekends/holidays
+            if hist is None or hist.empty:
+                return None
+            ts = hist.index[-1]
+            return ts.date() if hasattr(ts, "date") else None
+
+        return self._retry(_fetch, f"{proxy} latest session", is_empty=lambda r: r is None)
 
     # ── chain fetch + normalize ────────────────────────────────────────────────────────────────
     def fetch_chain(

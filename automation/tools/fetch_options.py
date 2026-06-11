@@ -5,12 +5,12 @@ Fetches a scoped daily options snapshot from yfinance and upserts it into `optio
 exact core (`automation.options_import`) the pipeline's `fetch_options` stage uses, so the standalone
 result matches the scheduled run.
 
-Usage (from repo root):
+Usage (call from repo root):
 
     # Fetch + print normalized rows, NO DB writes, no Supabase creds needed:
     python -m automation.tools.fetch_options --tickers AAPL MSFT --dry-run
 
-    # Write to the configured Supabase (e.g. local stack — set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY):
+    # Write to the configured Supabase (set SUPABASE_URL + SUPABASE_SECRET_KEY):
     python -m automation.tools.fetch_options --tickers AAPL MSFT
 
     # Re-fetch even if today's snapshot already exists:
@@ -19,14 +19,15 @@ Usage (from repo root):
 Notes:
   - --dry-run still calls yfinance (free, read-only) so you can see the chain; it just skips DB writes
     and DB reads, so no Supabase credentials are required.
-  - snapshot_date defaults to today in US/Eastern (after-close cadence); override with --snapshot-date.
+  - snapshot_date is the most recent trading session (data-derived, so a midnight run stamps the
+    prior session, holiday-safe); override with --snapshot-date.
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, time as dt_time, timedelta
 from zoneinfo import ZoneInfo
 
 from ..config import load_config
@@ -36,9 +37,34 @@ from ..options_import import import_options_for_security, make_options_provider
 DEFAULT_TICKERS = ["AAPL", "MSFT"]
 
 
-def _today_eastern() -> date:
-    """The US business date for the snapshot (after-close cadence)."""
-    return datetime.now(ZoneInfo("America/New_York")).date()
+def _computed_session_date(now_et: datetime) -> date:
+    """Clock-based fallback for the trading session (used only if the data-derived lookup fails).
+
+    Before today's market open (or on a weekend) the latest data is the previous trading day. NOT
+    holiday-aware — that's why the data-derived `provider.latest_session_date()` is preferred.
+    """
+    d = now_et.date()
+    if now_et.time() < dt_time(9, 30):   # before the 9:30 ET open → today's session has no data yet
+        d -= timedelta(days=1)
+    while d.weekday() >= 5:               # Sat/Sun → roll back to Friday
+        d -= timedelta(days=1)
+    return d
+
+
+def _resolve_snapshot_date(args: argparse.Namespace, provider) -> date:
+    """Resolve the trading session the snapshot belongs to.
+
+    Priority: explicit --snapshot-date → the provider's latest *begun* session (data-derived, so a
+    midnight run stamps yesterday's close as yesterday, and it's holiday-safe) → a clock-based
+    fallback. Resolved once per run so every ticker shares one snapshot_date.
+    """
+    if args.snapshot_date:
+        return datetime.strptime(args.snapshot_date, "%Y-%m-%d").date()
+    try:
+        derived = provider.latest_session_date()
+    except Exception:  # noqa: BLE001 — date resolution must not crash the run; fall back to the clock
+        derived = None
+    return derived or _computed_session_date(datetime.now(ZoneInfo("America/New_York")))
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -59,13 +85,10 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 async def _run(args: argparse.Namespace) -> int:
     cfg = load_config(dry_run=args.dry_run, force=args.force)
-    snapshot_date = (
-        datetime.strptime(args.snapshot_date, "%Y-%m-%d").date()
-        if args.snapshot_date else _today_eastern()
-    )
     tickers = [t.upper() for t in args.tickers]
 
     provider = make_options_provider(cfg.options)
+    snapshot_date = _resolve_snapshot_date(args, provider)
     db = WriteClient(cfg.supabase, dry_run=cfg.dry_run)
     await db.connect()
 

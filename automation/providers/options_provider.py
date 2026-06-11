@@ -13,6 +13,7 @@ rest of the import is unchanged.
 """
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -22,6 +23,35 @@ from ..black_scholes import bs_delta
 
 if TYPE_CHECKING:
     from ..config import OptionsImportConfig
+
+
+# ── logging ──────────────────────────────────────────────────────────────────────────────────────
+# No package-wide logging exists yet; this provider configures one file logger lazily (on first use)
+# so a failed import leaves a durable trace in the repo-root `log/` folder instead of vanishing.
+_LOGGER_NAME = "automation.options_provider"
+
+
+def _logger() -> logging.Logger:
+    """Module logger writing to `<repo-root>/log/options_import.log` (configured once, lazily)."""
+    log = logging.getLogger(_LOGGER_NAME)
+    if not log.handlers:
+        from ..config import REPO_ROOT  # lazy: avoids an import-time dependency / side effects
+        log_dir = REPO_ROOT / "log"
+        log_dir.mkdir(exist_ok=True)
+        handler = logging.FileHandler(log_dir / "options_import.log", encoding="utf-8")
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        log.addHandler(handler)
+        log.setLevel(logging.INFO)
+        log.propagate = False  # don't double-log if the host app also configures the root logger
+    return log
+
+
+class SpotUnavailableError(RuntimeError):
+    """Underlying spot couldn't be fetched, so a scoped chain import can't proceed.
+
+    Subclasses RuntimeError so the per-security import loop (which catches Exception) records it as a
+    handled per-ticker error rather than letting it sink a multi-ticker run.
+    """
 
 
 @dataclass(frozen=True)
@@ -71,6 +101,21 @@ def _to_int(val: Any) -> Optional[int]:
     return int(f) if f is not None else None
 
 
+def _chain_is_empty(chain: Any) -> bool:
+    """True when a yfinance option_chain carries neither calls nor puts.
+
+    yfinance intermittently returns empty frames on a transient hiccup, so `_retry` treats this as a
+    retryable 'empty' (mirrors the per-frame emptiness check in `fetch_chain`).
+    """
+    if chain is None:
+        return True
+
+    def _empty(df: Any) -> bool:
+        return df is None or getattr(df, "empty", True)
+
+    return _empty(getattr(chain, "calls", None)) and _empty(getattr(chain, "puts", None))
+
+
 class YFinanceOptionsProvider:
     """yfinance implementation of OptionsProvider (OPTIONS_IMPORT_PLAN.md §3)."""
 
@@ -82,22 +127,42 @@ class YFinanceOptionsProvider:
         import yfinance as yf  # lazy: keeps `import automation` dependency-free
         return yf.Ticker(ticker)
 
-    def _retry(self, fn, what: str):
-        """Run `fn` with simple exponential backoff (yfinance can rate-limit / return empties)."""
+    def _retry(self, fn, what: str, *, is_empty=None):
+        """Run `fn` with exponential backoff, retrying transient failures.
+
+        yfinance both raises (rate-limit / network errors) **and** intermittently returns empty
+        results, so we retry on either: an exception, or — when an `is_empty` predicate is given — a
+        result the caller considers empty.
+
+        On exhaustion: re-raise if the last attempt raised; otherwise return the last (possibly empty)
+        result and let the caller decide what an empty means (a ticker with no options, no quote, …).
+        """
         last_exc: Optional[BaseException] = None
+        result: Any = None
         for attempt in range(self._config.max_retries):
             try:
-                return fn()
+                result = fn()
             except Exception as e:  # noqa: BLE001 — yfinance raises a variety of network errors
                 last_exc = e
-                if attempt < self._config.max_retries - 1:
-                    time.sleep(self._config.backoff_base_seconds * (2 ** attempt))
-        raise RuntimeError(f"yfinance {what} failed after {self._config.max_retries} attempts: {last_exc}")
+            else:
+                last_exc = None
+                if is_empty is None or not is_empty(result):
+                    return result  # got a usable result
+                # empty result — treat like a transient failure and back off / retry
+            if attempt < self._config.max_retries - 1:
+                time.sleep(self._config.backoff_base_seconds * (2 ** attempt))
+        if last_exc is not None:
+            raise RuntimeError(f"yfinance {what} failed after {self._config.max_retries} attempts: {last_exc}")
+        return result
 
     # ── reads ────────────────────────────────────────────────────────────────────────────────
     def list_expiries(self, ticker: str) -> list[date]:
         """Parse Ticker.options ('YYYY-MM-DD' strings) → date list."""
-        raw = self._retry(lambda: self._ticker(ticker).options, f"{ticker}.options")
+        raw = self._retry(
+            lambda: self._ticker(ticker).options,
+            f"{ticker}.options",
+            is_empty=lambda r: not r,  # None / empty tuple → retry (yfinance occasionally returns ())
+        )
         out: list[date] = []
         for s in (raw or ()):
             try:
@@ -119,14 +184,14 @@ class YFinanceOptionsProvider:
                     except (KeyError, TypeError):
                         v = None
                     f = _to_float(v)
-                    if f:
+                    if f is not None and f > 0:  # 0.0 spot price is useless, but we can guard this explicitly
                         return f
             hist = t.history(period="1d")
             if hist is not None and not hist.empty and "Close" in hist:
                 return _to_float(hist["Close"].iloc[-1])
             return None
 
-        return self._retry(_spot, f"{ticker} spot")
+        return self._retry(_spot, f"{ticker} spot", is_empty=lambda r: r is None)
 
     # ── chain fetch + normalize ────────────────────────────────────────────────────────────────
     def fetch_chain(
@@ -139,10 +204,22 @@ class YFinanceOptionsProvider:
         and fill `delta` via Black-Scholes from the underlying spot.
         """
         if spot is None:
-            spot = self.fetch_spot(ticker)
+            # Spot drives BOTH strike-band scoping and the max-strikes cap; without it the fetch would
+            # silently import every strike of every expiry (each with a None delta). Fail the chain
+            # import loudly instead — the per-security loop records it as a handled per-ticker error.
+            _logger().warning(
+                "%s: spot unavailable for %s — failing chain import for %d expiry(ies) "
+                "(would otherwise import an unbounded, delta-less chain)",
+                ticker, snapshot_date.isoformat(), len(expiries),
+            )
+            raise SpotUnavailableError(
+                f"{ticker}: spot unavailable for {snapshot_date.isoformat()}; "
+                f"aborting options-chain import to avoid an unbounded, unscoped fetch"
+            )
 
+        # spot is guaranteed non-None past this point — scoping and delta both rely on it.
         lo = hi = None
-        if spot is not None and scope.strike_band_pct:
+        if scope.strike_band_pct:
             lo = spot * (1.0 - scope.strike_band_pct)
             hi = spot * (1.0 + scope.strike_band_pct)
 
@@ -153,6 +230,7 @@ class YFinanceOptionsProvider:
             chain = self._retry(
                 lambda e=expiry: t.option_chain(e.isoformat()),
                 f"{ticker}.option_chain({expiry})",
+                is_empty=_chain_is_empty,
             )
             for df, opt_type in ((getattr(chain, "calls", None), "C"),
                                  (getattr(chain, "puts", None), "P")):
@@ -189,7 +267,7 @@ class YFinanceOptionsProvider:
                     })
 
         # Optional hard cap: nearest N strikes each side of spot, per (expiry, option_type).
-        if scope.max_strikes_per_side and spot is not None:
+        if scope.max_strikes_per_side:
             rows = _cap_strikes_per_side(rows, spot, scope.max_strikes_per_side)
 
         return rows

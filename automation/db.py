@@ -47,41 +47,69 @@ class WriteClient:
         self._dry_run = dry_run
         self._client: Optional["AsyncClient"] = None
 
+    # Max rows per PostgREST request — batch larger sets to stay well under limits.
+    _BATCH = 500
+
     # ── lifecycle ────────────────────────────────────────────────────────────────────────────
     async def connect(self) -> None:
         """
-        Create the underlying service-role AsyncClient.
-
-        TODO(PLAN §6):
-          - in dry_run: leave self._client None and no-op all writes
-          - else: validate config, `from supabase import acreate_client`, await acreate_client(url, key)
+        Create the underlying service-role AsyncClient (no-op in dry-run, so no creds are needed).
         """
-        raise NotImplementedError("TODO(PLAN §6): construct service-role AsyncClient")
+        if self._dry_run:
+            self._client = None
+            return
+        self._config.validate()
+        from supabase import acreate_client  # lazy: keeps `import automation` dependency-free
+        self._client = await acreate_client(self._config.url, self._config.secret_key)
 
     async def close(self) -> None:
-        """Release the client/session (if the SDK requires it)."""
-        raise NotImplementedError
+        """Release the client/session. The supabase AsyncClient has no explicit close today."""
+        self._client = None
 
     # ── generic upsert ───────────────────────────────────────────────────────────────────────
     async def _upsert(self, table: str, rows: Sequence[dict[str, Any]],
                       *, on_conflict: Optional[str] = None) -> int:
         """
         Upsert `rows` into `table`, deduped on `on_conflict` (defaults to CONFLICT_KEYS[table]).
-
-        Returns the number of rows written (0 in dry-run). Batches large row sets to stay under
-        PostgREST request limits.
-
-        TODO:
-          - dry_run → log intent, return 0
-          - resolve on_conflict; batch rows; await supabase.table(table).upsert(batch, on_conflict=...)
-          - surface errors with table context (do NOT leak raw PostgREST text upstream — PLAN §6 / backend convention)
+        Returns the number of rows written (0 in dry-run). Batches to stay under request limits.
         """
-        raise NotImplementedError("TODO(PLAN §4.1): generic keyed upsert with batching")
+        if not rows:
+            return 0
+        conflict = on_conflict or CONFLICT_KEYS[table]
+        if self._dry_run or self._client is None:
+            return 0
+        written = 0
+        for i in range(0, len(rows), self._BATCH):
+            batch = list(rows[i:i + self._BATCH])
+            try:
+                await self._client.table(table).upsert(batch, on_conflict=conflict).execute()
+            except Exception as e:  # noqa: BLE001
+                # Keep table context for our logs; callers decide isolation. (Don't surface raw
+                # PostgREST text to any external client — backend convention, PLAN §6.)
+                raise RuntimeError(f"upsert into {table} failed: {e}") from e
+            written += len(batch)
+        return written
 
     # ── per-table typed helpers (keyed per PLAN §4.1) ─────────────────────────────────────────
     async def upsert_securities(self, rows: Sequence[dict[str, Any]]) -> int:
-        """Upsert universe metadata. Rare — only on universe change (PLAN §10)."""
-        raise NotImplementedError
+        """Upsert universe metadata. Keyed on security_id (PK). Rare — on universe change (PLAN §10)."""
+        return await self._upsert("securities", rows)
+
+    async def all_securities(self) -> list[dict[str, Any]]:
+        """All securities rows (id, ticker, active) — for membership/universe planning."""
+        if self._client is None:
+            return []
+        resp = await self._client.table("securities").select("security_id,ticker,active").execute()
+        return resp.data or []
+
+    async def securities_detail(self) -> list[dict[str, Any]]:
+        """All securities rows with the GICS/name columns — for diffing a metadata sync."""
+        if self._client is None:
+            return []
+        resp = await self._client.table("securities").select(
+            "security_id,ticker,gics_sector,gics_subindustry,company_name,sector_etf,active"
+        ).execute()
+        return resp.data or []
 
     async def upsert_prices(self, rows: Sequence[dict[str, Any]]) -> int:
         """Append/upsert OHLCV bars. PK (security_id, date). Append-only in practice (PLAN §3.1)."""
@@ -89,7 +117,7 @@ class WriteClient:
 
     async def upsert_options_chain(self, rows: Sequence[dict[str, Any]]) -> int:
         """Upsert a day's options snapshot. Unique (security_id, snapshot_date, expiry, option_type, strike)."""
-        raise NotImplementedError
+        return await self._upsert("options_chain", rows)
 
     async def insert_model_run(self, row: dict[str, Any]) -> int:
         """
@@ -134,7 +162,34 @@ class WriteClient:
     async def options_snapshot_exists(self, security_ids: Sequence[int],
                                       snapshot_date: date) -> dict[int, bool]:
         """Whether today's options_chain snapshot already exists per security (skip-if-done)."""
-        raise NotImplementedError
+        ids = list(security_ids)
+        if not ids or self._client is None:
+            return {sid: False for sid in ids}
+        resp = await (
+            self._client.table("options_chain")
+            .select("security_id")
+            .in_("security_id", ids)
+            .eq("snapshot_date", snapshot_date.isoformat())
+            .execute()
+        )
+        present = {row["security_id"] for row in (resp.data or [])}
+        return {sid: sid in present for sid in ids}
+
+    async def resolve_security_ids(self, tickers: Sequence[str]) -> dict[str, int]:
+        """
+        Map ticker → security_id from the securities table (the options_chain FK target).
+        Tickers absent from securities are simply omitted from the result (caller warns/skips).
+        """
+        syms = [t.upper() for t in tickers]
+        if not syms or self._client is None:
+            return {}
+        resp = await (
+            self._client.table("securities")
+            .select("security_id,ticker")
+            .in_("ticker", syms)
+            .execute()
+        )
+        return {row["ticker"].upper(): row["security_id"] for row in (resp.data or [])}
 
     async def model_run_exists(self, run_date: date, model_version: str) -> bool:
         """Whether the model already ran today for this version (skip-if-done — PLAN §3.1)."""
@@ -151,4 +206,13 @@ class WriteClient:
 
     async def active_universe(self) -> list[dict[str, Any]]:
         """securities rows where active=true — the run's universe (PLAN §10)."""
-        raise NotImplementedError
+        if self._client is None:
+            return []
+        resp = await (
+            self._client.table("securities")
+            .select("security_id,ticker,gics_sector,sector_etf,min_history_date")
+            .eq("active", True)
+            .order("ticker")
+            .execute()
+        )
+        return resp.data or []

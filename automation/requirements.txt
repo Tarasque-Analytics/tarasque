@@ -7,8 +7,12 @@
 # DB write client — service-role Supabase (same SDK as backend; NOT supabase-py). PLAN §6.
 supabase
 
-# Market data — stock bars + options chain (OPRA). PLAN §1, §4.3.
+# Market data — stock bars (Alpaca). PLAN §1.
 alpaca-py
+
+# Options chain — yfinance (current-day; free; has OI/volume/IV). OPTIONS_IMPORT_PLAN.md.
+# Greeks (delta) are computed in-house via automation/black_scholes.py (no scipy needed).
+yfinance
 
 # AI overviews — first provider (Claude). Other providers add their SDK here. PLAN §8.
 anthropic

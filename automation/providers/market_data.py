@@ -1,9 +1,14 @@
 """
-market_data.py — market-data provider abstraction (PLAN §4.3, §5).
+market_data.py — STOCK-BARS provider abstraction (PLAN §5; prices → prices_history).
 
-A narrow `MarketDataProvider` protocol with one concrete implementation, `AlpacaProvider`, covering
-both stock bars (→ prices_history) and the options chain (→ options_chain). Rate-limit / backoff /
-bounded-concurrency live HERE so every stage inherits consistent throttling (PLAN §5).
+A narrow `MarketDataProvider` protocol with an `AlpacaProvider` implementation for **stock bars**.
+Rate-limit / backoff / bounded-concurrency live HERE so the prices stage inherits consistent
+throttling.
+
+⚠ **Options moved off Alpaca.** The options chain is now sourced from **yfinance** — see
+`automation/providers/options_provider.py` and `OPTIONS_IMPORT_PLAN.md` (Alpaca has no open interest
+or per-contract volume). The `OptionsScope` / `fetch_options_snapshot` members below are **superseded
+stubs** kept only so the prices scaffold still type-checks; do not implement them here.
 
 Rows are returned already shaped for the DB tables (the stages just upsert them), so the app's column
 names are the contract — not the vendor's.

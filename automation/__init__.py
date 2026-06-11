@@ -1,23 +1,17 @@
 """
-automation — the automated daily data pipeline for volarbmodel.
+automation — data tooling for the volarbmodel database.
 
-A single, idempotent, incremental run (eventually nightly, after US market close) that leaves the
-Supabase database fresh every morning:
+The only component that **writes** to the DB (via a secret-key client, separate from the app's
+read-only client). What's implemented today:
 
-    1. fetch_prices   → prices_history      (incremental, append-only)
-    2. fetch_options  → options_chain       (daily point-in-time snapshot)   ∥ with (1)
-    3. run_model      → model artifacts      (external component; subprocess)
-    4. upload_outputs → volatility_history + model_runs + shap_snapshot
-    5. ai_overviews   → ai_overview          (provider/model-agnostic)
+  - Options-chain import (yfinance → options_chain): `tools/fetch_options.py`
+  - Securities / universe sync (SEC CIK + S&P 500 + GICS): `tools/sync_sp500.py`,
+    `sql/remap_security_ids_cik.sql`
 
-This package is **separate** from `model/` (the forecasting model, owned by another developer) and
-`backend/` (the read-only API). It is the only component that **writes** to the DB, using a
-service-role client distinct from the app's read client.
-
-SCAFFOLD STATUS: stubs only. No stage logic is implemented. See `automation/PLAN.md` for the full
-design; every TODO in this package points back to a section there.
+The broader daily pipeline (prices, model run, output upload, AI overviews) is **designed but not
+yet implemented** — see `PLAN.md` and `OPTIONS_IMPORT_PLAN.md` for the full plan.
 """
 
 __all__ = ["__version__"]
 
-__version__ = "0.0.0-scaffold"
+__version__ = "0.1.0"

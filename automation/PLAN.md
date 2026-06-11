@@ -142,8 +142,7 @@ authority on what is stale.
 Freshness is derived from the data tables above. A `pipeline_runs` ledger is **recommended but
 optional**, purely for observability/alerting and audit (when did each stage last succeed, how many
 rows, how long, what failed). It must **never** become the source of truth for incrementality — if
-it disagrees with the data tables, the data tables win. Proposed shape (see
-[`sql/pipeline_runs.sql`](sql/pipeline_runs.sql), **not applied** — a proposal):
+it disagrees with the data tables, the data tables win. Proposed shape (**not applied** — a proposal):
 
 ```sql
 create table public.pipeline_runs (
@@ -264,8 +263,8 @@ without making any calls.
 The model is owned by another developer. We define the **contract**: how we invoke it, what it
 consumes, what it produces, and how its outputs map to DB columns. Where the current outputs don't
 cover a DB column, it is flagged **GAP** for the model dev (per the locked decision). The
-machine-readable version of this contract lives in
-[`automation/model_interface.py`](model_interface.py).
+contract is specified by the output→column mapping in §7.4 (to be encoded as a `model_interface`
+module when the upload stage is built).
 
 ### 7.1 How it's invoked today
 
@@ -401,10 +400,9 @@ produce a **relatively similar output**. Claude (Anthropic API) is the first pro
 
 ### 9.1 Scheduling / orchestration
 
-- **Primary (now):** a portable Python orchestrator (`python -m automation`) runnable locally, by
-  cron, or by CI — no host assumptions. A **GitHub Actions** scheduled workflow
-  ([`.github/workflows/daily-pipeline.yml`](../.github/workflows/daily-pipeline.yml), stubbed)
-  triggers it after US close, with secrets injected from repo/Org secrets.
+- **Primary (planned):** a portable Python orchestrator (`python -m automation`) runnable locally, by
+  cron, or by CI — no host assumptions. A **GitHub Actions** scheduled workflow (to be added under
+  `.github/workflows/`) triggers it after US close, with secrets injected from repo/Org secrets.
 - **Later (post-deploy):** move the same entry point to a **managed cron** on the backend host
   (Render/Fly/Railway). Because the orchestrator is host-agnostic, this is a scheduler swap, not a
   rewrite.
@@ -474,41 +472,33 @@ already excludes `.env` / `.env.*` while keeping `.env.example`.
 
 ## 12. Module tree
 
+This is a **design doc**: §§2–11 describe the full intended pipeline, most of which is **not yet
+built**. To keep the package lean, only implemented code lives in the tree — the rest of the DAG
+(prices, model run, output upload, AI overviews, the orchestrator/scheduler) is planned here and will
+be added when built. Implemented today:
+
 ```
 automation/
-  PLAN.md                  ← this document
-  README.md                ← how to run (local/dry-run now; scheduled later)
-  requirements.txt         ← pinned deps (alpaca-py, supabase, anthropic, ...)
-  .env.example notes       ← (root .env.example updated; vars in §11)
-  __init__.py
-  __main__.py              ← `python -m automation` entry → orchestrator
-  config.py                ← AutomationConfig: env, paths, universe source, provider/budget config
-  context.py               ← RunContext (run_date, dry_run, config, clients) threaded through stages
-  orchestrator.py          ← builds + runs the DAG; parallel 1a∥1b; failure isolation; dry-run
-  db.py                    ← WriteClient (service-role); typed upsert_* helpers per §4.1
-  freshness.py             ← DB-derived staleness decisions (§3)
-  universe.py              ← resolve active universe from `securities` (§10)
-  logging_utils.py         ← structured per-stage logging + (optional) pipeline_runs ledger
-  model_interface.py       ← the model contract (§7): invocation + output→column mapping + GAP markers
-  stages/
-    __init__.py
-    base.py                ← Stage protocol: name, deps, is_stale(), run(ctx) ; dry-run aware
-    ensure_universe.py     ← Stage 0
-    fetch_prices.py        ← Stage 1a → prices_history (incremental)
-    fetch_options.py       ← Stage 1b → options_chain (daily snapshot, scoped)
-    events.py              ← Stage 1c (DEFERRED — stub, not wired into the DAG)
-    run_model.py           ← Stage 2 (subprocess invoke of the model)
-    upload_outputs.py      ← Stage 3 → model_runs + volatility_history + shap_snapshot
-    ai_overviews.py        ← Stage 4 → ai_overview (provider-agnostic; dedupe/hash)
-  providers/
-    __init__.py
-    market_data.py         ← MarketDataProvider protocol + AlpacaProvider stub (prices + options)
-    llm.py                 ← LLMProvider protocol + ClaudeProvider stub + registry (§8)
-  sql/
-    pipeline_runs.sql      ← PROPOSED ledger DDL (not applied)
-.github/workflows/
-  daily-pipeline.yml       ← stubbed GH Actions cron (disabled until secrets set)
+  PLAN.md, OPTIONS_IMPORT_PLAN.md, README.md
+  requirements.txt         ← deps (supabase, yfinance, requests, pandas, python-dotenv)
+  config.py                ← config + env loading (SupabaseConfig, OptionsImportConfig, load_config)
+  db.py                    ← WriteClient (secret-key): keyed upserts + freshness reads
+  black_scholes.py         ← in-house delta (yfinance has no greeks)
+  expiry_selection.py      ← which expiries to fetch (§4-equivalent for options)
+  options_import.py        ← reusable per-security options import core
+  providers/options_provider.py ← yfinance options provider
+  tools/fetch_options.py   ← options-chain import CLI → options_chain
+  tools/sync_sp500.py      ← S&P 500 / securities sync → securities
+  sql/remap_security_ids_cik.sql ← CIK remap migration (cascades to child tables)
+  data/sp500.csv, company_tickers.json ← reference metadata
+  tests/                   ← pure-function tests
 ```
+
+**Planned (designed above, not yet in the tree):** an `orchestrator` + `RunContext` running the stage
+DAG (§2); per-stage modules for `fetch_prices` → `prices_history`, `run_model` (subprocess to the
+model), `upload_outputs` → `volatility_history`/`model_runs`/`shap_snapshot`, and `ai_overviews` →
+`ai_overview`; the `model_interface` contract (§7) and provider-agnostic LLM layer (§8); freshness/
+logging helpers; the optional `pipeline_runs` ledger (§3.3); and the scheduled runner (§9.1).
 
 ---
 

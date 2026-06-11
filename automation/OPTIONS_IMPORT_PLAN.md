@@ -139,12 +139,13 @@ call_delta =  N(d1)            put_delta = N(d1) − 1     (q ≈ 0 dividend-yie
   (`--force` overrides). Same rule the pipeline stage uses.
 - **One reusable core, two callers:**
   - pure functions (no DB, no async): `expiry_selection`, `black_scholes`, and the yfinance
-    provider's `fetch_chain(ticker, expiries, scope) -> list[OptionRecord-dict]`.
+    provider's `fetch_chain(ticker, expiries, scope) -> list[OptionRecord-dict]`; plus the per-security
+    orchestration in `options_import.py`.
   - **Standalone runner** `automation/tools/fetch_options.py` (`python -m automation.tools.fetch_options
     --tickers AAPL MSFT [--dry-run] [--force]`) wires config → resolve → fetch → upsert via
-    `asyncio.run`.
-  - **Pipeline stage** `stages/fetch_options.py` calls the *same* core + the same `upsert_options_chain`
-    + the freshness skip — that's the "callable from the main pipeline" guarantee.
+    `asyncio.run`. **This is the shipped entry point.**
+  - **Pipeline stage** (planned): when the orchestrator is built, its `fetch_options` stage will call
+    the *same* `options_import` core + `upsert_options_chain` + freshness skip — no logic duplicated.
 
 Config (`automation/config.py`) — add an `OptionsImportConfig` (provider-agnostic naming so a future
 swap to Polygon/Tradier is a config change):
@@ -162,27 +163,23 @@ backoff_base_seconds: float = 1.0
 
 ---
 
-## 8. Files to create / modify
+## 8. Files (implemented)
 
-**Create**
 - `automation/black_scholes.py` — pure BS delta (math.erf normal CDF).
 - `automation/expiry_selection.py` — term-point + monthly selection (pure).
 - `automation/providers/options_provider.py` — `OptionsProvider` protocol + `YFinanceOptionsProvider`
   (`list_expiries`, `fetch_spot`, `fetch_chain` → normalized rows w/ delta filled).
-- `automation/tools/__init__.py`, `automation/tools/fetch_options.py` — standalone CLI runner.
-- (optional) `automation/tests/test_expiry_selection.py`, `test_black_scholes.py` — pure-function tests.
+- `automation/options_import.py` — reusable per-security import core.
+- `automation/tools/fetch_options.py` — standalone CLI runner (the shipped entry point).
+- `automation/tests/test_expiry_selection.py`, `test_black_scholes.py` — pure-function tests.
+- `automation/config.py` — `OptionsImportConfig` + `load_config`.
+- `automation/db.py` — secret-key write client: `connect`, `upsert_options_chain`,
+  `options_snapshot_exists`, `resolve_security_ids`.
+- `automation/requirements.txt`, `.env.example` — yfinance dep; yfinance needs **no key** (only
+  `SUPABASE_*` for writes).
 
-**Modify**
-- `automation/config.py` — add `OptionsImportConfig`; implement the `load_config` slice it needs
-  (Supabase + options).
-- `automation/db.py` — implement `connect()`, `upsert_options_chain`, `options_snapshot_exists`,
-  and a ticker→security_id resolver.
-- `automation/stages/fetch_options.py` — wire to the shared core (the pipeline link).
-- `automation/providers/market_data.py` — narrow to **prices** (Alpaca); note options moved to
-  yfinance (`options_provider.py`).
-- `automation/requirements.txt` — add `yfinance`; keep `pandas`.
-- `automation/PLAN.md` — update §1b/§4.3 to "yfinance for options (frontend); model IV seam separate."
-- `.env.example` — note yfinance needs **no key** (only `SUPABASE_*` for writes).
+Deferred to when the orchestrator is built: the `fetch_options` **pipeline stage** (a thin wrapper over
+`options_import`), and the Alpaca **prices** provider.
 
 ---
 

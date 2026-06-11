@@ -1,118 +1,74 @@
-# automation — daily data pipeline
+# automation — data tooling for the volarbmodel DB
 
-Automated, **incremental + idempotent** daily run that leaves the Supabase DB fresh every morning:
-pull prices + options → run the model → upload model outputs → generate AI overviews.
+The only component that **writes** to the Supabase DB, via a secret-key client kept separate from the
+app's read-only client. This package currently ships two working tools; the broader nightly pipeline
+is **designed but not yet implemented** — see **[PLAN.md](PLAN.md)** and
+**[OPTIONS_IMPORT_PLAN.md](OPTIONS_IMPORT_PLAN.md)** for the full design and rationale.
 
-> **Status: SCAFFOLD.** Stubs, interfaces, and a design doc only — no stage logic yet. It makes
-> **no** real Alpaca/LLM/model calls. Start with **[`PLAN.md`](PLAN.md)** — it's the source of truth;
-> every `TODO(PLAN §N)` in the code points back to a section there.
+## What's implemented
 
-## What it does (once implemented)
-
-| Stage | Writes | Incremental rule |
+| Tool | What it does | Writes |
 |---|---|---|
-| `ensure_universe` | `securities` (rare) | active set from `securities.active` |
-| `fetch_prices` ∥ | `prices_history` | bars **after** the latest stored date per security |
-| `fetch_options` | `options_chain` | one daily snapshot; skip if today's already present |
-| `run_model` | (model artifacts) | skip if `model_runs` has today's row |
-| `upload_outputs` | `volatility_history`, `model_runs`, `shap_snapshot` | keyed upserts, one `model_run_id` |
-| `ai_overviews` | `ai_overview` | only securities with new model output; content-hash cache |
+| `tools/fetch_options.py` | Pull a scoped daily options chain from yfinance (expiries nearest 30/60/90/180 DTE + front monthlies, strikes ±band of spot), compute `delta` in-house (Black-Scholes), upsert. | `options_chain` |
+| `tools/sync_sp500.py` | Maintain the S&P 500 reference (`data/sp500.csv`) and upsert constituents — add-missing or `--update-existing` to refresh GICS/company name. | `securities` |
+| `sql/remap_security_ids_cik.sql` | One-off migration remapping `securities.security_id` → SEC CIK (cascades to child tables). Run in the Supabase SQL editor. | `securities` (+cascade) |
 
-Re-running a day never duplicates or corrupts — every write is an upsert on the table's real
-constraint, and freshness is derived from the DB itself (see PLAN §3–§4).
+Re-runs are idempotent (keyed upserts), and freshness is derived from the DB (skip-if-already-present).
 
-## How it'll be run
-
-### Now — locally, dry-run (no calls, no writes)
-
-> The commands below are the **intended CLI**. While scaffolded they raise `NotImplementedError`
-> (the orchestrator is stubbed) — they document the interface the wiring will fill in. `--dry-run`
-> is designed to be the first thing that actually runs once the orchestrator + freshness reads land.
+## Setup
 
 ```bash
-pip install -r automation/requirements.txt        # from repo root
-cp .env.example .env                               # fill in values (see below); .env is gitignored
-
-# Resolve freshness and print exactly what WOULD be fetched / run / uploaded / spent. No side effects.
-python -m automation --dry-run
+pip install -r automation/requirements.txt          # from repo root
+cp .env.example .env                                 # fill in values (.env is gitignored)
 ```
 
-Useful flags (PLAN §9.3):
-
-```bash
-python -m automation --force                  # ignore skip/freshness checks; re-run everything
-python -m automation --only fetch_prices      # run a subset (dependency order preserved)
-python -m automation --env stg                # target selection (dev|stg|prod), mirrors backend APP_ENV
-```
-
-Run it as a module from the **repo root** (like `backend`/`model`) so `from automation import ...`
-resolves.
-
-### Standalone options import (implemented now)
-
-The options-chain import is the first **working** piece — it runs independently of the (still
-stubbed) orchestrator. It pulls a scoped daily chain from **yfinance** and upserts `options_chain`.
-Design: [`OPTIONS_IMPORT_PLAN.md`](OPTIONS_IMPORT_PLAN.md).
-
-```bash
-# Fetch + print normalized rows; NO DB writes, no Supabase creds needed (yfinance calls only):
-python -m automation.tools.fetch_options --tickers AAPL MSFT --dry-run
-
-# Write to Supabase (set SUPABASE_URL + SUPABASE_SECRET_KEY in .env — secret key bypasses RLS):
-python -m automation.tools.fetch_options --tickers AAPL MSFT
-
-# Re-fetch even if today's snapshot already exists:
-python -m automation.tools.fetch_options --tickers AAPL --force
-```
-
-- Expiries: nearest to **30/60/90/180 DTE** + the next **1–2 monthlies**; strikes within ±30% of spot.
-- `delta` is computed in-house (Black-Scholes); `volume`/`open_interest` come from yfinance.
-- The pipeline stage `stages/fetch_options.py` reuses the **same** core (`automation/options_import.py`),
-  so the scheduled run behaves identically.
-- Pure-logic tests: `python -m pytest automation/tests`.
-
-### Later — scheduled
-
-- **Initial:** GitHub Actions cron, after US close (~6pm ET) — see
-  [`.github/workflows/daily-pipeline.yml`](../.github/workflows/daily-pipeline.yml) (stubbed,
-  disabled until secrets are set).
-- **Post-deploy:** move the same `python -m automation` entry point to a managed cron on the backend
-  host (Render/Fly/Railway). The orchestrator is host-agnostic, so this is a scheduler swap, not a
-  rewrite. (PLAN §9.1.)
-
-## Required env vars (PLAN §11)
-
-Documented in the root [`.env.example`](../.env.example) — **never commit real values**.
+Required env vars:
 
 | Var | Purpose |
 |---|---|
 | `SUPABASE_URL` | hosted project URL (may reuse `VITE_SUPABASE_URL`) |
-| `SUPABASE_SECRET_KEY` | Supabase **secret** API key for writes (bypasses RLS) — SECRET (legacy `SUPABASE_SERVICE_ROLE_KEY` still accepted) |
-| `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` | prices + options (needs an options-enabled plan) |
-| `ANTHROPIC_API_KEY` | Claude provider for AI overviews |
-| `AUTOMATION_ENV` | `dev`/`stg`/`prod` target (default `dev`) |
+| `SUPABASE_SECRET_KEY` | Supabase **secret** API key for writes (bypasses RLS) — SECRET (legacy `SUPABASE_SERVICE_ROLE_KEY` accepted) |
+| `AUTOMATION_ENV` | `dev`/`stg`/`prod` (default `dev`) |
+
+## Usage
+
+Run as modules from the **repo root**.
+
+```bash
+# Options chain (yfinance). --dry-run fetches + prints with NO DB writes (no creds needed).
+python -m automation.tools.fetch_options --tickers AAPL MSFT --dry-run
+python -m automation.tools.fetch_options --tickers AAPL MSFT          # write
+python -m automation.tools.fetch_options --tickers AAPL --force       # re-fetch today's snapshot
+
+# Securities / S&P 500. --refresh rebuilds the CSV from Wikipedia; default previews; --apply writes.
+python -m automation.tools.sync_sp500 --refresh                       # rebuild data/sp500.csv
+python -m automation.tools.sync_sp500                                 # preview missing constituents
+python -m automation.tools.sync_sp500 --apply                        # add missing
+python -m automation.tools.sync_sp500 --update-existing --apply       # refresh GICS/name on existing
+```
+
+Tests (pure functions, no network/DB): `python -m pytest automation/tests`.
 
 ## Layout
 
 ```
 automation/
-  PLAN.md            ← design doc (read first)
-  config.py context.py orchestrator.py __main__.py
-  db.py              ← service-role write client (idempotent upserts)
-  freshness.py       ← DB-derived incrementality
-  universe.py        ← active universe from securities
-  model_interface.py ← contract for the external model (+ GAP markers)
-  logging_utils.py
-  stages/            ← ensure_universe, fetch_prices, fetch_options, events(deferred),
-                       run_model, upload_outputs, ai_overviews
-  providers/         ← market_data (Alpaca), llm (Claude + registry)
-  sql/               ← pipeline_runs.sql (proposed ledger, not applied)
+  PLAN.md              ← full pipeline design (read for the broader plan)
+  OPTIONS_IMPORT_PLAN.md ← options import design
+  config.py            ← env/config (load_config)
+  db.py                ← secret-key write client (idempotent upserts)
+  black_scholes.py     ← in-house delta (yfinance has no greeks)
+  expiry_selection.py  ← which expiries to fetch
+  options_import.py    ← reusable per-security options import core
+  providers/options_provider.py ← yfinance options provider
+  tools/fetch_options.py, tools/sync_sp500.py  ← the CLIs
+  sql/remap_security_ids_cik.sql ← CIK remap migration
+  data/sp500.csv, company_tickers.json         ← reference metadata
+  tests/               ← pure-function tests
 ```
 
 ## Boundaries
 
-- **Not the model.** `model/` is an external component (another dev). This pipeline invokes it via
-  subprocess and maps its outputs; it never imports model internals. Known interface gaps
-  (SHAP, `pfv_cal_*`/`pfv_q15_*`/`fwd_premium_*`, the post-WRDS IV seam) are listed in PLAN §7.5/§13.
-- **Not the backend.** `backend/` reads the DB with the publishable/anon key (read-only). This is the
-  only component that **writes**, via a separate service-role client (PLAN §6).
+- The only component that **writes** the DB (`backend/` reads with the publishable/anon key, read-only
+  under RLS). The write client (`db.py`) uses the secret key and must never be imported by `backend/`.
+- Not the model. The forecasting model (`model/`) is a separate component with its own data path.

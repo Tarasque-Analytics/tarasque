@@ -1,24 +1,16 @@
-# automation pipeline dependencies (PLAN §11, §12).
-# Pin versions when the implementation lands; left loose during scaffolding.
-#
-# Install (from repo root):
-#   pip install -r automation/requirements.txt
+# automation tooling dependencies.
+# Install (from repo root):  pip install -r automation/requirements.txt
 
-# DB write client — service-role Supabase (same SDK as backend; NOT supabase-py). PLAN §6.
+# DB write client — secret-key Supabase (same SDK as backend; NOT supabase-py).
 supabase
 
-# Market data — stock bars (Alpaca). PLAN §1.
-alpaca-py
-
-# Options chain — yfinance (current-day; free; has OI/volume/IV). OPTIONS_IMPORT_PLAN.md.
-# Greeks (delta) are computed in-house via automation/black_scholes.py (no scipy needed).
+# Options chain — yfinance (current-day; free; has OI/volume/IV). Greeks (delta) are computed
+# in-house via automation/black_scholes.py (no scipy needed).
 yfinance
 
-# AI overviews — first provider (Claude). Other providers add their SDK here. PLAN §8.
-anthropic
-
-# Env loading (repo-root .env). Matches model/backend usage.
-python-dotenv
-
-# Data shaping for artifact parsing / row building. PLAN §7.4.
+# Securities/universe sync — Wikipedia S&P 500 table + SEC company_tickers.json.
+requests
 pandas
+
+# Env loading (repo-root .env).
+python-dotenv

@@ -48,6 +48,29 @@ python -m automation --env stg                # target selection (dev|stg|prod),
 Run it as a module from the **repo root** (like `backend`/`model`) so `from automation import ...`
 resolves.
 
+### Standalone options import (implemented now)
+
+The options-chain import is the first **working** piece — it runs independently of the (still
+stubbed) orchestrator. It pulls a scoped daily chain from **yfinance** and upserts `options_chain`.
+Design: [`OPTIONS_IMPORT_PLAN.md`](OPTIONS_IMPORT_PLAN.md).
+
+```bash
+# Fetch + print normalized rows; NO DB writes, no Supabase creds needed (yfinance calls only):
+python -m automation.tools.fetch_options --tickers AAPL MSFT --dry-run
+
+# Write to Supabase (set SUPABASE_URL + SUPABASE_SECRET_KEY in .env — secret key bypasses RLS):
+python -m automation.tools.fetch_options --tickers AAPL MSFT
+
+# Re-fetch even if today's snapshot already exists:
+python -m automation.tools.fetch_options --tickers AAPL --force
+```
+
+- Expiries: nearest to **30/60/90/180 DTE** + the next **1–2 monthlies**; strikes within ±30% of spot.
+- `delta` is computed in-house (Black-Scholes); `volume`/`open_interest` come from yfinance.
+- The pipeline stage `stages/fetch_options.py` reuses the **same** core (`automation/options_import.py`),
+  so the scheduled run behaves identically.
+- Pure-logic tests: `python -m pytest automation/tests`.
+
 ### Later — scheduled
 
 - **Initial:** GitHub Actions cron, after US close (~6pm ET) — see
@@ -64,7 +87,7 @@ Documented in the root [`.env.example`](../.env.example) — **never commit real
 | Var | Purpose |
 |---|---|
 | `SUPABASE_URL` | hosted project URL (may reuse `VITE_SUPABASE_URL`) |
-| `SUPABASE_SERVICE_ROLE_KEY` | **service-role** key for writes (bypasses RLS) — SECRET |
+| `SUPABASE_SECRET_KEY` | Supabase **secret** API key for writes (bypasses RLS) — SECRET (legacy `SUPABASE_SERVICE_ROLE_KEY` still accepted) |
 | `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` | prices + options (needs an options-enabled plan) |
 | `ANTHROPIC_API_KEY` | Claude provider for AI overviews |
 | `AUTOMATION_ENV` | `dev`/`stg`/`prod` target (default `dev`) |

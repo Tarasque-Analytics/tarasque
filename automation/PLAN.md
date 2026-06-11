@@ -39,7 +39,7 @@ duplicate or corrupt rows.
 
 | Dimension | Decision |
 |---|---|
-| Market-data provider | **Alpaca** for both stock bars and the options chain (single provider). |
+| Market-data provider | **Alpaca** for stock bars. **Options chain → yfinance** (revised; see [`OPTIONS_IMPORT_PLAN.md`](OPTIONS_IMPORT_PLAN.md) — Alpaca has no OI/volume). |
 | Scheduling | **Portable Python orchestrator**, run by **GitHub Actions cron** initially; movable to a managed host scheduler post-deploy. |
 | Model interface | **Define the contract against the model's current outputs**, map what maps cleanly, and flag the gaps (§7) for the model dev. |
 | AI overviews | **Provider/model-agnostic** abstraction; **Claude** is the first provider tested. Per-model "workflows" allowed, but all share a relatively similar **input** and produce a relatively similar **output** shape. |
@@ -248,7 +248,8 @@ without making any calls.
   `.env.example` only; §11).
 - The pipeline's DB client is **distinct** from the app's read client: it lives in
   [`automation/db.py`](db.py) (`WriteClient`), is constructed from `SUPABASE_URL` +
-  `SUPABASE_SERVICE_ROLE_KEY`, and exposes typed `upsert_*` helpers keyed on the constraints in §4.1.
+  `SUPABASE_SECRET_KEY` (new secret API key; legacy `SUPABASE_SERVICE_ROLE_KEY` accepted), and
+  exposes typed `upsert_*` helpers keyed on the constraints in §4.1.
   It must **never** be imported by `backend/`, and the read client must never be imported here.
 - **RLS gotcha (inherited):** tables read via the Data API need a permissive `SELECT` policy for
   `anon` or PostgREST returns 0 rows silently. That is a *read* concern for the app; the service-role
@@ -464,7 +465,7 @@ already excludes `.env` / `.env.*` while keeping `.env.example`.
 | Var | Used by | Notes |
 |---|---|---|
 | `SUPABASE_URL` | write client | hosted project URL (can reuse `VITE_SUPABASE_URL`'s value). |
-| `SUPABASE_SERVICE_ROLE_KEY` | write client | **service-role** secret — bypasses RLS. **Never** ship to the frontend or commit. |
+| `SUPABASE_SECRET_KEY` | write client | Supabase **secret** API key — bypasses RLS (legacy `SUPABASE_SERVICE_ROLE_KEY` accepted). **Never** ship to the frontend or commit. |
 | `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` | market-data provider | already present; reused for prices + options. Needs an options-enabled plan. |
 | `ANTHROPIC_API_KEY` | Claude LLM provider | for `ai_overviews` (first provider). |
 | `AUTOMATION_ENV` | orchestrator | `dev`/`stg`/`prod` target selection, mirroring the backend's `APP_ENV` story. |

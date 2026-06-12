@@ -174,20 +174,29 @@ async def sync(apply: bool, update_existing: bool = False) -> int:
         rows, skipped, dropped = _build_rows(members, existing_by_id, include_existing=update_existing)
 
         if not update_existing:
+            to_write = rows  # every row is a missing CIK by construction (the "add missing" pass)
             print(f"[sync_sp500] members={len(members)}  already present={len(skipped)}  "
-                  f"dual-class dropped={len(dropped)} {dropped}  to-add={len(rows)}")
-            for r in rows[:8]:
+                  f"dual-class dropped={len(dropped)} {dropped}  to-add={len(to_write)}")
+            for r in to_write[:8]:
                 print(f"    + {r['ticker']:6s} cik={r['security_id']:>9}  {r['gics_sector']:<24} {r['company_name']}")
-            if len(rows) > 8:
-                print(f"    … and {len(rows) - 8} more")
+            if len(to_write) > 8:
+                print(f"    … and {len(to_write) - 8} more")
         else:
-            # Report only the rows that actually change (existing rows with stale metadata).
-            changing = [(r, _diff(r, existing_by_id[r["security_id"]]))
-                        for r in rows if r["security_id"] in existing_by_id
-                        and _diff(r, existing_by_id[r["security_id"]])]
-            new_rows = [r for r in rows if r["security_id"] not in existing_by_id]
-            print(f"[sync_sp500] update-existing: members={len(members)}  upsert rows={len(rows)}  "
-                  f"changing={len(changing)}  new={len(new_rows)}  dual-class dropped={dropped}")
+            # Only write rows that are new or whose metadata actually changed — skip no-op upserts.
+            changing: list[tuple[dict, list[str]]] = []
+            new_rows: list[dict] = []
+            for r in rows:
+                cur = existing_by_id.get(r["security_id"])
+                if cur is None:
+                    new_rows.append(r)
+                else:
+                    cols = _diff(r, cur)
+                    if cols:
+                        changing.append((r, cols))
+            to_write = [r for r, _ in changing] + new_rows
+            print(f"[sync_sp500] update-existing: members={len(members)}  to-write={len(to_write)}  "
+                  f"changing={len(changing)}  new={len(new_rows)}  "
+                  f"unchanged={len(rows) - len(to_write)}  dual-class dropped={dropped}")
             for r, cols in changing[:12]:
                 cur = existing_by_id[r["security_id"]]
                 print(f"    ~ {r['ticker']:6s} {', '.join(cols)}"
@@ -199,7 +208,7 @@ async def sync(apply: bool, update_existing: bool = False) -> int:
             print("[sync_sp500] PREVIEW only — re-run with --apply to write.")
             return 0
 
-        written = await db.upsert_securities(rows)
+        written = await db.upsert_securities(to_write)
         print(f"[sync_sp500] upserted {written} securities rows.")
         return written
     finally:

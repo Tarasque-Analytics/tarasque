@@ -452,6 +452,13 @@ produce a **relatively similar output**. Claude (Anthropic API) is the first pro
 - `securities` metadata (sector, `min_history_date`, etc.) is upserted only on change by
   `ensure_universe` (Stage 0). The model's own `config.py` ticker list is a *separate* concern (the
   model dev's), but the two should be reconciled — flagged as a coordination item.
+- **`security_id` is the SEC CIK** (per `sql/remap_security_ids_cik.sql`); the S&P 500 universe is
+  maintained by `tools/sync_sp500.py`. CIK is a *filer* id, so **dual-class share classes collapse to
+  one row** — GOOG/GOOGL, FOX/FOXA, NWS/NWSA share a CIK, so `sync_sp500` keeps one (the first-listed)
+  and drops the other (still recorded in `data/sp500.csv`). A proper per-class representation (an
+  `alt_tickers` column / `security_tickers` alias table, or a per-security key like FIGI) is
+  **deferred — low priority** given it's only 3 S&P 500 names and the app shows one ticker per company.
+  Consequence: only the primary class's prices/options are stored; revisit if a per-class chain is needed.
 
 ---
 

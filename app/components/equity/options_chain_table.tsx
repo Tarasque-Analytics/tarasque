@@ -62,8 +62,6 @@ type ChainView = {
   spot: number;
   snapshotISO: string;
   expiries: Expiry[]; // sorted by DTE asc; [0] = nearest expiry (the default)
-  dteMin: number;
-  dteMax: number;
   rowsFor: (expiryISO: string) => Row[]; // per-strike pivot for one expiry, sorted by strike asc
   isMock: boolean;
 };
@@ -99,8 +97,6 @@ function viewFromContracts(
     .sort((a, b) => a.dte - b.dte);
   if (!expiries.length) return null;
 
-  const dtes = expiries.map((e) => e.dte);
-
   const rowsFor = (expiryISO: string): Row[] => {
     const byStrike = new Map<number, Row>();
     for (const o of contracts) {
@@ -120,8 +116,6 @@ function viewFromContracts(
     spot,
     snapshotISO,
     expiries,
-    dteMin: Math.min(...dtes),
-    dteMax: Math.max(...dtes),
     rowsFor,
     isMock,
   };
@@ -147,14 +141,16 @@ function buildView(equity: EquitiesPayload | null): ChainView | null {
   return viewFromContracts(spot, snapshotISO, snap, false);
 }
 
-/* ── dev fixture ──
-   options_chain is empty across the hosted DB (0 rows for every ticker — same wall the skew chart
-   hit), so this synthesizes a realistic multi-expiry chain (Black–Scholes prices/deltas, a
-   downside-skewed IV smile, an OI/VOL bell around ATM) to develop the table against. Deterministic
-   (no Date.now()/Math.random()) so SSR and client agree. Used ONLY in dev (import.meta.env.DEV)
-   AND only when live data is absent — production renders the real empty state, never this.
-   TODO (before deploy): remove this fixture / the IS_DEV fallback once the options feed is
-   populated. Test data should live in the Supabase seed / migrations, not here. */
+/* ── dev fixture (offline fallback) ──
+   The hosted options feed is populated (automation/tools/fetch_options.py → options_chain), so with
+   the backend up the table renders REAL data. This fixture is only a dev convenience for working
+   offline / with the backend down: it synthesizes a realistic multi-expiry chain (Black–Scholes
+   prices/deltas, a downside-skewed IV smile, an OI/VOL bell around ATM) so the table and the DTE
+   selector stay demonstrable without a feed. Deterministic (no Date.now()/Math.random()) so SSR and
+   client agree. Used ONLY in dev (import.meta.env.DEV) AND only when live data is absent —
+   production renders the real empty state, never this.
+   TODO (before deploy): remove this fixture / the IS_DEV fallback. Any test data should live in the
+   Supabase seed / migrations, not here. */
 const IS_DEV = Boolean(import.meta.env?.DEV);
 
 // Standard normal CDF (Abramowitz & Stegun 7.1.26) — for the fixture's BS prices/deltas only.
@@ -283,15 +279,19 @@ export default function OptionsChainTable() {
     );
   }
 
-  const dteRange =
-    view.dteMin === view.dteMax ? `${view.dteMin} DTE` : `${view.dteMin}–${view.dteMax} DTE`;
+  // Surface the concrete selected expiry (date + DTE) in the subtitle — the segmented buttons only
+  // carry the DTE, so this keeps the full expiry date visible (mirrors contract_skew_chart.tsx).
+  const selExpiry = view.expiries.find((e) => e.iso === selected);
+  const subtitle = selExpiry
+    ? `Listed contracts · expiry ${expiryLabel(selExpiry.iso)} (${selExpiry.dte}d) · sorted by strike`
+    : "Listed contracts · sorted by strike";
 
   return (
     <Card>
       <Header
         symbol={equity?.symbol}
         sec={equity?.security}
-        subtitle={`Listed contracts · ${dteRange} · sorted by strike`}
+        subtitle={subtitle}
         isMock={view.isMock}
         expiries={view.expiries}
         selected={selected}
@@ -423,22 +423,26 @@ function Header({
         {subtitle && <p className="mt-0.5 text-sm text-(--text-muted)">{subtitle}</p>}
       </div>
 
-      {expiries && expiries.length > 0 && (
-        <label className="flex items-center gap-2 text-xs font-medium text-(--text-muted)">
-          Expiry
-          <select
-            aria-label="Select expiry"
-            value={selected}
-            onChange={(e) => onSelect?.(e.target.value)}
-            className="rounded-md border border-(--panel-border) bg-(--ui-background) px-2.5 py-1.5 text-xs font-medium text-(--text-primary)"
-          >
+      {expiries && expiries.length > 1 && onSelect && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold tracking-wide text-(--text-muted) uppercase">
+            Expiry
+          </span>
+          {/* segmented DTE selector (mirrors contract_skew_chart.tsx); buttons labeled by DTE */}
+          <div className="segmented">
             {expiries.map((e) => (
-              <option key={e.iso} value={e.iso}>
-                {expiryLabel(e.iso)} · {e.dte} DTE
-              </option>
+              <button
+                key={e.iso}
+                type="button"
+                className="segmented-btn"
+                data-active={selected === e.iso}
+                onClick={() => onSelect(e.iso)}
+              >
+                {e.dte}d
+              </button>
             ))}
-          </select>
-        </label>
+          </div>
+        </div>
       )}
     </div>
   );

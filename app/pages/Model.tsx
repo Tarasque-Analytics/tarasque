@@ -1,4 +1,4 @@
-import { useParams, useLoaderData } from "react-router";
+import { useParams } from "react-router";
 export default function Model() {
   const { symbol } = useParams<{ symbol: string }>();
 

@@ -275,7 +275,6 @@ async def get_model():
             .select("model_version, run_date")
             .order("run_date", desc=True)
             .order("id", desc=True)
-            .limit(1)
             .execute()
         )
     except Exception as e:
@@ -287,6 +286,6 @@ async def get_model():
             detail="Error fetching from model_runs table" 
         )
     
-    return response.data[0] if response.data else []
+    return response.data if response.data else []
 
         

@@ -12,10 +12,12 @@ export default function Model() {
     loadModelData(symbol).then(setData);
   }, [symbol]);
 
+
   return (
 
     <div className="flex min-h-[60vh] items-center justify-center">
       <ModelDataProvider data={data}>
+        {/**Place components here */}
         <div className="w-full max-w-md">{symbol} SHAP goes here</div>
       </ModelDataProvider>
     </div>

@@ -221,7 +221,8 @@ def main(argv: list[str] | None = None) -> int:
         description="Maintain the S&P 500 reference CSV and add missing constituents to securities.",
     )
     p.add_argument("--refresh", action="store_true",
-                   help="Rebuild automation/data/sp500.csv from Wikipedia (needs network). No DB writes.")
+                   help="Standalone: rebuild automation/data/sp500.csv from Wikipedia (network only, "
+                        "no DB connection or creds). Run a separate (no-flag) invocation to sync.")
     p.add_argument("--apply", action="store_true",
                    help="Write to securities (default is preview only).")
     p.add_argument("--update-existing", action="store_true",
@@ -230,7 +231,10 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     if args.refresh:
+        # --refresh is standalone: rebuild the reference CSV only (Wikipedia + local files, no DB).
         refresh_csv()
+        return 0
+
     asyncio.run(sync(apply=args.apply, update_existing=args.update_existing))
     return 0
 

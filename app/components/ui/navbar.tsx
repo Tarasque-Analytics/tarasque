@@ -11,6 +11,7 @@ const NAV_LINKS = [
   { to: "/equity", label: "Equities" },
   { to: "/sector", label: "Sectors" },
   { to: "/macro", label: "Macro" },
+  { to: "/model", label: "Model" },
 ];
 
 // LIVE/DEV status. Derived from the Vite dev flag for now — DEV (yellow) on the local dev server

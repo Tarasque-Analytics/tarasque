@@ -1,9 +1,4 @@
-import {
-  type RouteConfig,
-  route,
-  index,
-  layout,
-} from "@react-router/dev/routes";
+import { type RouteConfig, route, index, layout } from "@react-router/dev/routes";
 
 export default [
   // Public routes (no auth req)
@@ -21,6 +16,8 @@ export default [
     route("macro", "./routes/macro.tsx"),
     route("sector", "./routes/sector_landing.tsx"),
     route("sector/:sector", "./routes/sector.tsx"),
+    route("model", "./routes/model_landing.tsx"),
+    route("model/:symbol", "./routes/model.tsx"),
   ]),
 
   // Wildcard route for 404/unmatched routes

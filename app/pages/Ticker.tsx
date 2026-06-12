@@ -5,6 +5,7 @@ import Options from "../components/ticker/options";
 import Predictors from "../components/ticker/predictors";
 import PriceHistoryChart from "../components/equity/price_history_chart";
 import ForwardVolForecast from "../components/equity/forward_vol_forecast";
+import ContractSkewChart from "../components/equity/contract_skew_chart";
 import { TickerDataProvider } from "../context/TickerDataContext";
 import { EquityDataProvider } from "../context/EquityDataContext";
 import type { TickerLoaderData } from "../routes/ticker";
@@ -19,6 +20,7 @@ export default function TickerView() {
           {/* Redesigned equity page — new components go here, top-down. */}
           <PriceHistoryChart />
           <ForwardVolForecast />
+          <ContractSkewChart />
 
           {/* Legacy components below: slated for near-complete rewrite as the redesign
               proceeds. Kept temporarily so the page stays functional; remove as each is

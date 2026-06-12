@@ -71,8 +71,11 @@ const fillBand = (
   hi: number,
   color: string,
 ) => {
-  const xl = x.getPixelForValue(lo);
-  const xh = x.getPixelForValue(hi);
+  // Normalize endpoints so an inverted band (e.g. RV wider than IV, when premium is negative) still
+  // fills correctly, and skip degenerate slivers.
+  const xl = Math.min(x.getPixelForValue(lo), x.getPixelForValue(hi));
+  const xh = Math.max(x.getPixelForValue(lo), x.getPixelForValue(hi));
+  if (xh - xl < 0.5) return;
   ctx.fillStyle = color;
   ctx.fillRect(xl, top, xh - xl, bottom - top);
 };
@@ -107,8 +110,13 @@ const skewBandsPlugin: Plugin<"bubble"> = {
     const x = scales.x;
     const y = scales.y;
     if (!x || !y) return;
-    const { top, bottom } = chartArea;
+    const { top, bottom, left, right } = chartArea;
     ctx.save();
+    // Clip to the plot area so a band edge / line that runs past the x-range can't paint over the
+    // axes or tick labels.
+    ctx.beginPath();
+    ctx.rect(left, top, right - left, bottom - top);
+    ctx.clip();
 
     // Bands, painted widest-first so overlaps read correctly:
     //   gold IV interior → gold premium rims (IV outside RV) → teal RV interior on top.
@@ -630,10 +638,10 @@ function BandLegend() {
   return (
     <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-(--text-muted)">
       <span className="flex items-center gap-1.5">
-        <Swatch color={IV_FILL} border={IV_EDGE} /> IV ±1σ band
+        <Swatch color={IV_FILL} border={IV_EDGE} /> IV band (spot ± IV)
       </span>
       <span className="flex items-center gap-1.5">
-        <Swatch color={RV_FILL} border={RV_EDGE} /> RV ±1σ band
+        <Swatch color={RV_FILL} border={RV_EDGE} /> RV band (spot ± RV)
       </span>
       <span className="flex items-center gap-1.5">
         <Swatch color={PREMIUM_FILL} /> IV-RV premium

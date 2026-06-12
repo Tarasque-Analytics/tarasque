@@ -63,17 +63,9 @@ type ChainView = {
   snapshotISO: string;
   expiries: Expiry[]; // sorted by DTE asc; [0] = nearest expiry (the default)
   rowsFor: (expiryISO: string) => Row[]; // per-strike pivot for one expiry, sorted by strike asc
-  isMock: boolean;
 };
 
-// Only the fields the table needs — lets the dev fixture supply plain objects without faking
-// id/security_id/last.
-type ContractLite = Pick<
-  OptionRecord,
-  "expiry" | "option_type" | "strike" | "bid" | "ask" | "mid" | "iv" | "delta" | "open_interest" | "volume"
->;
-
-const toLeg = (o: ContractLite): Leg => ({
+const toLeg = (o: OptionRecord): Leg => ({
   bid: o.bid,
   ask: o.ask,
   mid: o.mid,
@@ -83,12 +75,11 @@ const toLeg = (o: ContractLite): Leg => ({
   vol: o.volume,
 });
 
-// Pivot a single snapshot's contracts into the view model. Shared by live data and the dev fixture.
+// Pivot a single snapshot's contracts into the view model.
 function viewFromContracts(
   spot: number,
   snapshotISO: string,
-  contracts: ContractLite[],
-  isMock: boolean,
+  contracts: OptionRecord[],
 ): ChainView | null {
   if (!contracts.length) return null;
 
@@ -117,7 +108,6 @@ function viewFromContracts(
     snapshotISO,
     expiries,
     rowsFor,
-    isMock,
   };
 }
 
@@ -138,82 +128,8 @@ function buildView(equity: EquitiesPayload | null): ChainView | null {
     chain[0].snapshot_date,
   );
   const snap = chain.filter((o) => o.snapshot_date === snapshotISO);
-  return viewFromContracts(spot, snapshotISO, snap, false);
+  return viewFromContracts(spot, snapshotISO, snap);
 }
-
-/* ── dev fixture (offline fallback) ──
-   The hosted options feed is populated (automation/tools/fetch_options.py → options_chain), so with
-   the backend up the table renders REAL data. This fixture is only a dev convenience for working
-   offline / with the backend down: it synthesizes a realistic multi-expiry chain (Black–Scholes
-   prices/deltas, a downside-skewed IV smile, an OI/VOL bell around ATM) so the table and the DTE
-   selector stay demonstrable without a feed. Deterministic (no Date.now()/Math.random()) so SSR and
-   client agree. Used ONLY in dev (import.meta.env.DEV) AND only when live data is absent —
-   production renders the real empty state, never this.
-   TODO (before deploy): remove this fixture / the IS_DEV fallback. Any test data should live in the
-   Supabase seed / migrations, not here. */
-const IS_DEV = Boolean(import.meta.env?.DEV);
-
-// Standard normal CDF (Abramowitz & Stegun 7.1.26) — for the fixture's BS prices/deltas only.
-const Phi = (x: number) => {
-  const t = 1 / (1 + 0.2316419 * Math.abs(x));
-  const d = 0.3989422804014327 * Math.exp((-x * x) / 2);
-  const p =
-    d * t * (0.31938153 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
-  return x >= 0 ? 1 - p : p;
-};
-
-// TZ-safe whole-day add: parse + emit in UTC so the result is identical on server and client.
-const addDays = (iso: string, n: number) => {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-};
-
-function makeMock(): { spot: number; snapshotISO: string; contracts: ContractLite[] } {
-  const spot = 177.01; // matches the skew-chart fixture and the design-mockup ladder
-  const snapshotISO = "2026-05-29";
-  const dteList = [30, 60, 90, 120];
-  const contracts: ContractLite[] = [];
-
-  for (let di = 0; di < dteList.length; di++) {
-    const dte = dteList[di];
-    const expiry = addDays(snapshotISO, dte);
-    const t = dte / 365;
-    for (let k = 150; k <= 207.5; k += 2.5) {
-      const m = (k - spot) / spot; // moneyness
-      // Downside-skewed smile with a mild term-structure tilt.
-      const iv = Math.min(0.5, Math.max(0.18, 0.225 + 0.9 * m * m - 0.18 * m - 0.02 * (t - 0.16)));
-      const srt = iv * Math.sqrt(t);
-      const d1 = (Math.log(spot / k) + 0.5 * iv * iv * t) / srt;
-      const d2 = d1 - srt;
-      const bell = Math.exp(-((m / 0.07) ** 2) / 2);
-      const scale = 1 - 0.12 * di; // nearer expiries carry more open interest
-      for (const type of ["C", "P"] as const) {
-        const px = type === "C" ? spot * Phi(d1) - k * Phi(d2) : k * Phi(-d2) - spot * Phi(-d1);
-        const mid = Math.max(0.05, Math.round(px * 100) / 100);
-        const half = Math.min(0.3, Math.max(0.005, mid * 0.02));
-        const bid = Math.max(0.05, Math.round((mid - half) * 100) / 100);
-        const ask = Math.round((bid + Math.max(0.01, half * 2)) * 100) / 100;
-        const delta = type === "C" ? Phi(d1) : Phi(d1) - 1;
-        contracts.push({
-          expiry,
-          option_type: type,
-          strike: Math.round(k * 100) / 100,
-          bid,
-          ask,
-          mid,
-          iv: Math.round(iv * 1e4) / 1e4,
-          delta: Math.round(delta * 100) / 100,
-          open_interest: Math.round(300 + 24000 * bell * scale),
-          volume: Math.round(40 + 8000 * bell * bell * scale),
-        });
-      }
-    }
-  }
-  return { spot, snapshotISO, contracts };
-}
-const MOCK = makeMock();
-const MOCK_VIEW = viewFromContracts(MOCK.spot, MOCK.snapshotISO, MOCK.contracts, true);
 
 /* ── gradient de-emphasis ──
    Low-value contracts (near-zero premium / far OTM) fade toward gray; valuable contracts (ATM and
@@ -235,10 +151,8 @@ function Card({ children }: { children: ReactNode }) {
 
 export default function OptionsChainTable() {
   const equity = useEquityData();
-  const live = useMemo(() => buildView(equity), [equity]);
-  // In dev, fall back to the fixture whenever there's no live view (even with the DB down) so the
-  // table can be developed without an options feed. Production (IS_DEV false) shows real empty states.
-  const view = live ?? (IS_DEV ? MOCK_VIEW : null);
+  // Real data only — null when there's no spot or no contracts; the component renders an empty state.
+  const view = useMemo(() => buildView(equity), [equity]);
 
   // Selected expiry: default to the nearest (expiries[0], sorted by DTE asc). Self-heals if the
   // previously-picked expiry isn't present in the current view.
@@ -292,7 +206,6 @@ export default function OptionsChainTable() {
         symbol={equity?.symbol}
         sec={equity?.security}
         subtitle={subtitle}
-        isMock={view.isMock}
         expiries={view.expiries}
         selected={selected}
         onSelect={setPicked}
@@ -393,12 +306,11 @@ function Num({ v, muted, op }: { v: ReactNode; muted?: boolean; op: number }) {
   );
 }
 
-/* ── header: title · symbol · sector badge · subtitle · expiry dropdown ── */
+/* ── header: title · symbol · sector badge · subtitle · expiry selector ── */
 function Header({
   symbol,
   sec,
   subtitle,
-  isMock,
   expiries,
   selected,
   onSelect,
@@ -406,7 +318,6 @@ function Header({
   symbol?: string;
   sec?: SecurityMeta;
   subtitle?: string;
-  isMock?: boolean;
   expiries?: Expiry[];
   selected?: string;
   onSelect?: (iso: string) => void;
@@ -418,7 +329,6 @@ function Header({
           <h2 className="text-2xl font-bold tracking-tight text-(--text-primary)">Options Chain</h2>
           {symbol && <span className="text-lg font-semibold text-(--text-muted)">{symbol}</span>}
           {sec?.gics_sector && <span className="badge badge-sector">{sec.gics_sector}</span>}
-          {isMock && <span className="badge badge-neutral">sample data</span>}
         </div>
         {subtitle && <p className="mt-0.5 text-sm text-(--text-muted)">{subtitle}</p>}
       </div>

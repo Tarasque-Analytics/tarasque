@@ -9,7 +9,7 @@ read-only client). What's implemented today:
     `sql/remap_security_ids_cik.sql`
 
 The broader daily pipeline (prices, model run, output upload, AI overviews) is **designed but not
-yet implemented** — see `PLAN.md` and `OPTIONS_IMPORT_PLAN.md` for the full plan.
+yet implemented** — see `CLAUDE.md` for the full design, decisions, and plan.
 """
 
 __all__ = ["__version__"]

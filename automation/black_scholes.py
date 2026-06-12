@@ -4,7 +4,7 @@ black_scholes.py — minimal, dependency-free Black-Scholes greeks.
 Used to fill `options_chain.delta` when the data provider supplies IV but no greeks (yfinance). Kept
 self-contained (only the stdlib `math`) so `automation` doesn't depend on the `model/` package or
 scipy. The model's `model/pipeline/utils.py` BS is the conceptual reference; we deliberately don't
-import it (package-boundary hygiene — see OPTIONS_IMPORT_PLAN.md §5).
+import it (package-boundary hygiene — see CLAUDE.md §5).
 
 Approximations (documented, acceptable for a UI greeks column): dividend yield q ≈ 0, a single
 risk-free rate r. Revisit if delta is ever used for pricing rather than display.

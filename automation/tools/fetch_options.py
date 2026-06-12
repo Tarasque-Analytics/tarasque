@@ -1,5 +1,5 @@
 """
-fetch_options.py — standalone options-chain importer (OPTIONS_IMPORT_PLAN.md §7).
+fetch_options.py — standalone options-chain importer (CLAUDE.md §5).
 
 Fetches a scoped daily options snapshot from yfinance and upserts it into `options_chain`. Reuses the
 exact core (`automation.options_import`) the pipeline's `fetch_options` stage uses, so the standalone

@@ -1,10 +1,10 @@
 """
-options_import.py — reusable options-import core (OPTIONS_IMPORT_PLAN.md §7).
+options_import.py — reusable options-import core (CLAUDE.md §5).
 
-The single place that wires provider → expiry selection → fetch → upsert for ONE security. Both
-callers use it, so there's no duplicated logic:
-  - the standalone CLI  (`automation/tools/fetch_options.py`)
-  - the pipeline stage   (`automation/stages/fetch_options.py`)
+The single place that wires provider → expiry selection → fetch → upsert for ONE security, so callers
+share one implementation:
+  - the standalone CLI  (`automation/tools/fetch_options.py`) — the shipped entry point
+  - the pipeline stage   (planned — will reuse this core when the orchestrator is built)
 
 Provider network calls are synchronous (yfinance); they're invoked directly here. Callers that need
 concurrency can wrap `import_options_for_security` with `asyncio.to_thread`, but sequential is fine

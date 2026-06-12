@@ -3,7 +3,7 @@ config.py — configuration + environment wiring for the automation tooling.
 
 `load_config()` reads the repo-root `.env` (then the process env) and returns typed config. Nothing
 here makes network calls. Secrets are read from the environment — **never** hard-code them. See the
-root `.env.example` and `automation/PLAN.md` §11 for the full var list.
+root `.env.example` and `automation/CLAUDE.md` §3 for the full var list.
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ REPO_ROOT: Path = Path(__file__).resolve().parent.parent
 
 @dataclass
 class SupabaseConfig:
-    """Write-side Supabase connection — the secret API key bypasses RLS. See PLAN §6."""
+    """Write-side Supabase connection — the secret API key bypasses RLS. See CLAUDE.md §3."""
 
     url: str = ""          # SUPABASE_URL (may reuse VITE_SUPABASE_URL's value)
     # New Supabase "secret" API key (sb_secret_...), which bypasses RLS. Falls back to the legacy
@@ -43,7 +43,7 @@ class SupabaseConfig:
 @dataclass
 class OptionsImportConfig:
     """
-    Options-chain import config (OPTIONS_IMPORT_PLAN.md). Provider-agnostic naming so swapping
+    Options-chain import config (CLAUDE.md §5). Provider-agnostic naming so swapping
     yfinance → Polygon/Tradier later is a config change, not a rewrite.
     """
 

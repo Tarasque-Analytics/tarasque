@@ -1,5 +1,5 @@
 """
-expiry_selection.py — choose which option expiries to fetch (OPTIONS_IMPORT_PLAN.md §4).
+expiry_selection.py — choose which option expiries to fetch (CLAUDE.md §5).
 
 Pure functions over an available-expiry list + today. The default preset is **A + front monthlies**:
 the expiry nearest each constant-maturity term point (30/60/90/180 DTE) UNION the next 1–2 standard

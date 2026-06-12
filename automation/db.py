@@ -2,7 +2,7 @@
 db.py — the write-capable Supabase client.
 
 The ONLY DB client in the project that writes. Constructed from `SUPABASE_URL` + the secret API key,
-so it **bypasses RLS** (PLAN §6). Deliberately separate from `backend/database.py` (the app's
+so it **bypasses RLS** (CLAUDE.md §3). Deliberately separate from `backend/database.py` (the app's
 read-only publishable/anon client) and must never be imported by the backend, nor vice-versa.
 
 Every write is an **upsert keyed on the table's real constraint** so re-running is idempotent — no

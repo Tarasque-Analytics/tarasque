@@ -1,5 +1,5 @@
 """
-options_provider.py — options-chain data provider (OPTIONS_IMPORT_PLAN.md §2, §3, §6).
+options_provider.py — options-chain data provider (CLAUDE.md §5).
 
 A narrow `OptionsProvider` interface with a `YFinanceOptionsProvider` implementation. yfinance is the
 chosen source (free, current-day, has bid/ask/last/volume/OI/IV); it gives **no greeks**, so `delta`
@@ -121,7 +121,7 @@ def _chain_is_empty(chain: Any) -> bool:
 
 
 class YFinanceOptionsProvider:
-    """yfinance implementation of OptionsProvider (OPTIONS_IMPORT_PLAN.md §3)."""
+    """yfinance implementation of OptionsProvider (CLAUDE.md §5)."""
 
     def __init__(self, config: "OptionsImportConfig") -> None:
         self._config = config

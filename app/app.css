@@ -168,7 +168,7 @@ body {
 /* === Model Components === */
 
 .model-search-input {
-  @apply w-full rounded-lg border bg-white px-4 py-2.5 text-sm outline-none shadow-sm transition-colors;
+  @apply w-full rounded-lg border px-4 py-2.5 text-sm outline-none shadow-sm transition-colors;
   border-color: var(--panel-border);
   background: var(--ui-background);
   color: var(--text-primary);

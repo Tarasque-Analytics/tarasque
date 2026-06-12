@@ -262,9 +262,6 @@ async def getModel():
                     {
                         "model_version": str,
                         "run_date": str,
-                        "spec_hash": str,
-                        "n_tickers": int,
-                        "horizons": str[]
                     }
             }
     

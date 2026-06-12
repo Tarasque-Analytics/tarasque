@@ -1,52 +1,42 @@
-import type { SHAPSnapshot } from "./database"
+import type { SHAPSnapshot, ModelRun } from "./database"
 
 const API_BASE_URL = "http://localhost:8000/api";
 
 
 // NOTE: Add and subtract from payload here
 export interface ModelDataPayload {
-  version: string;
-  run_date: string;
-  spec_hash: string;
-  n_tickers: number;
-  horizons: string[];
-  shap: SHAPSnapshot[];
+  runs: ModelRun[];
+  shap: SHAPSnapshot[] | null;
 }
 
-export async function loadModelData(symbol: string): Promise<ModelDataPayload> {
+export async function loadModelData(symbol: string | undefined): Promise<ModelDataPayload> {
   try {
-
-    // For now just query both endpoints, if we move forward with this. We should just 
-    const [modelMeta, modelData] = await Promise.all([
+    const [modelRuns, modelData] = await Promise.all([
       fetch(`${API_BASE_URL}/model`),
-      fetch(`${API_BASE_URL}/model/${symbol}`)
+      symbol ? fetch(`${API_BASE_URL}/model/${symbol}`) : Promise.resolve([]),
     ]);
 
-    if (!modelMeta.ok) {
-      throw new Error(`Failed to fetch model metadata: ${modelMeta.statusText}`);
+    if (!modelRuns.ok) {
+      throw new Error(`Failed to fetch model metadata: ${modelRuns.statusText}`);
     }
 
-    if (!modelData.ok) {
+    if (modelData && modelData instanceof Response && !modelData.ok) {
       if (modelData.status === 404) {
         throw new Error(`No data found for symbol: ${symbol}`);
       }
       throw new Error(`Failed to fetch data for ${symbol}: ${modelData.statusText}`);
     }
 
-    const metaData = await modelMeta.json();
-    const data = await modelData.json();
+    const runs = await modelRuns.json();
+    const shap = modelData instanceof Response ? (await modelData.json()).shap : [];
 
     return {
-      version: metaData.model_version,
-      run_date: metaData.run_date,
-      spec_hash: metaData.spec_hash,
-      n_tickers: metaData.n_tickers,
-      horizons: metaData.horizons,
-      shap: data.shap
+      runs: runs,
+      shap: shap
     };
 
   } catch (error) {
-    console.error(`Error loading ticker data for ${symbol}:`, error);
+    console.error(`Error loading model data for ${symbol}:`, error);
     throw error;
   }
 }

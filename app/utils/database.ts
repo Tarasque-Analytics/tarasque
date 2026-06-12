@@ -157,7 +157,11 @@ export async function loadEquityData(symbol: string): Promise<EquitiesPayload> {
     }
     return await response.json();
   } catch (error) {
-    console.error(`Error loading equity data for ${symbol}:`, error);
+    if (import.meta.env.DEV) {
+      console.error(`Error loading equity data for ${symbol}:`, error);
+    } else {
+      console.error(`Error loading equity data for ${symbol}`);
+    }
     throw error;
   }
 }
@@ -179,7 +183,11 @@ export async function loadLatestModelRun(): Promise<ModelRun | null> {
     if (!response.ok) return null;
     return (await response.json()) as ModelRun;
   } catch (error) {
-    console.error("Error loading latest model run:", error);
+    if (import.meta.env.DEV) {
+      console.error("Error loading latest model run:", error);
+    } else {
+      console.error("Error loading latest model run");
+    }
     return null;
   }
 }

@@ -28,7 +28,8 @@ from backend.database import (
     get_ai_overview,
     get_shap_snapshot,
     # get_distribution,  # TODO: re-enable once finance defines distribution structure (separate PR)
-    get_events
+    get_events,
+    get_latest_model_run
 )
 
 
@@ -108,7 +109,8 @@ async def get_available_tickers():
         return {"tickers": tickers, "count": len(tickers)}
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching tickers: {str(e)}")
+        print(f"Exception at get_available_tickers: {str(e)}", flush=True)
+        raise HTTPException(status_code=500, detail="Error fetching tickers")
 
 
 @app.get("/api/tickers/{symbol}")
@@ -148,14 +150,16 @@ async def get_ticker_data(symbol: str):
         return data
     
     except json.JSONDecodeError as e:
+        print(f"Exception at get_ticker_data (JSONDecodeError) for {symbol}: {str(e)}", flush=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Invalid JSON format for {symbol}: {str(e)}"
+            detail=f"Invalid JSON format for {symbol}"
         )
     except Exception as e:
+        print(f"Exception at get_ticker_data for {symbol}: {str(e)}", flush=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Error fetching data for {symbol}: {str(e)}"
+            detail=f"Error fetching data for {symbol}"
         )
 
 @app.get("/api/equity/{symbol}")
@@ -226,9 +230,21 @@ async def get_equity_data(symbol: str):
     except Exception as e:
         print(f"Exception thrown: {str(e)}", flush=True)
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Equity data cannot be found for {symbol}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Equity data cannot be found for {symbol}")
     
     
+
+@app.get("/api/model-runs/latest")
+async def get_latest_model_run_data():
+    """Latest model run for the navbar status bubble: {model_version, run_date}.
+
+    Drives the version pill + "Last refresh" date. 404 if no runs exist yet (the frontend
+    falls back to a placeholder).
+    """
+    run = await get_latest_model_run()
+    if run is None:
+        raise HTTPException(status_code=404, detail="No model runs found")
+    return run
 
 @app.get("/api/dashboard")
 async def get_dashboard():

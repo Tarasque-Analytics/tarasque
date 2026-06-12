@@ -4,6 +4,7 @@ import MonteCarlo from "~/components/ticker/monte_carlo";
 import Options from "../components/ticker/options";
 import Predictors from "../components/ticker/predictors";
 import PriceHistoryChart from "../components/equity/price_history_chart";
+import ForwardVolForecast from "../components/equity/forward_vol_forecast";
 import ContractSkewChart from "../components/equity/contract_skew_chart";
 import { TickerDataProvider } from "../context/TickerDataContext";
 import { EquityDataProvider } from "../context/EquityDataContext";
@@ -18,6 +19,7 @@ export default function TickerView() {
         <div className="flex flex-col gap-6">
           {/* Redesigned equity page — new components go here, top-down. */}
           <PriceHistoryChart />
+          <ForwardVolForecast />
           <ContractSkewChart />
 
           {/* Legacy components below: slated for near-complete rewrite as the redesign

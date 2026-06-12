@@ -6,6 +6,7 @@
  * GET /api/equity/:symbol. Numeric columns that are nullable in the DB are typed `| null`.
  */
 
+
 const API_BASE_URL = "http://localhost:8000/api";
 
 // Volatility and forecasting data (volatility_history)
@@ -125,6 +126,12 @@ export interface EventRecord {
   source?: string | null;
 }
 
+// Latest model run — feeds the navbar version pill + "Last refresh" date (GET /api/model-runs/latest)
+export interface ModelRun {
+  model_version: string | null;
+  run_date: string | null;
+}
+
 // Complete payload from GET /api/equity/:symbol
 export interface EquitiesPayload {
   symbol: string;
@@ -157,7 +164,32 @@ export async function loadEquityData(symbol: string): Promise<EquitiesPayload> {
     }
     return await response.json();
   } catch (error) {
-    console.error(`Error loading equity data for ${symbol}:`, error);
+    if (import.meta.env.DEV) {
+      console.error(`Error loading equity data for ${symbol}:`, error);
+    } else {
+      console.error(`Error loading equity data for ${symbol}`);
+    }
     throw error;
   }
 }
+
+/**
+ * Load the latest model run for the navbar (version + run date).
+ * Non-fatal: returns null on any failure so the navbar can render a placeholder instead of
+ * breaking (consistent with how the equity components handle missing data).
+ */
+export async function loadLatestModelRun(): Promise<ModelRun | null> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/model-runs/latest`);
+    if (!response.ok) return null;
+    return (await response.json()) as ModelRun;
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error("Error loading latest model run:", error);
+    } else {
+      console.error("Error loading latest model run");
+    }
+    return null;
+  }
+}
+

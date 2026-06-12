@@ -24,13 +24,21 @@
   --sector-badge-text: #92400e;
   --neutral-badge-bg: #f1f3f5;
   --neutral-badge-text: #4b5563;
+
+  /* Navbar status pill (LIVE = green / DEV = yellow). */
+  --status-live: #16a34a;
+  --status-live-bg: #ecfdf3;
+  --status-live-border: #bbf7d0;
+  --status-dev: #b45309;
+  --status-dev-bg: #fffbeb;
+  --status-dev-border: #fde68a;
 }
 
 /* Dark mode: needs testing from somebody that actually uses dark mode */
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #121212;
-    --ui-background: #1E1E1E;
+    --ui-background: #1e1e1e;
     --border: #333333;
 
     --panel-border: #2a2a2a;
@@ -42,6 +50,13 @@
     --sector-badge-text: #e6c478;
     --neutral-badge-bg: #2a2a2a;
     --neutral-badge-text: #c2c6cc;
+
+    --status-live: #4ade80;
+    --status-live-bg: #0c2a18;
+    --status-live-border: #14532d;
+    --status-dev: #fbbf24;
+    --status-dev-bg: #2a1f06;
+    --status-dev-border: #5a3d0a;
   }
 }
 
@@ -56,14 +71,22 @@ body {
 
 /* === Protected Layout === */
 .protected-layout {
-  @apply p-6 min-h-screen w-full;
+  @apply min-h-screen w-full;
   background: var(--background);
+}
+/* Page content padding lives here (not on .protected-layout) so the navbar can sit flush at the
+   top and stick to the viewport. */
+.protected-content {
+  @apply p-6;
 }
 
 /* === Navbar === */
+/* Slim, scroll-locked top bar: sticky to the viewport top above page content, with a single
+   hairline bottom border (was a chunky all-around border). */
 .navbar {
+  @apply sticky top-0 z-50 w-full;
   background: var(--ui-background);
-  border: 0.2rem solid var(--border);
+  border-bottom: 1px solid var(--panel-border);
 }
 
 /* === Dashboard === */
@@ -96,13 +119,11 @@ body {
   @apply font-bold;
 } */
 
-
 /* === Miscellaneous === */
 
 .view-more-button {
   @apply text-blue-500 mt-2;
 }
-
 
 /* === Shared UI primitives (redesigned equity components) === */
 
@@ -142,4 +163,31 @@ body {
 .badge-neutral {
   background: var(--neutral-badge-bg);
   color: var(--neutral-badge-text);
+}
+
+/* === Model Components === */
+
+.model-search-input {
+  @apply w-full rounded-lg border px-4 py-2.5 text-sm outline-none shadow-sm transition-colors;
+  border-color: var(--panel-border);
+  background: var(--ui-background);
+  color: var(--text-primary);
+}
+.model-search-input::placeholder {
+  color: var(--text-muted);
+}
+.model-search-input:disabled {
+  @apply cursor-not-allowed opacity-60;
+}
+
+.model-data-row {
+  @apply flex justify-between py-1;
+}
+.model-data-row-label {
+  @apply text-sm;
+  color: var(--text-muted);
+}
+.model-data-row-value {
+  @apply text-sm font-medium;
+  color: var(--text-primary);
 }

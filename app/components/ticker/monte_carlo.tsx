@@ -11,11 +11,26 @@ import {
   Legend,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
+import { useEffect, useState } from "react";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
 export default function MonteCarlo() {
   const { monteCarloData } = useTickerData();
+  const [isDark, setIsDark] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    setIsDark(mq.matches);
+    
+    const handler = (e: MediaQueryListEvent) => setIsDark(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  const textColor = isDark ? "#ffffff" : "#111111";
+  const mutedText = isDark ? "#aaaaaa" : "#555555";
+  const gridColor = isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)";
+
   if (!monteCarloData) {
     return (
       <div>
@@ -30,9 +45,13 @@ export default function MonteCarlo() {
       title: {
         display: true,
         text: "20-Day Monte Carlo",
+        color: textColor,
       },
       legend: {
         position: "top" as const,
+        labels: {
+          color: textColor,
+        },
       },
     },
     scales: {
@@ -40,18 +59,30 @@ export default function MonteCarlo() {
         title: {
           display: true,
           text: "Day",
+          color: textColor,
         },
         ticks: {
+          color: mutedText,
           autoSkip: false,
           callback: function (value: string | number) {
             return Number(value) % 5 === 0 ? value : ""; // Show every 5th
           },
+        },
+        grid: {
+          color: gridColor,
         },
       },
       y: {
         title: {
           display: true,
           text: "Price ($)",
+          color: textColor,
+        },
+        ticks: {
+          color: mutedText,
+        },
+        grid: {
+          color: gridColor,
         },
       },
     },

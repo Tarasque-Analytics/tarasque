@@ -30,7 +30,7 @@ async def get_security_data(symbol: str):
         print(f"Exception at get_security_data: {str(e)}", flush=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Error fetching from securities table: {e}"
+            detail="Error fetching from securities table"
         )
     if not response.data:
         print(f"Symbol not found: {symbol}", flush=True)
@@ -56,7 +56,7 @@ async def get_volatility_history(security_id: int):
         print(f"Exception at get_volatility_history: {str(e)}", flush=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Error fetching from volatility_history table: {e}"
+            detail="Error fetching from volatility_history table"
         )
     return response.data
 
@@ -90,7 +90,7 @@ async def get_price_history(security_id: int):
         print(f"Exception at get_price_history: {str(e)}", flush=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Error fetching from prices_history table: {e}"
+            detail="Error fetching from prices_history table"
         )
 
     return rows
@@ -126,7 +126,7 @@ async def get_options_chain(security_id: int):
         print(f"Exception at get_options_chain: {str(e)}", flush=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Error fetching from options_chain table: {e}"
+            detail="Error fetching from options_chain table"
         )
     
     return response.data
@@ -153,7 +153,7 @@ async def get_ai_overview(
         print(f"Exception at get_ai_overview: {str(e)}", flush=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Error fetching from ai_overview table: {e}"
+            detail="Error fetching from ai_overview table"
         )
     
     return response.data[0] if response.data else None
@@ -187,7 +187,7 @@ async def get_shap_snapshot(security_id: int):
         print(f"Exception at get_shap_snapshot: {str(e)}", flush=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Error fetching from shap_snapshot table: {e}"
+            detail="Error fetching from shap_snapshot table"
         )
     
     return response.data
@@ -213,8 +213,8 @@ async def get_shap_snapshot(security_id: int):
 #     except Exception as e:
 #         print(f"Exception at get_distribution: {str(e)}", flush=True)
 #         raise HTTPException(
-#             status_code=404,
-#             detail=f"Error calling get_distribution RPC: {e}"
+#             status_code=500,
+#             detail="Error fetching from get_distribution RPC"
 #         )
 #     return response.data
 
@@ -237,7 +237,34 @@ async def get_events(security_id: int):
         print(f"Exception at get_events: {str(e)}", flush=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Error fetching from event_history table: {e}"
+            detail="Error fetching from event_history table"
         )
 
     return response.data
+
+
+async def get_latest_model_run():
+    """Latest model run (version + run date) for the navbar status bubble.
+
+    Returns the most recent row from model_runs as {model_version, run_date}, or None if the
+    table is empty. model_runs needs the anon SELECT RLS policy to be readable through the Data
+    API (already applied; same gotcha as event_history — see backend/CLAUDE.md).
+    """
+    try:
+        response = await (supabase.table("model_runs")
+            .select("model_version, run_date")
+            .order("run_date", desc=True)
+            .order("id", desc=True)
+            .limit(1)
+            .execute()
+        )
+    except Exception as e:
+        # Log the raw error server-side; return a generic detail so internal Supabase/PostgREST
+        # error text (schema/table internals) isn't leaked to API clients.
+        print(f"Exception at get_latest_model_run: {str(e)}", flush=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Error fetching from model_runs table"
+        )
+
+    return response.data[0] if response.data else None

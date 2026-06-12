@@ -269,12 +269,13 @@ async def get_latest_model_run():
 
     return response.data[0] if response.data else None
 
-async def get_model_runs():
+async def get_model():
     try:
         response = await (supabase.table("model_runs")
-            .select("model_version, run_date")
+            .select("model_version, run_date, spec_hash, n_tickers, horizons")
             .order("run_date", desc=True)
             .order("id", desc=True)
+            .limit(1)
             .execute()
         )
     except Exception as e:

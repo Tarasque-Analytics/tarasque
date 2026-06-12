@@ -30,7 +30,7 @@ from backend.database import (
     # get_distribution,  # TODO: re-enable once finance defines distribution structure (separate PR)
     get_events,
     get_latest_model_run,
-    get_model_runs,
+    get_model,
 )
 
 
@@ -249,26 +249,30 @@ async def get_latest_model_run_data():
 
 @app.get("/api/model")
 async def getModel():
-    """Fetch all historical model runs with metadata.
+    """Fetch global model metadata from the latest run.
     
-    Returns a comprehensive list of all model runs including version information,
-    execution dates, and other relevant run metadata. Supports the model dashboard
-    and historical model performance tracking.
+    Returns metadata about the model itself (not tied to any specific ticker),
+    pulled from the most recent model_runs entry. Used by the /model landing page
+    to display model version, training date, and other global run information.
     
     Returns:
-        list[dict]: All model runs with structure:
+        dict: Latest model run metadata with structure:
             {
                 "model_version": str,
                 "run_date": str,
+                "spec_hash": str,
+                "n_tickers": int,
+                "horizons": str[]
             }
     
     Raises:
         HTTPException: 404 if no model runs exist in the database.
+        HTTPException: 500 if model data cannot be retrieved.
     """
     
     try:
         # NOTE: as we decide on the shape of the payload, just add or subtract fields here
-        allRuns = await asyncio.gather(get_model_runs())
+        allRuns = await asyncio.gather(get_model())
     except Exception as e:
         print(f"Exception thrown: {str(e)}", flush=True)
         raise HTTPException(status_code=500, detail=f"Model data could not be found")

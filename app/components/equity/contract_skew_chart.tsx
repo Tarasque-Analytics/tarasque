@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Chart as ChartJS, LinearScale, PointElement, BubbleController, Tooltip } from "chart.js";
 import type { ChartData, ChartOptions, ChartType, Plugin, Scale } from "chart.js";
@@ -196,19 +196,18 @@ const dayDiff = (aISO: string, bISO: string) =>
 
 /* ── derived view model ── */
 type SkewPoint = { strike: number; iv: number; oi: number; type: "C" | "P" };
-type SkewView = {
+type SkewExpiry = { expiryISO: string; dte: number; points: SkewPoint[] }; // OTM, sorted by strike
+type SkewData = {
   spot: number;
-  expiryISO: string;
   snapshotISO: string;
-  dte: number;
-  ivAtm: number | null; // annualized fraction for the gold band
-  rv: number | null; // annualized fraction for the teal band
-  points: SkewPoint[]; // OTM only, single expiry, sorted by strike
+  expiries: SkewExpiry[]; // sorted by DTE ascending (front month first)
+  ivAtmForDte: (dte: number) => number | null; // gold-band vol, matched to the expiry's horizon
+  rv: number | null; // teal-band vol (realized)
   isMock: boolean;
 };
 
-// Pick the ATM IV term-structure column closest to the contract DTE.
-const ivAtmForDte = (v: VolatilityRecord, dte: number): number | null => {
+// Closest ATM IV term-structure column for a given DTE.
+const ivAtmColForDte = (v: VolatilityRecord, dte: number): number | null => {
   const opts: [number, number | null][] = [
     [30, v.iv_atm_30d],
     [60, v.iv_atm_60d],
@@ -228,10 +227,10 @@ const ivAtmForDte = (v: VolatilityRecord, dte: number): number | null => {
   return best;
 };
 
-// Build the view from live payload data, or null if there's nothing plottable (no spot, or no OTM
-// contracts with IV). Skew is per-expiry, so we pick ONE expiry: the snapshot's expiry nearest
-// ~21 DTE (the "nearest expiry +21d" the mockups call out).
-function buildView(equity: EquitiesPayload | null): SkewView | null {
+// Build the full multi-expiry view, or null if nothing is plottable (no spot, or no OTM contracts
+// with IV). Skew is per-expiry, so each expiry keeps its own OTM smile and the selector picks which
+// one to plot. The pipeline fetches ~30/60/90/180 DTE + monthlies, so there are several.
+function buildData(equity: EquitiesPayload | null): SkewData | null {
   if (!equity) return null;
 
   const closes = (equity.price_history ?? []).filter((p: PriceRecord) => p.close != null);
@@ -241,84 +240,107 @@ function buildView(equity: EquitiesPayload | null): SkewView | null {
   const chain = (equity.options_chain ?? []).filter((o: OptionRecord) => o.iv != null);
   if (!chain.length) return null;
 
+  // Latest snapshot only.
   const snapshotISO = chain.reduce(
     (m, o) => (o.snapshot_date > m ? o.snapshot_date : m),
     chain[0].snapshot_date,
   );
-  const snap = chain.filter((o) => o.snapshot_date === snapshotISO);
 
-  // Expiry nearest 21 DTE.
-  const expiries = Array.from(new Set(snap.map((o) => o.expiry)));
-  let expiryISO = expiries[0];
-  let bestGap = Infinity;
-  for (const e of expiries) {
-    const gap = Math.abs(dayDiff(e, snapshotISO) - 21);
-    if (gap < bestGap) {
-      bestGap = gap;
-      expiryISO = e;
-    }
-  }
-  const dte = Math.max(1, dayDiff(expiryISO, snapshotISO));
-
-  const points: SkewPoint[] = snap
-    .filter((o) => o.expiry === expiryISO)
-    .filter((o) => (o.option_type === "C" ? o.strike > spot : o.strike < spot)) // OTM only
-    .map((o) => ({
+  // Group OTM contracts by expiry.
+  const byExpiry = new Map<string, SkewPoint[]>();
+  for (const o of chain) {
+    if (o.snapshot_date !== snapshotISO) continue;
+    const otm = o.option_type === "C" ? o.strike > spot : o.strike < spot;
+    if (!otm) continue;
+    const pt: SkewPoint = {
       strike: o.strike,
       iv: o.iv as number,
       oi: o.open_interest ?? 0,
       type: o.option_type,
+    };
+    const arr = byExpiry.get(o.expiry);
+    if (arr) arr.push(pt);
+    else byExpiry.set(o.expiry, [pt]);
+  }
+
+  const expiries: SkewExpiry[] = [...byExpiry.entries()]
+    .map(([expiryISO, points]) => ({
+      expiryISO,
+      dte: Math.max(1, dayDiff(expiryISO, snapshotISO)),
+      points: points.sort((a, b) => a.strike - b.strike),
     }))
-    .sort((a, b) => a.strike - b.strike);
-  if (!points.length) return null;
+    .filter((e) => e.points.length > 0)
+    .sort((a, b) => a.dte - b.dte);
+  if (!expiries.length) return null;
 
   const vol = (equity.volatility_history ?? []) as VolatilityRecord[];
   const latestVol = vol.length ? vol[vol.length - 1] : null; // backend orders by date asc
 
   return {
     spot,
-    expiryISO,
     snapshotISO,
-    dte,
-    ivAtm: latestVol ? ivAtmForDte(latestVol, dte) : null,
+    expiries,
+    ivAtmForDte: (dte) => (latestVol ? ivAtmColForDte(latestVol, dte) : null),
     rv: latestVol?.rv ?? null,
-    points,
     isMock: false,
   };
 }
 
 /* ── dev fixture ──
-   options_chain is empty in the current DB, so this synthesizes a realistic OTM chain (downside-
-   skewed smile, OI bell-curve, a few 0-OI wings) to develop the dense viz against. It is used ONLY
-   in dev (import.meta.env.DEV) AND only when live data is absent — production renders the real
-   empty state, never this. Deterministic (no Math.random) so SSR and client agree. Swap to live
-   data automatically once the options feed lands. */
+   Real options data now flows from the options pipeline (yfinance → options_chain), so this is
+   only a no-backend dev aid: a multi-expiry synthetic chain (downside-skewed smile, OI bell-curve,
+   a few 0-OI wings) for developing the dense viz when the API is down. Used ONLY in dev
+   (import.meta.env.DEV) AND only when live data is absent — production renders the real empty
+   state, never this. Deterministic (no Math.random) so SSR and client agree. */
 const IS_DEV = Boolean(import.meta.env?.DEV);
 
-function makeMock(): SkewView {
-  const spot = 177.01;
+const addDays = (iso: string, n: number) => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+
+// One synthetic expiry: a downside-skewed smile centered on `atm`, OI a bell curve scaled by
+// `oiScale` (front month carries the most). Far wings land at 0 OI to exercise the min-radius path.
+function makeMockExpiry(spot: number, snapshotISO: string, dte: number, atm: number, oiScale: number): SkewExpiry {
   const points: SkewPoint[] = [];
   for (let k = 125; k <= 230; k += 2.5) {
     if (Math.abs(k - spot) < 1.5) continue; // ATM gap — OTM only
     const m = (k - spot) / spot;
-    // Downside-skewed smile: both wings above ATM, puts richer than calls.
-    const iv = Math.min(0.46, Math.max(0.2, 0.245 + 0.85 * m * m - 0.22 * m));
-    const oi = Math.round(5200 * Math.exp(-((m / 0.075) ** 2) / 2));
+    const iv = Math.min(0.46, Math.max(0.2, atm + 0.85 * m * m - 0.22 * m));
+    const oi = Math.round(oiScale * Math.exp(-((m / 0.075) ** 2) / 2));
     points.push({
       strike: Math.round(k * 100) / 100,
       iv: Math.round(iv * 1e4) / 1e4,
-      oi: oi < 5 ? 0 : oi, // far wings land at 0 OI → exercises the min-radius path
+      oi: oi < 5 ? 0 : oi,
       type: k < spot ? "P" : "C",
     });
   }
+  return { expiryISO: addDays(snapshotISO, dte), dte, points };
+}
+
+function makeMock(): SkewData {
+  const spot = 177.01;
+  const snapshotISO = "2026-05-29";
+  // Term structure: front-month richest IV + deepest OI; longer expiries flatten and thin out.
+  const TERM: [number, number, number][] = [
+    [30, 0.252, 5200],
+    [58, 0.245, 3400],
+    [91, 0.24, 2200],
+    [182, 0.235, 1400],
+  ];
+  const ivByDte = new Map(TERM.map(([dte, atm]) => [dte, atm]));
+  const nearestTermIv = (dte: number): number => {
+    let best = TERM[0][0];
+    for (const [d] of TERM) if (Math.abs(d - dte) < Math.abs(best - dte)) best = d;
+    return ivByDte.get(best) as number;
+  };
   return {
     spot,
-    snapshotISO: "2026-05-29",
-    expiryISO: "2026-06-19",
-    dte: 21,
-    ivAtm: 0.252, // market IV ≈ 25.2%
+    snapshotISO,
+    expiries: TERM.map(([dte, atm, oi]) => makeMockExpiry(spot, snapshotISO, dte, atm, oi)),
+    ivAtmForDte: nearestTermIv,
     rv: 0.232, // realized vol ≈ 23.2%
-    points,
     isMock: true,
   };
 }
@@ -339,10 +361,11 @@ function Card({ children }: { children: ReactNode }) {
  */
 export default function ContractSkewChart() {
   const equity = useEquityData();
-  const live = useMemo(() => buildView(equity), [equity]);
+  const built = useMemo(() => buildData(equity), [equity]);
   // In dev, fall back to the fixture whenever there's no live view (even with the DB down) so the
   // viz can be developed without a backend. Production (IS_DEV false) shows the real empty states.
-  const view = live ?? (IS_DEV ? MOCK_VIEW : null);
+  const view = built ?? (IS_DEV ? MOCK_VIEW : null);
+  const [selectedExpiry, setSelectedExpiry] = useState<string | null>(null);
 
   if (!view) {
     return (
@@ -357,7 +380,12 @@ export default function ContractSkewChart() {
     );
   }
 
-  const { spot, points, ivAtm, rv, dte, isMock } = view;
+  const { spot, expiries, ivAtmForDte, rv, isMock } = view;
+  // Fall back to the front expiry if nothing is selected or the selection isn't in this payload
+  // (e.g. after switching tickers) — graceful without a reset effect.
+  const selected = expiries.find((e) => e.expiryISO === selectedExpiry) ?? expiries[0];
+  const { points, dte } = selected;
+  const ivAtm = ivAtmForDte(dte);
 
   // Axis bounds: x = spot ± 30%; y = [minIV − 5pp, maxIV + 5pp] (IV stored as a fraction).
   const xMin = spot * 0.7;
@@ -465,7 +493,14 @@ export default function ContractSkewChart() {
 
   return (
     <Card>
-      <Header symbol={equity?.symbol} sec={equity?.security} dte={dte} isMock={isMock} />
+      <Header
+        symbol={equity?.symbol}
+        sec={equity?.security}
+        expiries={expiries}
+        selected={selected}
+        onSelect={setSelectedExpiry}
+        isMock={isMock}
+      />
 
       {(ivHalf != null || rvHalf != null) && (
         <div className="mt-1 mb-3 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
@@ -497,16 +532,20 @@ export default function ContractSkewChart() {
   );
 }
 
-/* ── header: title · subtitle · puts/calls chips · size=OI ── */
+/* ── header: title · subtitle · expiry selector · puts/calls chips ── */
 function Header({
   symbol,
   sec,
-  dte,
+  expiries,
+  selected,
+  onSelect,
   isMock,
 }: {
   symbol?: string;
   sec?: SecurityMeta;
-  dte?: number;
+  expiries?: SkewExpiry[];
+  selected?: SkewExpiry;
+  onSelect?: (expiryISO: string) => void;
   isMock?: boolean;
 }) {
   return (
@@ -521,26 +560,49 @@ function Header({
           {isMock && <span className="badge badge-neutral">sample data</span>}
         </div>
         <p className="mt-0.5 text-sm text-(--text-muted)">
-          OI-weighted IV across listed strikes{dte ? ` · nearest expiry +${dte}d` : ""}
+          OI-weighted IV across listed strikes
+          {selected ? ` · expiry ${selected.expiryISO} (${selected.dte}d)` : ""}
         </p>
       </div>
 
-      <div className="flex items-center gap-3 text-xs font-medium text-(--text-secondary)">
-        <span className="flex items-center gap-1.5">
-          <span
-            className="inline-block h-2.5 w-2.5 rounded-full"
-            style={{ background: PUT_FILL, border: `1px solid ${PUT_BORDER}` }}
-          />
-          Puts
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span
-            className="inline-block h-2.5 w-2.5 rounded-full"
-            style={{ background: CALL_FILL, border: `1px solid ${CALL_BORDER}` }}
-          />
-          Calls
-        </span>
-        <span className="text-(--text-muted)">· size = OI</span>
+      <div className="flex flex-col items-end gap-2">
+        {expiries && expiries.length > 1 && onSelect && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold tracking-wide text-(--text-muted) uppercase">
+              Expiry
+            </span>
+            <div className="segmented">
+              {expiries.map((e) => (
+                <button
+                  key={e.expiryISO}
+                  type="button"
+                  className="segmented-btn"
+                  data-active={selected?.expiryISO === e.expiryISO}
+                  onClick={() => onSelect(e.expiryISO)}
+                >
+                  {e.dte}d
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="flex items-center gap-3 text-xs font-medium text-(--text-secondary)">
+          <span className="flex items-center gap-1.5">
+            <span
+              className="inline-block h-2.5 w-2.5 rounded-full"
+              style={{ background: PUT_FILL, border: `1px solid ${PUT_BORDER}` }}
+            />
+            Puts
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span
+              className="inline-block h-2.5 w-2.5 rounded-full"
+              style={{ background: CALL_FILL, border: `1px solid ${CALL_BORDER}` }}
+            />
+            Calls
+          </span>
+          <span className="text-(--text-muted)">· size = OI</span>
+        </div>
       </div>
     </div>
   );

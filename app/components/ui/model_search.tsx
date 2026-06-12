@@ -16,7 +16,6 @@ export default function ModelSearch() {
     e.preventDefault();
     if (ticker.trim()) {
       navigate(`/model/${ticker.toUpperCase()}`);
-      setTicker("");
     }
   };
 

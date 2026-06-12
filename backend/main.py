@@ -249,20 +249,23 @@ async def get_latest_model_run_data():
 
 @app.get("/api/model")
 async def getModel():
-    """Fetch global model metadata from the latest run.
+    """Fetch all global model metadata.
     
-    Returns metadata about the model itself (not tied to any specific ticker),
-    pulled from the most recent model_runs entry. Used by the /model landing page
-    to display model version, training date, and other global run information.
+    Returns metadata about all model runs (not tied to any specific ticker).
+    Used by the /model landing page to display model versions, training dates,
+    and other global run information.
     
     Returns:
-        dict: Latest model run metadata with structure:
+        dict: Model runs data with structure:
             {
-                "model_version": str,
-                "run_date": str,
-                "spec_hash": str,
-                "n_tickers": int,
-                "horizons": str[]
+                "runs": list[dict]  # Each run has:
+                    {
+                        "model_version": str,
+                        "run_date": str,
+                        "spec_hash": str,
+                        "n_tickers": int,
+                        "horizons": str[]
+                    }
             }
     
     Raises:

@@ -2,7 +2,6 @@ import { createContext, useContext } from "react";
 import type { ReactNode } from "react";
 import type { ModelDataPayload } from "../utils/model";
 
-const API_BASE_URL = "http://localhost:8000/api";
 
 // Holds the database-backed equity payload (GET /api/equity/:symbol) for the /equity/:symbol
 // page. Value is null when the API is unavailable so the page can still render.

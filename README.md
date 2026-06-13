@@ -18,17 +18,18 @@ Core ideas:
 - Inputs: price/realized vol features, macro regime features, options-surface features, event features, and sector/factor context.
 - Validation: walk-forward backtesting with RMSE, Mincer-Zarnowitz diagnostics, QLIKE, and event-capture analysis.
 
-The model pipeline writes ticker payloads consumed by the app for visualization and analysis.
+The model pipeline produces the volatility and options outputs that the app surfaces for visualization and analysis.
 
 ## App Architecture
 
 The app is currently split into two local services:
 - Frontend: React 19 + React Router 7 (SSR enabled), TypeScript, Vite, Tailwind CSS.
-- Backend: FastAPI service that serves ticker payload JSON files to the frontend.
+- Backend: FastAPI service that serves equity data to the frontend from a Supabase (Postgres) database.
 
 Current data flow:
-1. Backend loads payload files from `app/assets/data/*_Payload.json`.
-2. Frontend requests ticker lists and ticker payloads from `http://localhost:8000/api`.
+1. Backend queries Supabase (via `backend/database.py`) and aggregates per-equity data.
+2. Frontend requests the ticker list and per-equity payloads from `http://localhost:8000/api`
+   (`/api/equities`, `/api/equity/:symbol`).
 3. UI renders charts and analysis views from backend responses.
 
 ## Repository Structure (App-Focused)
@@ -43,7 +44,6 @@ volarbmodel/
 		routes/                    # Route modules
 		utils/                     # API/data helpers
 		assets/
-			data/                    # Ticker payload JSON files served by backend
 	backend/
 		main.py                    # FastAPI API server
 		requirements.txt           # Python dependencies

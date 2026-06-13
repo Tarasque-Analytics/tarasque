@@ -6,6 +6,7 @@
  * GET /api/equity/:symbol. Numeric columns that are nullable in the DB are typed `| null`.
  */
 
+
 const API_BASE_URL = "http://localhost:8000/api";
 
 // Volatility and forecasting data (volatility_history)
@@ -125,6 +126,12 @@ export interface EventRecord {
   source?: string | null;
 }
 
+// Latest model run — feeds the navbar version pill + "Last refresh" date (GET /api/model-runs/latest)
+export interface ModelRun {
+  model_version: string | null;
+  run_date: string | null;
+}
+
 // Complete payload from GET /api/equity/:symbol
 export interface EquitiesPayload {
   symbol: string;
@@ -166,10 +173,27 @@ export async function loadEquityData(symbol: string): Promise<EquitiesPayload> {
   }
 }
 
-// Latest model run — feeds the navbar version pill + "Last refresh" date (GET /api/model-runs/latest)
-export interface ModelRun {
-  model_version: string | null;
-  run_date: string | null;
+/**
+ * Load the list of active equity ticker symbols from the database-backed API
+ * (GET /api/equities). Feeds the ticker search. Non-fatal: returns [] on any failure so the
+ * search box degrades gracefully instead of breaking.
+ */
+export async function loadEquityList(): Promise<string[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/equities`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch equities: ${response.statusText}`);
+    }
+    const data = await response.json();
+    return data.equities ?? [];
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error("Error loading equity list:", error);
+    } else {
+      console.error("Error loading equity list");
+    }
+    return [];
+  }
 }
 
 /**

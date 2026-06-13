@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router";
 import DashboardLeft from "../components/dashboard/dashboard_left";
 import HedgingInfo from "../components/dashboard/hedging_info";
 import SectorView from "../components/dashboard/sector_view";

@@ -1,3 +1,4 @@
+import { useLoaderData, useParams } from "react-router";
 import { useLoaderData } from "react-router";
 import Attributes from "../components/ticker/attributes";
 import MonteCarlo from "~/components/ticker/monte_carlo";
@@ -7,14 +8,32 @@ import Predictors from "../components/ticker/predictors";
 import PriceHistoryChart from "../components/equity/price_history_chart";
 import EquityClasses from "~/components/equity/equity_classes";
 import ForwardVolForecast from "../components/equity/forward_vol_forecast";
-import { TickerDataProvider } from "../context/TickerDataContext";
+import OptionsChainTable from "../components/equity/options_chain_table";
+import ContractSkewChart from "../components/equity/contract_skew_chart";
+import EquityUnavailable from "../components/equity/equity_unavailable";
 import { EquityDataProvider } from "../context/EquityDataContext";
 import type { TickerLoaderData } from "../routes/ticker";
 
 export default function TickerView() {
-  const { payload, equity } = useLoaderData() as TickerLoaderData;
+  const { equity } = useLoaderData() as TickerLoaderData;
+  const { symbol } = useParams();
+
+  // The DB-backed payload is the page's only data source now. If the loader couldn't fetch it,
+  // show an explicit "unavailable" state rather than an empty shell of components.
+  if (!equity) {
+    return <EquityUnavailable symbol={symbol} />;
+  }
 
   return (
+    <EquityDataProvider data={equity}>
+      <div className="flex flex-col gap-6">
+        {/* DB-backed equity page — new components go here, top-down. */}
+        <PriceHistoryChart />
+        <ForwardVolForecast />
+        <OptionsChainTable />
+        <ContractSkewChart />
+      </div>
+    </EquityDataProvider>
     <TickerDataProvider data={payload}>
       <EquityDataProvider data={equity}>
         {/* Redesigned equity page — new components go here */}

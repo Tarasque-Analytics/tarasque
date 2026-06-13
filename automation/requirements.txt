@@ -1,0 +1,16 @@
+# automation tooling dependencies.
+# Install (from repo root):  pip install -r automation/requirements.txt
+
+# DB write client — secret-key Supabase (same SDK as backend; NOT supabase-py).
+supabase
+
+# Options chain — yfinance (current-day; free; has OI/volume/IV). Greeks (delta) are computed
+# in-house via automation/black_scholes.py (no scipy needed).
+yfinance
+
+# Securities/universe sync — Wikipedia S&P 500 table + SEC company_tickers.json.
+requests
+pandas
+
+# Env loading (repo-root .env).
+python-dotenv

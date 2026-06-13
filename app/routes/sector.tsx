@@ -1,7 +1,6 @@
 // uncomment below once SectorDataPayload exists if applicable - probably a different payload than tickers
 // import type { SectorDataPayload } from "../context/SectorDataContext";
 import type { LoaderFunctionArgs } from "react-router";
-import { loadTickerPayload } from "../utils/tickers";
 import SectorView from "../pages/Sector";
 
 // Route loader: fetch sector data from backend API
@@ -19,7 +18,6 @@ export async function loader({ params }: LoaderFunctionArgs)
   try {
 
     // ditto, return statement is placeholder for now
-    // return await loadTickerPayload(sector);
     return ("yo");
   } catch (error) {
     throw new Response(

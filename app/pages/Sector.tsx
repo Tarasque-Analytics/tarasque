@@ -1,4 +1,4 @@
-import { useParams, useLoaderData } from "react-router";
+import { useParams } from "react-router";
 import { useState, useEffect } from "react";
 
 export default function SectorView() {
@@ -22,7 +22,7 @@ export default function SectorView() {
         ) : (
           <div className="flex flex-col items-center justify-center w-64 h-64 bg-white border border-gray-200 rounded-xl shadow-sm p-4">
             <iframe
-              src="https://giphy.com/embed/Q3J5xe18ZEOVZqWA8x"
+              src="https://giphy.com/embed/Q3J5xe18ZEOVZqWA8x" title="tylko jedno w głowie mam"
             />
             <p className="text-xs text-gray-400 mt-2">
               <a>Totally real {sector} sector view page</a>

@@ -1,4 +1,4 @@
-import { Link, Navigate } from "react-router";
+import { Link } from "react-router";
 import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 import { useNavigate } from "react-router";
@@ -18,7 +18,7 @@ export default function Register() {
     e.preventDefault();
     setIsLoading(true);
     console.log("Register attempt:", { email, password });
-    const { data, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email,
       password,
     });

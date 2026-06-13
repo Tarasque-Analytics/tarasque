@@ -7,6 +7,7 @@ import type {
   PriceRecord,
   SecurityMeta,
 } from "~/utils/database";
+import { Card, Empty } from "./section";
 
 /**
  * Options Chain table for /equity/:symbol — the standard CALLS | STRIKE | PUTS ladder for one
@@ -145,10 +146,6 @@ const legOpacity = (leg: Leg | null, spot: number) => {
   return 0.4 + 0.6 * e;
 };
 
-function Card({ children }: { children: ReactNode }) {
-  return <div className="panel p-5">{children}</div>;
-}
-
 export default function OptionsChainTable() {
   const equity = useEquityData();
   // Real data only — null when there's no spot or no contracts; the component renders an empty state.
@@ -184,11 +181,11 @@ export default function OptionsChainTable() {
     return (
       <Card>
         <Header symbol={equity?.symbol} sec={equity?.security} />
-        <div className="flex h-64 items-center justify-center text-sm text-(--text-secondary)">
+        <Empty>
           {equity
             ? `No options chain available for ${equity.symbol}.`
             : "Options data is currently unavailable."}
-        </div>
+        </Empty>
       </Card>
     );
   }

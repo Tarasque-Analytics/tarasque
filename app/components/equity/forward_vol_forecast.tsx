@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import type { ReactNode } from "react";
 import {
   Chart as ChartJS,
   LinearScale,
@@ -19,6 +18,7 @@ import type {
 import { Chart } from "react-chartjs-2";
 import { useEquityData } from "~/context/EquityDataContext";
 import type { VolatilityRecord } from "~/utils/database";
+import { Card, Empty } from "./section";
 
 ChartJS.register(LinearScale, PointElement, LineElement, Tooltip, Filler);
 
@@ -121,18 +121,6 @@ const ratioFmt = (v: number | null) => (v == null ? "—" : `${v.toFixed(2)}×`)
 const parseDay = (iso: string) => new Date(`${iso}T00:00:00`);
 const longDate = (iso: string) =>
   parseDay(iso).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
-
-function Card({ children }: { children: ReactNode }) {
-  return <div className="panel p-5">{children}</div>;
-}
-
-function Empty({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex h-80 items-center justify-center text-sm text-(--text-secondary)">
-      {children}
-    </div>
-  );
-}
 
 /**
  * Forward Vol Forecast for /equity/:symbol — volatility term-structure chart.

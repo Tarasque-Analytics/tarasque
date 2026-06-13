@@ -4,14 +4,11 @@ This guide covers the current FastAPI backend used by the app team, including se
 
 ## Overview
 
-The backend serves equity data to the frontend from two sources (mid-migration):
-file-backed ticker payloads and a Supabase (Postgres) database.
+The backend serves per-equity data to the frontend from a Supabase (Postgres) database.
 
 - Framework: FastAPI + Uvicorn
 - API base URL: http://localhost:8000/api
-- Data sources:
-  - Legacy file payloads: app/assets/data/*_Payload.json (`/api/tickers*`)
-  - Supabase database: `/api/equity/{symbol}`
+- Data source: Supabase database (`/api/equity/{symbol}`, `/api/equities`)
 - CORS enabled for local frontend origins:
   - http://localhost:5173
   - http://localhost:3000
@@ -85,19 +82,11 @@ npx supabase db reset
 
 ## Setup Instructions
 
-### 1. Verify expected data location
+### 1. Verify Supabase connection
 
-The backend reads payloads from:
-
-- app/assets/data
-
-Expected naming format:
-
-- {SYMBOL}_Payload.json
-
-Examples:
-- AAPL_Payload.json
-- MSFT_Payload.json
+The backend reads all data from Supabase (Postgres), not local files. Ensure the repo-root `.env`
+has `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` (see step 4 above) — the backend raises
+at startup if they're missing.
 
 ### 2. Optional health verification before frontend run
 
@@ -147,13 +136,9 @@ npm run dev
 
 Returns service health.
 
-### GET /api/tickers
+### GET /api/equities
 
-Returns all available tickers derived from payload filenames.
-
-### GET /api/tickers/{symbol}
-
-Returns full payload JSON for a ticker symbol (case-insensitive). (File-backed.)
+Returns the list of active ticker symbols (from the `securities` table) for the ticker search.
 
 ### GET /api/equity/{symbol}
 
@@ -177,18 +162,18 @@ Unimplemented stubs — currently return `{}`.
 # Health check
 curl http://localhost:8000/api/health
 
-# List tickers
-curl http://localhost:8000/api/tickers
+# List active tickers
+curl http://localhost:8000/api/equities
 
-# Fetch one ticker payload
-curl http://localhost:8000/api/tickers/AAPL
+# Fetch one equity payload
+curl http://localhost:8000/api/equity/AAPL
 ```
 
 ### Browser examples
 
 - http://localhost:8000/api/health
-- http://localhost:8000/api/tickers
-- http://localhost:8000/api/tickers/AAPL
+- http://localhost:8000/api/equities
+- http://localhost:8000/api/equity/AAPL
 
 ## Example Responses
 
@@ -200,52 +185,36 @@ curl http://localhost:8000/api/tickers/AAPL
 }
 ```
 
-### GET /api/tickers
+### GET /api/equities
 
 ```json
 {
-  "tickers": ["AAPL", "ADBE", "AMD", "AMZN"],
+  "equities": ["AAPL", "ADBE", "AMD", "AMZN"],
   "count": 16
 }
 ```
 
-### GET /api/tickers/AAPL (shape excerpt)
+### GET /api/equity/AAPL (shape excerpt)
 
 ```json
 {
-  "meta": {
-    "ticker": "AAPL",
-    "timestamp": "2026-02-24 17:03",
-    "spot_price": 272.14,
-    "forecast_rv": {
-      "21": 0.2161,
-      "63": 0.2025,
-      "126": 0.1975
-    },
-    "garch_21d": 0.2747,
-    "market_iv_atm": 0.2672,
-    "vrp_wedge": 0.0364
-  },
-  "hedging": {
-    "recipe": {},
-    "interpretation": "Factor Hedge Positions"
-  },
-  "explainability": {
-    "drivers": {}
-  },
-  "charts": {
-    "monte_carlo": {}
-  }
+  "symbol": "AAPL",
+  "security": { "company_name": "Apple Inc.", "gics_sector": "Information Technology" },
+  "volatility_history": [],
+  "price_history": [],
+  "options_chain": [],
+  "ai_overview": null,
+  "latest_shap_snapshot": [],
+  "events": []
 }
 ```
 
 ## Troubleshooting
 
-- 404 for ticker endpoint:
-  - Confirm file exists in app/assets/data
-  - Confirm symbol matches file prefix (case-insensitive in API)
-- Empty ticker list:
-  - Confirm app/assets/data exists and contains *_Payload.json files
+- 404 from `/api/equity/{symbol}`:
+  - Confirm the ticker exists in the `securities` table (symbols are case-insensitive in the API)
+- Empty ticker list from `/api/equities`:
+  - Confirm the `securities` table has rows with `active = true` and Supabase creds are valid
 - Frontend cannot load data:
   - Confirm backend is running on port 8000
   - Confirm frontend API base URL is set to http://localhost:8000/api
@@ -260,9 +229,8 @@ curl http://localhost:8000/api/tickers/AAPL
 
 ## Current vs Planned Data Backend
 
-Current (mid-migration):
-- File-backed payload API from app/assets/data (`/api/tickers*`)
-- Supabase-backed query layer for `/api/equity/{symbol}` (see backend/database.py)
+Current:
+- Supabase-backed query layer for `/api/equity/{symbol}` and `/api/equities` (see backend/database.py)
 
 Planned:
 - Migrate the remaining endpoints (dashboard/sector/macro stubs) to Supabase

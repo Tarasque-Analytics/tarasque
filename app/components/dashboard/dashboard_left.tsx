@@ -1,5 +1,4 @@
 // farily basic stuff, the top 5 holdings, with a show more drop down, a pie chart of securities, and a standard panel graph showing the time and capital growth
-import Placeholder from "../ui/placeholder";
 import PortfolioTickers from "./portfolio_components/portfolio_tickers";
 import { PortfolioDataProvider } from "../../context/PortfolioDataContext";
 import PortfolioPieChart from "./portfolio_components/portfolio_pie_chart";

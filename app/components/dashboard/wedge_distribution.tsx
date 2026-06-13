@@ -9,7 +9,6 @@ import {
   Legend,
 } from "chart.js";
 import { useMemo, useState } from "react";
-import Placeholder from "../ui/placeholder";
 import { Line } from "react-chartjs-2";
 ChartJS.register(
   CategoryScale,

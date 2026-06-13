@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import type { ReactNode } from "react";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -20,6 +19,7 @@ import type {
 import { Chart } from "react-chartjs-2";
 import { useEquityData } from "~/context/EquityDataContext";
 import type { PriceRecord, VolatilityRecord, EventRecord, SecurityMeta } from "~/utils/database";
+import { Card, Empty } from "./section";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Filler);
 
@@ -160,10 +160,6 @@ function DownloadIcon() {
   );
 }
 
-function Card({ children }: { children: ReactNode }) {
-  return <div className="panel p-5">{children}</div>;
-}
-
 /**
  * Price-history chart for /equity/:symbol — first component of the redesigned page.
  *
@@ -238,9 +234,7 @@ export default function PriceHistoryChart() {
   if (!equity) {
     return (
       <Card>
-        <div className="flex h-105 items-center justify-center text-sm text-(--text-secondary)">
-          Price data is currently unavailable.
-        </div>
+        <Empty>Price data is currently unavailable.</Empty>
       </Card>
     );
   }
@@ -259,9 +253,7 @@ export default function PriceHistoryChart() {
           onRange={setRange}
           rows={[]}
         />
-        <div className="flex h-90 items-center justify-center text-sm text-(--text-secondary)">
-          No price history available for {equity.symbol}.
-        </div>
+        <Empty>No price history available for {equity.symbol}.</Empty>
       </Card>
     );
   }

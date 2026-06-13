@@ -41,6 +41,28 @@ async def get_security_data(symbol: str):
     return response.data[0]
 
 
+async def get_active_tickers() -> list[str]:
+    """Get the list of active ticker symbols from the securities table.
+
+    Backs the ticker search (GET /api/equities). Returns tickers for active securities only,
+    sorted alphabetically.
+    """
+    try:
+        response = await (supabase.table("securities")
+            .select("ticker")
+            .eq("active", True)
+            .order("ticker", desc=False)
+            .execute()
+        )
+    except Exception as e:
+        print(f"Exception at get_active_tickers: {str(e)}", flush=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Error fetching from securities table"
+        )
+    return [row["ticker"] for row in (response.data or []) if row.get("ticker")]
+
+
 async def get_volatility_history(security_id: int):
     """Get 5 years of volatility data for a security"""
     five_years_ago = (datetime.now() - timedelta(days=365*5)).strftime('%Y-%m-%d')

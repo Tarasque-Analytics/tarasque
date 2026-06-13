@@ -8,8 +8,8 @@ Model-development contribution practices are intentionally out of scope here.
 
 Current app stack:
 - Frontend: React 19, React Router 7 (SSR enabled), TypeScript, Vite 7, Tailwind CSS 4, Chart.js.
-- Backend: FastAPI (Python), serving ticker payload JSON data over REST endpoints.
-- Data source for app: `app/assets/data/*_Payload.json` via backend API. (Migrate to database)
+- Backend: FastAPI (Python), serving per-equity data over REST endpoints.
+- Data source for app: Supabase (Postgres) database, queried by the backend (`backend/database.py`).
 
 Planned infrastructure track:
 - CI/CD: GitHub Actions workflow for install, typecheck, lint/test (when present), and build.
@@ -77,7 +77,7 @@ This validates the SSR production bundle and app server path.
 Frontend API calls currently target:
 - `http://localhost:8000/api`
 
-If backend host/port changes, update the API base URL in `app/utils/tickers.ts`.
+If backend host/port changes, update the API base URL in `app/utils/database.ts`.
 
 ## 4. Backend Development
 
@@ -104,18 +104,16 @@ The FastAPI service runs at `http://localhost:8000`.
 ### 4.3 API endpoints used by the app
 
 - `GET /api/health`
-- `GET /api/tickers`
-- `GET /api/tickers/{symbol}`
+- `GET /api/equities` (active ticker list for search)
+- `GET /api/equity/{symbol}` (composite per-equity payload)
 
 ### 4.4 Data expectations
 
-The backend reads ticker payload files from:
-- `app/assets/data`
+The backend reads per-equity data from Supabase (Postgres), not local files. It requires a `.env`
+at the repo root with `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` and raises at startup
+if they're missing (see `backend/CLAUDE.md` / `backend/BACKEND_GUIDE.md`).
 
-Naming convention:
-- `{SYMBOL}_Payload.json` (example: `AAPL_Payload.json`)
-
-If ticker pages fail to load, verify files exist and backend is running.
+If equity pages fail to load, verify the backend is running and Supabase creds/connection are valid.
 
 ## 5. Build and Deploy
 

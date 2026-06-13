@@ -11,8 +11,8 @@ import { useNavigate } from "react-router";
 
 export default function ProtectedLayout() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [isLoggedin, setIsLoggedin] = useState(false);
+  const [, setLoading] = useState(true);
+  const [, setIsLoggedin] = useState(false);
   // temporary condition to test protected routes, replace with actual auth check
   // TODO: add auth check here and redirect to login if not authenticated
   useEffect(() => {

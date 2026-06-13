@@ -1,15 +1,10 @@
 """
-FastAPI Backend for Volarbear Ticker Data
-Serves ticker payloads and manages ticker information.
+FastAPI backend for the Volarbear app.
 
-TODO: PostgreSQL Integration
-- Install psycopg2-binary: pip install psycopg2-binary
-- Create database models using SQLAlchemy
-- Replace file-based data loading with database queries
-- Add connection pooling for performance
-- Implement caching layer (Redis) for frequently accessed tickers
+Serves per-equity volatility/options data to the frontend from Supabase via the `database.py`
+query helpers. Main endpoint: GET /api/equity/{symbol} (composite payload); GET /api/equities
+lists active tickers for the search. See backend/CLAUDE.md for the data-source overview.
 """
-import json
 import os
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
@@ -21,6 +16,7 @@ from contextlib import asynccontextmanager
 import traceback
 from backend import database
 from backend.database import (
+    get_active_tickers,
     get_security_data,
     get_volatility_history,
     get_price_history,
@@ -70,97 +66,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Path to data directory relative to this file
-DATA_DIR = Path(__file__).parent.parent / "app" / "assets" / "data"
-
 # Change to PostgreSQL check when implemented
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint"""
     return {"status": "ok"}
 
-
-@app.get("/api/tickers")
-async def get_available_tickers():
-    """
-    Get list of all available ticker symbols.
-    
-    Returns:
-        list[str]: List of ticker symbols with available data
-        
-    TODO: When PostgreSQL is integrated:
-        - Query all tickers from the database
-        - Add filtering options (sector, market_cap, etc.)
-        - Implement pagination for large datasets
-    """
-    try:
-        tickers = []
-        
-        # Scan data directory for *_Payload.json files
-        if DATA_DIR.exists():
-            for file in DATA_DIR.glob("*_Payload.json"):
-                # Extract ticker symbol from filename (e.g., "MS_Payload.json" -> "MS")
-                ticker = file.stem.replace("_Payload", "")
-                tickers.append(ticker)
-        
-        # Sort alphabetically for consistent ordering
-        tickers.sort()
-        
-        return {"tickers": tickers, "count": len(tickers)}
-    
-    except Exception as e:
-        print(f"Exception at get_available_tickers: {str(e)}", flush=True)
-        raise HTTPException(status_code=500, detail="Error fetching tickers")
-
-
-@app.get("/api/tickers/{symbol}")
-async def get_ticker_data(symbol: str):
-    """
-    Get payload data for a specific ticker.
-    
-    Args:
-        symbol (str): Ticker symbol (case-insensitive)
-    
-    Returns:
-        dict: Ticker payload containing metadata, charts, opportunities, etc.
-        
-    TODO: When PostgreSQL is integrated:
-        - Query ticker data from the database
-        - Validate ticker_id against allowed tickers
-        - Cache expensive computations
-        - Add real-time data fetching from market APIs
-    """
-    # Normalize symbol to uppercase
-    symbol = symbol.upper()
-    
-    # Construct file path
-    file_path = DATA_DIR / f"{symbol}_Payload.json"
-    
-    # Check if file exists
-    if not file_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"No data found for symbol: {symbol}"
-        )
-    
-    try:
-        # Read and return JSON file
-        with open(file_path, "r") as f:
-            data = json.load(f)
-        return data
-    
-    except json.JSONDecodeError as e:
-        print(f"Exception at get_ticker_data (JSONDecodeError) for {symbol}: {str(e)}", flush=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Invalid JSON format for {symbol}"
-        )
-    except Exception as e:
-        print(f"Exception at get_ticker_data for {symbol}: {str(e)}", flush=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error fetching data for {symbol}"
-        )
 
 @app.get("/api/equity/{symbol}")
 async def get_equity_data(symbol: str):
@@ -233,6 +144,17 @@ async def get_equity_data(symbol: str):
         raise HTTPException(status_code=500, detail=f"Equity data cannot be found for {symbol}")
     
     
+
+@app.get("/api/equities")
+async def get_available_equities():
+    """List active equity ticker symbols (DB-backed) for the ticker search.
+    
+    Returns:
+        dict: {"equities": list[str], "count": int}
+    """
+    equities = await get_active_tickers()
+    return {"equities": equities, "count": len(equities)}
+
 
 @app.get("/api/model-runs/latest")
 async def get_latest_model_run_data():

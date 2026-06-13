@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import type { ReactNode } from "react";
 import { Chart as ChartJS, LinearScale, PointElement, BubbleController, Tooltip } from "chart.js";
 import type { ChartData, ChartOptions, ChartType, Plugin, Scale } from "chart.js";
 import { Chart } from "react-chartjs-2";
@@ -11,6 +10,7 @@ import type {
   VolatilityRecord,
   SecurityMeta,
 } from "~/utils/database";
+import { Card, Empty } from "./section";
 
 ChartJS.register(LinearScale, PointElement, BubbleController, Tooltip);
 
@@ -211,7 +211,6 @@ type SkewData = {
   expiries: SkewExpiry[]; // sorted by DTE ascending (front month first)
   ivAtmForDte: (dte: number) => number | null; // gold-band vol, matched to the expiry's horizon
   rv: number | null; // teal-band vol (realized)
-  isMock: boolean;
 };
 
 // Closest ATM IV term-structure column for a given DTE.
@@ -290,72 +289,7 @@ function buildData(equity: EquitiesPayload | null): SkewData | null {
     expiries,
     ivAtmForDte: (dte) => (latestVol ? ivAtmColForDte(latestVol, dte) : null),
     rv: latestVol?.rv ?? null,
-    isMock: false,
   };
-}
-
-/* ── dev fixture ──
-   Real options data now flows from the options pipeline (yfinance → options_chain), so this is
-   only a no-backend dev aid: a multi-expiry synthetic chain (downside-skewed smile, OI bell-curve,
-   a few 0-OI wings) for developing the dense viz when the API is down. Used ONLY in dev
-   (import.meta.env.DEV) AND only when live data is absent — production renders the real empty
-   state, never this. Deterministic (no Math.random) so SSR and client agree. */
-const IS_DEV = Boolean(import.meta.env?.DEV);
-
-const addDays = (iso: string, n: number) => {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-};
-
-// One synthetic expiry: a downside-skewed smile centered on `atm`, OI a bell curve scaled by
-// `oiScale` (front month carries the most). Far wings land at 0 OI to exercise the min-radius path.
-function makeMockExpiry(spot: number, snapshotISO: string, dte: number, atm: number, oiScale: number): SkewExpiry {
-  const points: SkewPoint[] = [];
-  for (let k = 125; k <= 230; k += 2.5) {
-    if (Math.abs(k - spot) < 1.5) continue; // ATM gap — OTM only
-    const m = (k - spot) / spot;
-    const iv = Math.min(0.46, Math.max(0.2, atm + 0.85 * m * m - 0.22 * m));
-    const oi = Math.round(oiScale * Math.exp(-((m / 0.075) ** 2) / 2));
-    points.push({
-      strike: Math.round(k * 100) / 100,
-      iv: Math.round(iv * 1e4) / 1e4,
-      oi: oi < 5 ? 0 : oi,
-      type: k < spot ? "P" : "C",
-    });
-  }
-  return { expiryISO: addDays(snapshotISO, dte), dte, points };
-}
-
-function makeMock(): SkewData {
-  const spot = 177.01;
-  const snapshotISO = "2026-05-29";
-  // Term structure: front-month richest IV + deepest OI; longer expiries flatten and thin out.
-  const TERM: [number, number, number][] = [
-    [30, 0.252, 5200],
-    [58, 0.245, 3400],
-    [91, 0.24, 2200],
-    [182, 0.235, 1400],
-  ];
-  const ivByDte = new Map(TERM.map(([dte, atm]) => [dte, atm]));
-  const nearestTermIv = (dte: number): number => {
-    let best = TERM[0][0];
-    for (const [d] of TERM) if (Math.abs(d - dte) < Math.abs(best - dte)) best = d;
-    return ivByDte.get(best) as number;
-  };
-  return {
-    spot,
-    snapshotISO,
-    expiries: TERM.map(([dte, atm, oi]) => makeMockExpiry(spot, snapshotISO, dte, atm, oi)),
-    ivAtmForDte: nearestTermIv,
-    rv: 0.232, // realized vol ≈ 23.2%
-    isMock: true,
-  };
-}
-const MOCK_VIEW = makeMock();
-
-function Card({ children }: { children: ReactNode }) {
-  return <div className="panel p-5">{children}</div>;
 }
 
 /**
@@ -369,26 +303,23 @@ function Card({ children }: { children: ReactNode }) {
  */
 export default function ContractSkewChart() {
   const equity = useEquityData();
-  const built = useMemo(() => buildData(equity), [equity]);
-  // In dev, fall back to the fixture whenever there's no live view (even with the DB down) so the
-  // viz can be developed without a backend. Production (IS_DEV false) shows the real empty states.
-  const view = built ?? (IS_DEV ? MOCK_VIEW : null);
+  const view = useMemo(() => buildData(equity), [equity]);
   const [selectedExpiry, setSelectedExpiry] = useState<string | null>(null);
 
   if (!view) {
     return (
       <Card>
         <Header symbol={equity?.symbol} sec={equity?.security} />
-        <div className="flex h-110 items-center justify-center text-sm text-(--text-secondary)">
+        <Empty>
           {equity
             ? `No options chain available for ${equity.symbol}.`
             : "Options data is currently unavailable."}
-        </div>
+        </Empty>
       </Card>
     );
   }
 
-  const { spot, expiries, ivAtmForDte, rv, isMock } = view;
+  const { spot, expiries, ivAtmForDte, rv } = view;
   // Fall back to the front expiry if nothing is selected or the selection isn't in this payload
   // (e.g. after switching tickers) — graceful without a reset effect.
   const selected = expiries.find((e) => e.expiryISO === selectedExpiry) ?? expiries[0];
@@ -507,7 +438,6 @@ export default function ContractSkewChart() {
         expiries={expiries}
         selected={selected}
         onSelect={setSelectedExpiry}
-        isMock={isMock}
       />
 
       {(ivHalf != null || rvHalf != null) && (
@@ -547,14 +477,12 @@ function Header({
   expiries,
   selected,
   onSelect,
-  isMock,
 }: {
   symbol?: string;
   sec?: SecurityMeta;
   expiries?: SkewExpiry[];
   selected?: SkewExpiry;
   onSelect?: (expiryISO: string) => void;
-  isMock?: boolean;
 }) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -565,7 +493,6 @@ function Header({
           </h2>
           {symbol && <span className="text-lg font-semibold text-(--text-muted)">{symbol}</span>}
           {sec?.gics_sector && <span className="badge badge-sector">{sec.gics_sector}</span>}
-          {isMock && <span className="badge badge-neutral">sample data</span>}
         </div>
         <p className="mt-0.5 text-sm text-(--text-muted)">
           OI-weighted IV across listed strikes

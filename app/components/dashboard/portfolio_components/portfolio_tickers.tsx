@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { usePortfolioData } from "~/context/PortfolioDataContext";
-import { gainLossPercent, getCurrentPrices } from "./portfolio_utils";
+import { getCurrentPrices } from "./portfolio_utils";
 import HoldingView from "./holdingView";
 
 export default function PortfolioTickers() {

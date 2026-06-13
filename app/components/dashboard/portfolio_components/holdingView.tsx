@@ -1,5 +1,3 @@
-import { useState } from "react";
-
 export interface HoldingProps {
   ticker: string;
   gain_loss: number;

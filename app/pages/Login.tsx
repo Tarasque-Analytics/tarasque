@@ -13,7 +13,7 @@ export default function Login() {
     setError("");
     setIsLoading(true);
 
-    const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
     setIsLoading(false);
 
     if (authError) {

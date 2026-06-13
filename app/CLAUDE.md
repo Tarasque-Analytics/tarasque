@@ -96,6 +96,33 @@ resolve CSS variables, so graph colors are literals in the component while share
 in `app/app.css`. `getAvailableTickers()` → `GET /api/tickers` feeds ticker search/selection
 (the search box navigates to `/equity/:symbol`).
 
+### Equity section components — shared structure (keep these aligned)
+
+The `/equity/:symbol` page is a vertical stack of **section components** under
+[components/equity/](components/equity/) — price history, forward-vol forecast, options chain,
+contracts & skew. They deliberately share one skeleton; treat it as the standard and keep new
+sections consistent with it:
+
+- **Wrapper + placeholder come from [components/equity/section.tsx](components/equity/section.tsx)** —
+  `Card` (the `.panel p-5` surface every section sits in) and `Empty` (the centered, muted
+  loading/empty/unavailable placeholder). **Reuse these; don't re-declare a local `Card`/`Empty`.**
+  They were previously copy-pasted per file and drifted (mismatched placeholder heights) — the shared
+  module exists to prevent exactly that.
+- **Each section defines a local `Header`** (title + `symbol` + sector badge + any controls). Header
+  *content* is component-specific, but every section has one and renders it in its empty states too.
+- **Data via `useEquityData()`, which may be `null`.** Two-tier empty handling, both inside
+  `Card` + `Empty`: payload null → `"<Thing> data is currently unavailable."`; present-but-no-rows →
+  `"No <thing> available for {symbol}."`.
+- **Page-level fallback** when the *whole* payload is null is a separate component,
+  [components/equity/equity_unavailable.tsx](components/equity/equity_unavailable.tsx) (rendered by
+  [pages/Ticker.tsx](pages/Ticker.tsx) in place of the section stack) — not the per-section `Empty`.
+- **Colors:** chart/graph colors stay as local literals per component (canvas can't read CSS vars);
+  shared UI colors live in [app.css](app.css).
+
+These are **major design choices meant to be standard across the section components.** When you change
+one (a shared primitive, the empty-state contract, the header pattern), apply it to all four rather
+than letting one diverge.
+
 **What's available via `useEquityData()`** (`EquitiesPayload` from [utils/database.ts](utils/database.ts)):
 
 | Field | Shape | What it is |

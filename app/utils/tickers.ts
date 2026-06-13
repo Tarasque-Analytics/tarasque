@@ -6,23 +6,6 @@ import type { TickerDataPayload } from "../context/TickerDataContext";
 const API_BASE_URL = "http://localhost:8000/api";
 
 /**
- * Get all available ticker symbols from the backend
- */
-export async function getAvailableTickers(): Promise<string[]> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/tickers`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch tickers: ${response.statusText}`);
-    }
-    const data = await response.json();
-    return data.tickers;
-  } catch (error) {
-    console.error("Error fetching available tickers:", error);
-    return [];
-  }
-}
-
-/**
  * Load payload data for a specific ticker from the backend
  */
 export async function loadTickerPayload(symbol: string): Promise<TickerDataPayload> {

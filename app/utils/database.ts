@@ -174,6 +174,29 @@ export async function loadEquityData(symbol: string): Promise<EquitiesPayload> {
 }
 
 /**
+ * Load the list of active equity ticker symbols from the database-backed API
+ * (GET /api/equities). Feeds the ticker search. Non-fatal: returns [] on any failure so the
+ * search box degrades gracefully instead of breaking.
+ */
+export async function loadEquityList(): Promise<string[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/equities`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch equities: ${response.statusText}`);
+    }
+    const data = await response.json();
+    return data.equities ?? [];
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error("Error loading equity list:", error);
+    } else {
+      console.error("Error loading equity list");
+    }
+    return [];
+  }
+}
+
+/**
  * Load the latest model run for the navbar (version + run date).
  * Non-fatal: returns null on any failure so the navbar can render a placeholder instead of
  * breaking (consistent with how the equity components handle missing data).

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
-import { getAvailableTickers } from "~/utils/tickers";
+import { loadEquityList } from "~/utils/database";
 
 export default function Search() {
   const [ticker, setTicker] = useState("");
@@ -10,7 +10,7 @@ export default function Search() {
 
   // Fetch available tickers on component mount
   useEffect(() => {
-    getAvailableTickers()
+    loadEquityList()
       .then(setAvailableTickers)
       .finally(() => setIsLoading(false));
   }, []);

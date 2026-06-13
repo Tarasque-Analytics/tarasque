@@ -21,6 +21,7 @@ from contextlib import asynccontextmanager
 import traceback
 from backend import database
 from backend.database import (
+    get_active_tickers,
     get_security_data,
     get_volatility_history,
     get_price_history,
@@ -233,6 +234,17 @@ async def get_equity_data(symbol: str):
         raise HTTPException(status_code=500, detail=f"Equity data cannot be found for {symbol}")
     
     
+
+@app.get("/api/equities")
+async def get_available_equities():
+    """List active equity ticker symbols (DB-backed) for the ticker search.
+    
+    Returns:
+        dict: {"equities": list[str], "count": int}
+    """
+    equities = await get_active_tickers()
+    return {"equities": equities, "count": len(equities)}
+
 
 @app.get("/api/model-runs/latest")
 async def get_latest_model_run_data():

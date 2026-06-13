@@ -1,13 +1,9 @@
 """
-FastAPI Backend for Volarbear Ticker Data
-Serves ticker payloads and manages ticker information.
+FastAPI backend for the Volarbear app.
 
-TODO: PostgreSQL Integration
-- Install psycopg2-binary: pip install psycopg2-binary
-- Create database models using SQLAlchemy
-- Replace file-based data loading with database queries
-- Add connection pooling for performance
-- Implement caching layer (Redis) for frequently accessed tickers
+Serves per-equity volatility/options data to the frontend from Supabase via the `database.py`
+query helpers. Main endpoint: GET /api/equity/{symbol} (composite payload); GET /api/equities
+lists active tickers for the search. See backend/CLAUDE.md for the data-source overview.
 """
 import os
 from pathlib import Path

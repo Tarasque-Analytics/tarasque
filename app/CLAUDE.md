@@ -59,28 +59,25 @@ which prevents handing out credentials. Likely path is to pre-seed the showcase 
 
 `/equity/:symbol` is the canonical example of the data architecture.
 
-1. **Loader** ([routes/ticker.tsx](routes/ticker.tsx)) fetches **both** payloads in parallel via
-   `Promise.allSettled`:
-   - `loadTickerPayload(symbol)` → `GET /api/tickers/:symbol` (legacy file payload).
-     **Required** — loader throws a 404 Response if it fails.
-   - `loadEquityData(symbol)` → `GET /api/equity/:symbol` (Supabase-backed). **Non-fatal** —
-     falls back to `null` so the page still renders if the DB call is down.
-2. **Page** ([pages/Ticker.tsx](pages/Ticker.tsx)) reads `useLoaderData()` and wraps children in
-   **both** providers: `TickerDataProvider` (file) and `EquityDataProvider` (DB).
-3. **Components** consume whichever provider has what they need:
-   - `useTickerData()` → parsed file payload (`meta` / `hedging` / `explainability` /
-     `monteCarloData` / `opportunities`). Throws if used outside its provider.
+1. **Loader** ([routes/ticker.tsx](routes/ticker.tsx)) fetches the single DB-backed payload:
+   - `loadEquityData(symbol)` → `GET /api/equity/:symbol` (Supabase-backed). **Non-fatal** — on
+     failure the loader returns `equity: null` (it does **not** throw) so the page can render an
+     explicit error state.
+2. **Page** ([pages/Ticker.tsx](pages/Ticker.tsx)) reads `useLoaderData()`; when `equity` is `null`
+   it renders [`EquityUnavailable`](components/equity/equity_unavailable.tsx), otherwise it wraps the
+   section components in `EquityDataProvider` (DB).
+3. **Components** consume the DB payload via:
    - `useEquityData()` → `EquitiesPayload | null`. Consumers **must handle `null`** (DB call may
      have failed).
 
 ## Equity page — redesign in progress
 
-The four existing `/equity/:symbol` ticker components ([Attributes](components/ticker/attributes.tsx),
-[Options](components/ticker/options.tsx), [Predictors](components/ticker/predictors.tsx),
-[MonteCarlo](components/ticker/monte_carlo.tsx)) are slated for **near-complete rewrite** as part
-of a design pivot. Treat them as legacy to be replaced — **don't** anchor on them for structure,
-style, or content; new components follow new designs. The data-flow scaffolding above (loader,
-providers, hooks) stays as-is.
+The page has been rebuilt around DB-backed components under `app/components/equity/`. The four
+original file-backed `components/ticker/*` components (Attributes, Options, Predictors, MonteCarlo)
+and the entire file-payload path (`/api/tickers*`, `loadTickerPayload`, `TickerDataContext`) were
+**removed** in the file-data cleanup (issue #83) — `/api/equity/:symbol` is now the page's only data
+source. The planned successors for what the legacy components showed: a metadata panel (#104) for
+Attributes, and SHAP attributions re-homed to the separate `/model` page (#101–#103) for Predictors.
 
 **First new component — the price-history chart**
 ([components/equity/price_history_chart.tsx](components/equity/price_history_chart.tsx)), the
@@ -93,8 +90,8 @@ Two chart.js gotchas are documented inline and worth reusing: (1) an inline plug
 data from `chart.options` — react-chartjs-2 does **not** refresh an inline-plugin **closure** on
 re-render, so a closure goes stale and redraws the previous range's data; (2) canvas can't
 resolve CSS variables, so graph colors are literals in the component while shared UI colors live
-in `app/app.css`. `getAvailableTickers()` → `GET /api/tickers` feeds ticker search/selection
-(the search box navigates to `/equity/:symbol`).
+in `app/app.css`. `loadEquityList()` ([utils/database.ts](utils/database.ts)) → `GET /api/equities`
+feeds ticker search/selection (the search box navigates to `/equity/:symbol`).
 
 ### Equity section components — shared structure (keep these aligned)
 
@@ -138,11 +135,6 @@ than letting one diverge.
 
 The DB call is non-fatal; consumers **must handle `useEquityData()` returning `null`**.
 
-The legacy file payload (`useTickerData()` / `loadTickerPayload` / `TickerDataContext`) is still
-wired into the loader for the old components. As new components stop reading it, retire the
-file-payload path entirely — including the `/api/tickers/:symbol` endpoint, the dual-fetch in
-the route loader, and `TickerDataContext`.
-
 ### Planned — two-phase (progressive) loading for time-series panels
 
 **Not implemented; captured for a future latency pass.** Today the loader awaits the whole
@@ -174,13 +166,12 @@ SSR streaming). The price-history chart would be the reference implementation th
 
 ## Utils & API client
 
-- [utils/database.ts](utils/database.ts) — **canonical** equity spec. Row interfaces mirror the
-  Supabase tables (see `supabase/database_SQL_defs.sql`); `loadEquityData()` fetches
-  `/api/equity/:symbol`. Numeric columns nullable in the DB are typed `… | null`.
-- [utils/tickers.ts](utils/tickers.ts) — legacy file-backed loaders only: `getAvailableTickers`,
-  `loadTickerPayload`. (The equity types previously duplicated here were removed — `database.ts`
-  is canonical.)
-- **`API_BASE_URL` is hardcoded** as `http://localhost:8000/api` in both utils files. It must
+- [utils/database.ts](utils/database.ts) — **canonical** equity spec and the only data-fetch util.
+  Row interfaces mirror the Supabase tables (see `supabase/database_SQL_defs.sql`); `loadEquityData()`
+  fetches `/api/equity/:symbol` and `loadEquityList()` fetches `/api/equities` (the ticker-search
+  list). Numeric columns nullable in the DB are typed `… | null`. (The legacy `utils/tickers.ts`
+  file-backed loaders were removed in the file-data cleanup, issue #83.)
+- **`API_BASE_URL` is hardcoded** as `http://localhost:8000/api` in `utils/database.ts`. It must
   become env-driven for stg/prod — see `backend/CLAUDE.md` (Environments + Deployment).
 - [supabaseClient.ts](supabaseClient.ts) — `@supabase/supabase-js` client. **Used only for auth**
   (`ProtectedLayout` calls `supabase.auth.getUser()`). Equity/data flow goes through the FastAPI

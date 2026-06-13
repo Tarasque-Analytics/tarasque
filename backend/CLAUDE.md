@@ -62,10 +62,8 @@ What actually varies per environment:
 (both read env only at startup). Remote keys are secrets (never commit); local-stack keys are
 shared non-secret defaults.
 
-## Data sources (mid-migration)
+## Data sources
 
-- Legacy file endpoints (`/api/tickers`, `/api/tickers/{symbol}`) read
-  `app/assets/data/{SYMBOL}_Payload.json`.
 - DB endpoint `/api/equity/{symbol}` resolves the ticker to a `security_id` via `securities`,
   then aggregates Supabase queries (in `database.py`) in parallel via `asyncio.gather`.
   `price_history` returns the **full available history** (paginated through the per-request row
@@ -76,6 +74,9 @@ shared non-secret defaults.
   Current payload keys: `symbol, security, volatility_history,
   price_history, options_chain, ai_overview,
   latest_shap_snapshot, events`. **`distribution_data` is temporarily disabled** (see below).
+- `/api/equities` returns the list of active ticker symbols (`securities.active`, via
+  `get_active_tickers()` in `database.py`) and feeds the frontend ticker search. It replaced the
+  legacy filesystem-scan `/api/tickers*` endpoints, removed in the file-data cleanup (issue #83).
 - `/api/dashboard`, `/api/sector/{sector}`, `/api/macro` are unimplemented stubs returning `{}`.
 
 Because the equity queries run under one `asyncio.gather`, any single query raising will fail

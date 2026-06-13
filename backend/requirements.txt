@@ -1,3 +1,7 @@
+# Requires Python >= 3.10 (python-dotenv 1.2.x needs 3.10+).
+# On Python 3.8/3.9, pip fails with a misleading "Could not find a version
+# that satisfies the requirement python-dotenv==1.2.2" — it's a Python version
+# mismatch, not a missing release. Install/run with Python 3.10+ (e.g. `py -3.11`).
 fastapi==0.104.1
 uvicorn==0.24.0
 python-multipart==0.0.6

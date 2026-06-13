@@ -14,6 +14,11 @@ backend changes).
 
 ## Running
 
+**Requires Python >= 3.10** (`python-dotenv` 1.2.x needs 3.10+). On 3.8/3.9, pip reports a
+misleading `Could not find a version that satisfies the requirement python-dotenv==1.2.2` — that
+is a Python-version mismatch (pip filters out the incompatible release), **not** a missing/typo'd
+version. Use a 3.10+ interpreter (e.g. `py -3.11 -m pip install ...`).
+
 ```bash
 pip install -r backend/requirements.txt          # needs the `supabase` SDK (NOT `supabase-py`)
 python -m backend.main                            # run from the repo root; serves :8000, API base /api

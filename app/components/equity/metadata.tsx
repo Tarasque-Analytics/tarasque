@@ -1,4 +1,3 @@
-import type { EquitiesPayload } from "~/utils/database";
 import {getBeta, getMarketCap, getAvgSpread} from "~/utils/database"
 import {constructGicsCode} from "~/utils/gics"
 import { useEquityData } from "~/context/EquityDataContext";
@@ -24,7 +23,7 @@ function DataRow({ label, value }: { label: string; value: string | number | nul
   );
 }
 
-export default function EquityClasses() {
+export default function EquityMetaData() {
   const payload = useEquityData()
     
   // Early return if payload is null

@@ -22,14 +22,14 @@ export default function TickerView() {
   return (
     <EquityDataProvider data={equity}>
       {/* Redesigned equity page — new components go here */}
-      <div className="grid grid-cols-4 gap-25">
+      <div className="grid grid-cols-6 gap-4">
         {/* Left col*/}
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
           <Search />
-          <EquityMetaData /> 
+          <EquityMetaData />
         </div>
         {/* Center col*/}
-        <div className="col-span-2 flex flex-col gap-6">
+        <div className="col-span-4 flex flex-col gap-6">
           <PriceHistoryChart />
           <ForwardVolForecast />
           <ContractSkewChart />

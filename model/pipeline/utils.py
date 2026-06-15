@@ -4,9 +4,11 @@ utils.py — Shared helpers used across the pipeline.
 Ported from volarbmodel_backtest.py: clean_num (:35-42), QuantLib (:517-546),
 EventCalendar (:91-97).
 """
+from typing import Dict, Optional
+
 import numpy as np
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from scipy.stats import norm
 from scipy.optimize import brentq
 
@@ -20,6 +22,133 @@ def clean_num(val, decimals=2):
     if val is None or pd.isna(val) or np.isinf(val):
         return None
     return round(float(val), decimals)
+
+
+# ---------------------------------------------------------------------------
+# Output precision schema
+# ---------------------------------------------------------------------------
+# Source-data precision audit (CRSP / OptionMetrics / FRED) places a hard ceiling
+# on what the model can meaningfully resolve. Writing 16-decimal Python repr to
+# CSVs advertises precision the inputs do not support, and exposes FP-subtraction
+# artifacts (e.g. put_call_skew_30d trailing 9s). Apply this schema at every
+# CSV / JSON write path.
+#
+# Bounded statistics on [0,1] (R², coverage) → 4 decimals.
+# Vol-scale floats (forecasts, RV, IV-derived) → 6 decimals.
+# Counts → integer.
+DECIMAL_PRECISION: Dict[str, int] = {
+    # Predictions / targets
+    "y_true": 6, "y_pred": 6, "y_pred_q15": 6, "y_pred_q85": 6,
+    "vrp_wedge": 6, "put_call_skew_30d": 6,
+    # Forecast outputs
+    "forecast_h21": 6, "forecast_h63": 6, "forecast_h126": 6,
+    # Frontend payload time-series and aggregates
+    "predicted_rv_21d": 6, "predicted_rv_63d": 6, "predicted_rv_126d": 6,
+    "realized_rv_21d": 6, "implied_vol_30d": 6,
+    "garch_21d": 6, "market_iv_atm": 6,
+    "vrp_percentile_1y": 4, "z_score_stabilized": 4,
+    "avg_vrp_wedge": 6, "avg_forecast_rv_21d": 6, "percentile_1y": 4,
+    "forecast_rv_21d": 6, "risk_score": 4,
+    "vol_regime_zscore": 4, "market_vol_21d": 6,
+    "overall_r2": 4, "overall_mz_beta": 4,
+    "all_y_true": 6, "all_y_pred": 6,
+    # Error metrics on vol scale
+    "rmse": 6, "qlike": 6, "pinball_q15": 6, "pinball_q85": 6,
+    # Regression coefficients
+    "mz_alpha": 4, "mz_beta": 4, "mz_r2": 4,
+    # Bounded stats on [0, 1]
+    "event_capture_rate": 4, "coverage_q15": 4, "coverage_q85": 4,
+    # Lasso / XGB tracking
+    "coef": 6, "alpha": 6, "l1_ratio": 4, "mean_abs_coef": 6,
+    "mean_alpha": 6, "mean_l1_ratio": 4, "inclusion_freq": 4,
+    "importance": 6, "mean_importance": 6,
+    # Feature decay metrics (4 dec — stability, not precision-critical)
+    "rolling_inclusion_freq": 4, "sign_flip_rate": 4,
+    "importance_slope": 6, "importance_slope_pvalue": 4,
+    "rolling_ic": 4, "decay_score": 4,
+    # Diagnostic stats (analysis/audit.py)
+    "vif": 4, "ic": 4, "spearman": 4, "pearson": 4,
+    "beta": 4, "alpha_intercept": 6,
+    "r2": 4, "avg_spearman": 4,
+    "dm_sq": 4, "p_value": 4,
+    "model_rmse": 6, "naive_rmse": 6,
+    "rmse_top": 6, "rmse_middle": 6, "rmse_bottom": 6,
+    "qlike_top": 6, "qlike_middle": 6, "qlike_bottom": 6,
+    "top_10": 6, "middle_80": 6, "bottom_10": 6,
+    "mean_bias": 6, "bias": 6, "rel_bias": 4,
+    "mean_abs_wedge": 6, "ratio": 4,
+    "vrp_nan_rate": 4, "nan_rate": 4,
+    "inv_any_rate": 4, "inv_21_63_rate": 4, "inv_63_126_rate": 4,
+    "seam_jump_ratio": 4, "boundary_mean": 6, "interior_mean": 6,
+    "delta": 6, "coverage_raw": 4, "coverage_adj": 4,
+    "y_cal": 6, "alpha_ew": 6, "beta_ew": 4, "lam": 6,
+    # Counts
+    "n_predictions": 0, "n_fits": 0, "horizon": 0, "step": 0,
+    "fold": 0, "n": 0, "n_steps": 0, "n_tickers": 0, "n_total": 0,
+    "sign_flips": 0,
+}
+
+
+def round_for_output(
+    df: pd.DataFrame,
+    schema: Optional[Dict[str, int]] = None,
+) -> pd.DataFrame:
+    """
+    Return a copy of *df* with float columns rounded per *schema*.
+
+    Columns absent from *schema* are left untouched (no surprise rounding).
+    Integer-target columns (decimals == 0) are cast to nullable Int64.
+    """
+    schema = schema if schema is not None else DECIMAL_PRECISION
+    out = df.copy()
+    for col, decimals in schema.items():
+        if col not in out.columns:
+            continue
+        if decimals == 0:
+            out[col] = pd.to_numeric(out[col], errors="coerce").round(0).astype("Int64")
+        else:
+            out[col] = pd.to_numeric(out[col], errors="coerce").round(decimals)
+    return out
+
+
+def round_scalar(val, decimals: int):
+    """Round a single value, returning None for NaN/Inf/None."""
+    if val is None:
+        return None
+    try:
+        f = float(val)
+    except (TypeError, ValueError):
+        return val
+    if np.isnan(f) or np.isinf(f):
+        return None
+    return round(f, decimals)
+
+
+def round_json_dict(payload, schema: Optional[Dict[str, int]] = None):
+    """
+    Recursively round numeric leaves in a JSON-style payload.
+
+    Keys present in *schema* drive the decimal count. Numeric values under
+    keys not in the schema fall through unchanged; lists of floats are
+    rounded only when the parent key is in the schema.
+    """
+    schema = schema if schema is not None else DECIMAL_PRECISION
+
+    def _walk(obj, key=None):
+        if isinstance(obj, dict):
+            return {k: _walk(v, k) for k, v in obj.items()}
+        if isinstance(obj, list):
+            if key in schema:
+                d = schema[key]
+                return [round_scalar(v, d) if isinstance(v, (int, float, np.floating)) else _walk(v, key) for v in obj]
+            return [_walk(v, key) for v in obj]
+        if isinstance(obj, (float, np.floating)):
+            if key in schema:
+                return round_scalar(obj, schema[key])
+            return obj
+        return obj
+
+    return _walk(payload)
 
 
 # ---------------------------------------------------------------------------
@@ -148,6 +277,131 @@ def days_to_next_fomc(target_date):
     if isinstance(target_date, datetime):
         target_date = target_date.date()
     future = [d for d in FOMC_DATES if d >= target_date]
+    if not future:
+        return 100
+    return (future[0] - target_date).days
+
+
+# ---------------------------------------------------------------------------
+# CPI Release Calendar  (Bureau of Labor Statistics)
+# ---------------------------------------------------------------------------
+# CPI is released ~mid-month (10th-15th). Generated programmatically;
+# accurate to +/-2 days which is negligible for 1/(days+1) gravity features.
+
+def _mid_month_weekday(year, month, target_day=13):
+    """Nearest weekday to target_day of the month."""
+    d = date(year, month, target_day)
+    if d.weekday() == 5:    # Saturday -> Monday
+        d += timedelta(days=2)
+    elif d.weekday() == 6:  # Sunday -> Monday
+        d += timedelta(days=1)
+    return d
+
+
+CPI_DATES = sorted([
+    _mid_month_weekday(y, m)
+    for y in range(2014, 2027)
+    for m in range(1, 13)
+])
+
+
+def days_to_next_cpi(target_date):
+    """Distance in calendar days to next CPI release."""
+    if isinstance(target_date, datetime):
+        target_date = target_date.date()
+    future = [d for d in CPI_DATES if d >= target_date]
+    if not future:
+        return 100
+    return (future[0] - target_date).days
+
+
+# ---------------------------------------------------------------------------
+# NFP (Nonfarm Payrolls) Calendar  (BLS Employment Situation)
+# ---------------------------------------------------------------------------
+# Released first Friday of each month.
+
+def _first_friday(year, month):
+    """First Friday of a given month."""
+    d = date(year, month, 1)
+    days_ahead = (4 - d.weekday()) % 7  # Friday = weekday 4
+    return d + timedelta(days=days_ahead)
+
+
+NFP_DATES = sorted([
+    _first_friday(y, m)
+    for y in range(2014, 2027)
+    for m in range(1, 13)
+])
+
+
+def days_to_next_nfp(target_date):
+    """Distance in calendar days to next NFP release."""
+    if isinstance(target_date, datetime):
+        target_date = target_date.date()
+    future = [d for d in NFP_DATES if d >= target_date]
+    if not future:
+        return 100
+    return (future[0] - target_date).days
+
+
+# ---------------------------------------------------------------------------
+# Tech / industry event calendar
+# ---------------------------------------------------------------------------
+# Sector-aware feature: vol clusters around major tech industry events even when
+# nothing macro is happening. Captured as a single gravity feature (1/(d+1)) so
+# tech-adjacent names get the lift without polluting non-tech models — ElasticNet
+# shrinks the coefficient toward zero for tickers where the event isn't a vol
+# driver. Dates are programmatically generated from known annual rhythms; minor
+# +/-2 day inaccuracy is negligible for 1/(d+1) gravity.
+#
+# Events covered (one peak day per event per year):
+#   - CES (Las Vegas): first Tuesday on/after January 7
+#   - SXSW (Austin): second Friday of March  ← captures March-tech vol clusters
+#   - Google I/O (Mountain View): second Tuesday of May
+#   - Apple WWDC: first Monday on/after June 5
+#   - Apple iPhone keynote: second Tuesday of September
+#   - NVIDIA GTC: third Tuesday of March (skips when conflicts with SXSW)
+
+def _first_target_weekday_on_or_after(year, month, day, weekday):
+    """First date ≥ (year-month-day) that falls on `weekday` (0=Mon..6=Sun)."""
+    d = date(year, month, day)
+    days_ahead = (weekday - d.weekday()) % 7
+    return d + timedelta(days=days_ahead)
+
+
+def _nth_weekday_of_month(year, month, weekday, n):
+    """nth occurrence of `weekday` in the given month (n=1 first, n=2 second...)."""
+    d = date(year, month, 1)
+    days_ahead = (weekday - d.weekday()) % 7
+    return d + timedelta(days=days_ahead + 7 * (n - 1))
+
+
+def _build_tech_event_dates(start_year=2014, end_year=2027):
+    dates = []
+    for y in range(start_year, end_year + 1):
+        # CES: first Tuesday on/after Jan 7
+        dates.append(_first_target_weekday_on_or_after(y, 1, 7, weekday=1))
+        # SXSW: second Friday of March
+        dates.append(_nth_weekday_of_month(y, 3, weekday=4, n=2))
+        # Google I/O: second Tuesday of May
+        dates.append(_nth_weekday_of_month(y, 5, weekday=1, n=2))
+        # WWDC: first Monday on/after June 5
+        dates.append(_first_target_weekday_on_or_after(y, 6, 5, weekday=0))
+        # Apple iPhone keynote: second Tuesday of September
+        dates.append(_nth_weekday_of_month(y, 9, weekday=1, n=2))
+        # NVIDIA GTC: third Tuesday of March (approximate; sometimes shifted)
+        dates.append(_nth_weekday_of_month(y, 3, weekday=1, n=3))
+    return sorted(set(dates))
+
+
+TECH_EVENT_DATES = _build_tech_event_dates()
+
+
+def days_to_next_tech_event(target_date):
+    """Distance in calendar days to next tech industry event."""
+    if isinstance(target_date, datetime):
+        target_date = target_date.date()
+    future = [d for d in TECH_EVENT_DATES if d >= target_date]
     if not future:
         return 100
     return (future[0] - target_date).days

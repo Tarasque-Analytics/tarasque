@@ -1,35 +1,14 @@
 import { useParams } from "react-router";
-import { useState, useEffect } from "react";
 
 export default function SectorView() {
   const { sector } = useParams<{ sector: string }>();
 
-// Uncomment when sectorDataPayload exists
-//   const payloadData = useLoaderData() as SectorDataPayload;
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    // Data is preloaded from route loader - need only when pulling from DB, maybe
-    setIsLoading(false);
-  }, []);
-
   return (
-      <div>
-        <div className="flex justify-center">Data and Analytics for {sector}</div>
-        {/* Component Grid */}
-        {isLoading ? (
-          <div className="loading-placeholder" />
-        ) : (
-          <div className="flex flex-col items-center justify-center w-64 h-64 bg-white border border-gray-200 rounded-xl shadow-sm p-4">
-            <iframe
-              src="https://giphy.com/embed/Q3J5xe18ZEOVZqWA8x" title="tylko jedno w głowie mam"
-            />
-            <p className="text-xs text-gray-400 mt-2">
-              <a>Totally real {sector} sector view page</a>
-            </p>
-          </div>
-        )}
+    <div className="flex min-h-[60vh] items-center justify-center">
+      <div className="w-full max-w-md bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-700 rounded-xl shadow-sm p-6 text-center">
+        <h1 className="text-lg font-semibold mb-2">{sector} sector</h1>
+        <p className="text-sm text-gray-400">Sector analytics are coming soon.</p>
       </div>
-
+    </div>
   );
 }

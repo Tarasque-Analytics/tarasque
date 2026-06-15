@@ -1,14 +1,8 @@
-// 3d model, still have to iron this out
-import { PortfolioDataProvider } from "~/context/PortfolioDataContext";
-import PortfolioGraph from "./portfolio_components/portfolio_graph";
-import portfoliodata from "./portfolio_components/test_portfolio.json"; // PLACEHOLDER DATA
-
 export default function DetailedAnalysis() {
   return (
     <div className="bg-white rounded-lg shadow p-6">
-      <PortfolioDataProvider data={portfoliodata}>
-        <PortfolioGraph />
-      </PortfolioDataProvider>
+      <h2 className="text-lg font-semibold text-gray-900 mb-2">Detailed Analysis</h2>
+      <p className="text-sm text-gray-400">Coming soon.</p>
     </div>
   );
 }

@@ -1,6 +1,5 @@
 import { constructGicsCode } from "~/utils/gics";
 import { useEquityData } from "~/context/EquityDataContext";
-import { useMemo } from "react";
 
 function formatMarketCap(marketCap: number | null | undefined): string {
   if (!marketCap) return "—";
@@ -37,16 +36,13 @@ export default function EquityMetaData() {
     return null;
   }
 
-  // TODO: Replace this when we actually figure out how we're getting the GICS code
-  const gicsCode = useMemo(
-    () =>
-      constructGicsCode(
-        security.gics_sector,
-        null,
-        security.gics_industry,
-        security.gics_subindustry,
-      ),
-    [security.gics_sector, security.gics_industry, security.gics_subindustry],
+  // Plain const, not useMemo — constructGicsCode is a cheap synchronous lookup, and a hook here
+  // would run after the early returns above, violating the Rules of Hooks.
+  const gicsCode = constructGicsCode(
+    security.gics_sector,
+    null,
+    security.gics_industry,
+    security.gics_subindustry,
   );
   const sector = security?.gics_sector;
   const industry = security?.gics_industry;

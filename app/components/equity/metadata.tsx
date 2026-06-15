@@ -49,7 +49,6 @@ export default function EquityMetaData() {
       ),
     [security.gics_sector, security.gics_industry, security.gics_subindustry],
   );
-  // console.log("GICS CODE: " + gicsCode)
   const sector = security?.gics_sector;
   const industry = security?.gics_industry;
   const subindustry = security?.gics_subindustry;

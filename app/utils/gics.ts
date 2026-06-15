@@ -476,9 +476,6 @@ export function constructGicsCode(
   industry?: string | null | undefined,
   subindustry?: string | null | undefined
 ): string {
-  console.log("Sector:", sector);
-  console.log("Industry:", industry);
-  console.log("Subindustry:", subindustry);
   if (!sector) return "";
 
   const sectorCode = GICS_SECTORS[sector];

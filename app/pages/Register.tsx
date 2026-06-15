@@ -9,10 +9,21 @@ export default function Register() {
   const [isLoading, setIsLoading] = useState(false);
   const [reenterPassword, setReenterPassword] = useState("");
   const [passwordConfirmed, setPasswordConfirmed] = useState(false);
-  const [hasUpperLowerCase, setHasUpperLowerCase] = useState(false);
-  const [hasNumber, setHasNumber] = useState(false);
-  const [hasSpecialChar, setHasSpecialChar] = useState(false);
   const [emailError, setEmailError] = useState("");
+  const [error, setError] = useState("");
+
+  // Handle the return leg of the Google OAuth round-trip. On success Supabase appends the
+  // session to this URL and fires SIGNED_IN, so we forward to the dashboard. A cancelled or
+  // denied sign-in returns here with no session, so the user simply lands back on the register
+  // page (instead of the site's base URL).
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" && session) {
+        navigate("/dashboard");
+      }
+    });
+    return () => data.subscription.unsubscribe();
+  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,9 +40,28 @@ export default function Register() {
     navigate("/login");
   };
 
+  const handleOAuthSignIn = async () => {
+    setError("");
+    setIsLoading(true);
+
+    const { error: authError } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        // Return to the register page after the Google round-trip. If the user cancels, they land
+        // back here rather than on the site's base URL. NOTE: this exact URL must be in the
+        // Supabase project's redirect allow-list, otherwise Supabase falls back to the Site URL.
+        redirectTo: `${window.location.origin}/register`,
+      },
+    });
+
+    if (authError) {
+      setError("Failed to sign in with Google");
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const strengthOk = checkPasswordStrength(password);
-    setPasswordConfirmed(password !== "" && password === reenterPassword && strengthOk);
+    setPasswordConfirmed(password !== "" && password === reenterPassword);
   }, [password, reenterPassword]);
 
   function validateEmail(em: string) {
@@ -39,30 +69,16 @@ export default function Register() {
     return re.test(em);
   }
 
-  function checkPasswordStrength(pw: string): boolean {
-    let hasCapital = false;
-    let hasNumber = false;
-    let hasSpecial = false;
-    let hasLower = false;
-    for (let i = 0; i < pw.length; i++) {
-      const char = pw.charAt(i);
-      hasLower = hasLower || (char >= "a" && char <= "z");
-      hasCapital = hasCapital || (char >= "A" && char <= "Z");
-      hasNumber = hasNumber || (char >= "0" && char <= "9");
-      hasSpecial = hasSpecial || "!@#$%^&*()_+-=[]{}|;':\"\\,.<>/?".includes(char);
-    }
-
-    setHasUpperLowerCase(hasCapital && hasLower);
-    setHasNumber(hasNumber);
-    setHasSpecialChar(hasSpecial);
-
-    return hasCapital && hasNumber && hasSpecial && hasLower;
-  }
-
   return (
     <div className="flex items-center justify-center min-h-screen">
       <div className="p-8 rounded-lg shadow-lg w-96 bg-neutral-100 dark:bg-neutral-800">
         <h1 className="text-2xl font-bold text-center mb-6">Register</h1>
+
+        {error && (
+          <div className="error-box">
+            {error}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -78,9 +94,9 @@ export default function Register() {
                   v === "" || validateEmail(v) ? "" : "Please enter a valid email address.",
                 );
               }}
-              className="w-full px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 
-              bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white 
-              placeholder-neutral-400 dark:placeholder-neutral-500 
+              className="w-full px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500
+              bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white
+              placeholder-neutral-400 dark:placeholder-neutral-500
               border border-neutral-300 dark:border-neutral-700"
               required
             />
@@ -93,32 +109,13 @@ export default function Register() {
               type="password"
               placeholder="Enter your password"
               value={password}
-              onChange={(e) => {
-                const v = e.target.value;
-                setPassword(v);
-                checkPasswordStrength(v);
-              }}
-              className="w-full px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 
-              bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white 
-              placeholder-neutral-400 dark:placeholder-neutral-500 
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500
+              bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white
+              placeholder-neutral-400 dark:placeholder-neutral-500
               border border-neutral-300 dark:border-neutral-700"
               required
             />
-          </div>
-
-          <div>
-            <label className={`block text-xs font-medium mb-1 ${password.length >= 8 ? "text-green-500 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
-              Must be at least 8 characters long
-            </label>
-            <label className={`block text-xs font-medium mb-1 ${hasUpperLowerCase ? "text-green-500 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
-              Must include uppercase and lowercase letters
-            </label>
-            <label className={`block text-xs font-medium mb-1 ${hasNumber ? "text-green-500 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
-              Must include at least one number
-            </label>
-            <label className={`block text-xs font-medium mb-1 ${hasSpecialChar ? "text-green-500 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
-              Must include a special character
-            </label>
           </div>
 
           <div>
@@ -128,9 +125,9 @@ export default function Register() {
               placeholder="Confirm your password"
               value={reenterPassword}
               onChange={(e) => setReenterPassword(e.target.value)}
-              className="w-full px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 
-              bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white 
-              placeholder-neutral-400 dark:placeholder-neutral-500 
+              className="w-full px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500
+              bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white
+              placeholder-neutral-400 dark:placeholder-neutral-500
               border border-neutral-300 dark:border-neutral-700"
               required
             />
@@ -149,6 +146,26 @@ export default function Register() {
             className="cursor-pointer disabled:cursor-default w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 rounded-lg transition disabled:opacity-50"
           >
             {isLoading ? "Registering..." : "Register"}
+          </button>
+
+          <div className="divider-container">
+            <div className="divider-line" />
+            <span className="divider-text">OR</span>
+            <div className="divider-line" />
+          </div>
+
+          <button
+            type="button"
+            onClick={handleOAuthSignIn}
+            disabled={isLoading}
+            className="oauth-button"
+          >
+
+            <img
+              src="app\assets\Google__G__logo.svg"
+              alt="Google Logo"
+            />
+            Continue with Google
           </button>
 
           <Link to="/login" className="text-sm text-blue-500 hover:underline">

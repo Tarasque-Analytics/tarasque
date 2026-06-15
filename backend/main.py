@@ -36,10 +36,10 @@ async def lifespan(app: FastAPI):
     
     # Load .env from project root (parent of backend directory)
     env_path = Path(__file__).parent.parent / ".env"
-    if not env_path.exists():
-        raise RuntimeError(f".env file not found at {env_path}")
     
-    load_dotenv(env_path)
+    if env_path.exists():
+        load_dotenv(env_path)
+        
     url = os.environ.get("VITE_SUPABASE_URL")
     key = os.environ.get("VITE_SUPABASE_PUBLISHABLE_KEY")
     

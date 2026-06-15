@@ -1,4 +1,3 @@
-import { getBeta, getMarketCap, getAvgSpread } from "~/utils/database";
 import { constructGicsCode } from "~/utils/gics";
 import { useEquityData } from "~/context/EquityDataContext";
 import { useMemo } from "react";
@@ -52,11 +51,13 @@ export default function EquityMetaData() {
   const sector = security?.gics_sector;
   const industry = security?.gics_industry;
   const subindustry = security?.gics_subindustry;
-  // TODO: Replace this when we actually figure out how we're getting the market cap
-  const marketCap = useMemo(() => getMarketCap(security.ticker), [security.ticker]);
-  // TODO: Replace this when we actually figure out how we're getting the 3 yr beta
-  const beta = useMemo(() => getBeta(security.ticker), [security.ticker]);
-  const avg_spread = useMemo(() => getAvgSpread(security.ticker), [security.ticker]);
+  // Known data gaps — kept null until sourced (rendered as the unavailable marker, never faked):
+  //   - beta / market_cap: not columns in `securities` (#104)
+  //   - avg_spread + model outputs (z_score_stabilized, tail_risk_95): not yet in the DB (#70)
+  // Do not wire these to any backend/payload field until the data actually exists.
+  const marketCap = null as number | null;
+  const beta = null as number | null;
+  const avg_spread = null as number | null;
   return (
     <div className="equity-classes-container panel p-5">
       {/* Equity Classes */}
@@ -70,21 +71,19 @@ export default function EquityMetaData() {
         </div>
       </div>
 
-      {/* Reference */}
-      {(beta != null || next_earnings || next_dividend || avg_spread) && (
-        <div className="equity-reference-section">
-          <h3 className="equity-section-title">Reference</h3>
-          <div className="equity-section">
-            <DataRow label="Beta (3y)" value={beta != null ? beta.toFixed(2) : null} />
-            <DataRow
-              label="Avg spread"
-              value={avg_spread != null ? avg_spread.toFixed(2) + "%" : null}
-            />
-            <DataRow label="Next earnings" value={next_earnings ?? null} />
-            <DataRow label="Next dividend" value={next_dividend ?? null} />
-          </div>
+      {/* Reference — always rendered; `security` is guaranteed non-null past the early returns */}
+      <div className="equity-reference-section">
+        <h3 className="equity-section-title">Reference</h3>
+        <div className="equity-section">
+          <DataRow label="Beta (3y)" value={beta != null ? beta.toFixed(2) : null} />
+          <DataRow
+            label="Avg spread"
+            value={avg_spread != null ? avg_spread.toFixed(2) + "%" : null}
+          />
+          <DataRow label="Next earnings" value={next_earnings ?? null} />
+          <DataRow label="Next dividend" value={next_dividend ?? null} />
         </div>
-      )}
+      </div>
     </div>
   );
 }

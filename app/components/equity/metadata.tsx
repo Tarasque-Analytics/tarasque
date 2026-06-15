@@ -2,7 +2,7 @@ import { constructGicsCode } from "~/utils/gics";
 import { useEquityData } from "~/context/EquityDataContext";
 
 function formatMarketCap(marketCap: number | null | undefined): string {
-  if (!marketCap) return "—";
+  if (!marketCap) return "N/A";
   const b = marketCap / 1e9;
   if (b >= 200) return `Mega-cap ($${b.toFixed(1)}B)`;
   if (b >= 10) return `Large-cap ($${b.toFixed(0)}B)`;

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 import { Link, useNavigate } from "react-router";
 export default function Login() {
@@ -7,6 +7,19 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Handle the return leg of the Google OAuth round-trip. On success Supabase appends the
+  // session to this URL and fires SIGNED_IN, so we forward to the dashboard. A cancelled or
+  // denied sign-in returns here with no session, so the user simply lands back on the login
+  // page (instead of the site's base URL).
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" && session) {
+        navigate("/dashboard");
+      }
+    });
+    return () => data.subscription.unsubscribe();
+  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,6 +44,12 @@ export default function Login() {
 
     const { error: authError } = await supabase.auth.signInWithOAuth({
       provider: "google",
+      options: {
+        // Return to the login page after the Google round-trip. If the user cancels, they land
+        // back here rather than on the site's base URL. NOTE: this exact URL must be in the
+        // Supabase project's redirect allow-list, otherwise Supabase falls back to the Site URL.
+        redirectTo: `${window.location.origin}/login`,
+      },
     });
 
     if (authError) {

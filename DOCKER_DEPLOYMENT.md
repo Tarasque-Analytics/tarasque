@@ -292,7 +292,7 @@ Consider creating a `docker-compose.dev.yml` for local development with:
 
 **Problem:**
 The frontend container is unable to query the backend API because Vite environment variables (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_API_URL`) are not being embedded into the JavaScript bundle during the Docker build process. As a result:
-- The frontend falls back to `http://localhost:8000/api` instead of `http://backend:8000/api`(hardcoded default)
+- The frontend falls back to `http://localhost:8000/api` instead of `http://backend:8000/api`(hardcoded default, handled in database.ts)
 - API requests fail when the frontend container tries to reach `localhost` (which doesn't exist in the container context)
 - The Supabase client cannot initialize due to missing credentials
 - Console errors: "supabaseUrl is required."

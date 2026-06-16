@@ -13,7 +13,8 @@ import pandas as pd
 from typing import Dict, List, Optional
 
 from .config import DataConfig, ModelConfig, SECTOR_ETF_MAP
-from .utils import days_to_next_fomc
+from .utils import days_to_next_fomc, days_to_next_cpi, days_to_next_nfp
+from .models import GarchForecaster
 
 
 class FeatureBuilder:
@@ -38,16 +39,29 @@ class FeatureBuilder:
         self,
         ticker: str,
         raw_data: Dict[str, pd.DataFrame],
+        drop_nan_targets: bool = True,
     ) -> pd.DataFrame:
         """
         Master build: returns a DatetimeIndex DataFrame with all features
         and forward-looking target columns.
+
+        Parameters
+        ----------
+        drop_nan_targets : bool, default True
+            If True (backtest-style), drop the last ~max_horizon rows where
+            forward y_target values are NaN. Required for training (every
+            row needs a known target).
+
+            If False (prediction-time, used by daily_forecast and
+            extend_predictions), keep those rows. Predictions can be made
+            with features only; y_targets are backfilled as the horizon
+            elapses.
         """
         # 1. Prepare OHLCV pivots
         ohlcv = raw_data["ohlcv"].copy()
-        ohlcv["date"] = pd.to_datetime(ohlcv["date"])
+        ohlcv["date"] = pd.to_datetime(ohlcv["date"], format="mixed")
 
-        closes, highs, lows, opens = self._pivot_ohlcv(ohlcv)
+        closes, highs, lows, opens, adj_closes = self._pivot_ohlcv(ohlcv)
 
         if ticker not in closes.columns:
             raise ValueError(f"Ticker {ticker} not found in OHLCV data.")
@@ -56,47 +70,59 @@ class FeatureBuilder:
         df[f"close_{ticker}"] = closes[ticker]
 
         # 2. Garman-Klass realised volatility (backtest :219-224)
-        df = self._add_rv_features(df, ticker, closes, highs, lows, opens)
+        # Raw H/L/O/C are OK for intraday GK — same-day ratios unaffected by splits.
+        # EWMA vol inside uses adj_closes for cross-day returns.
+        df = self._add_rv_features(df, ticker, closes, highs, lows, opens, adj_closes)
 
-        # 3. Returns
-        df["ret_TARGET"] = np.log(closes[ticker] / closes[ticker].shift(1))
+        # 3. GARCH(1,1) conditional vol — feature input, not ensemble component
+        adj_ret = np.log(adj_closes[ticker] / adj_closes[ticker].shift(1)).dropna()
+        df = self._add_garch_features(df, adj_ret)
 
-        # 4. Technical indicators (backtest :227-237)
-        df = self._add_technicals(df, ticker, closes, highs, lows)
+        # 4. Returns — use split-adjusted close for target return series
+        df["ret_TARGET"] = np.log(adj_closes[ticker] / adj_closes[ticker].shift(1))
 
-        # 5. Factor ETF returns — initial 6 only (backtest :239-241)
-        df = self._add_factor_returns(df, closes)
+        # 5. Technical indicators (backtest :227-237) — use adj_closes
+        df = self._add_technicals(df, ticker, adj_closes, highs, lows)
 
-        # 6. Volatility dynamics (backtest :377-379)
+        # 6. Factor ETF returns — adj_closes fixes VIXY reverse-split contamination
+        df = self._add_factor_returns(df, adj_closes)
+
+        # 7. Volatility dynamics (backtest :377-379)
         df = self._add_vol_dynamics(df)
 
-        # 7. Event gravity features (backtest :192-214)
+        # 8. Event gravity features (backtest :192-214)
         df = self._add_event_features(df, ticker, raw_data)
 
-        # 8. Options-derived features (new — from OptionMetrics surface)
+        # 9. Options-derived features (new — from OptionMetrics surface)
         if "vsurfd" in raw_data and not raw_data["vsurfd"].empty:
             df = self._add_options_features(df, ticker, raw_data["vsurfd"])
 
-        # 9. Macro features (new — from FRED data)
+        # 9b. Open interest features (new — from OptionMetrics opprcd)
+        if "oi_25delta" in raw_data and not raw_data["oi_25delta"].empty:
+            df = self._add_oi_features(df, ticker, raw_data["oi_25delta"])
+
+        # 10. Macro features (new — from FRED data)
         if "fred" in raw_data and not raw_data["fred"].empty:
             df = self._add_macro_features(df, raw_data["fred"])
 
-        # 10. Factor decomposition (new — beta, residual vol)
+        # 11. Factor decomposition (new — beta, residual vol)
         df = self._add_factor_decomposition(df, closes, ticker)
 
-        # 11. Price regime (new — summary_march16.md:40)
+        # 12. Price regime (new — summary_march16.md:40)
         df = self._add_price_regime(df, closes, ticker)
 
-        # 12. Sector coupling (new — summary_march16.md:43,61)
+        # 13. Sector coupling (new — summary_march16.md:43,61)
         df = self._add_sector_coupling(df, closes, ticker, raw_data)
 
-        # 13. Targets (backtest :373-375)
+        # 14. Targets (backtest :373-375)
         df = self._add_targets(df)
 
         # Drop rows where ANY target is NaN (tail rows that lack enough future
         # data for the longer horizons, e.g. last 126 rows for y_126).
+        # Skip this when building features for inference (drop_nan_targets=False).
         target_cols = [f"y_{h}" for h in self.mc.horizons if f"y_{h}" in df.columns]
-        df = df.dropna(subset=target_cols)
+        if drop_nan_targets:
+            df = df.dropna(subset=target_cols)
 
         return df
 
@@ -106,15 +132,43 @@ class FeatureBuilder:
 
         Mirrors the backtest's predictor selection logic (:382-384) but
         extended for new feature prefixes.
+
+        Explicit exclusions (updated 2026-04-23):
+          rv_TARGET          — literal alias for rv_21d (VIF=inf); always exclude
+          iv_atm_30d         — contained inside vrp_wedge (VIF=121); VIF too high
+                               even for ElasticNet; vrp_wedge is the economically
+                               meaningful quantity (relative to RV)
+          vol_trend          — rv_21d / rolling_mean(rv_21d); numerically redundant
+                               with vol_regime_zscore which is the standardised form
+          put_call_abs_skew  — r=0.92 with put_call_skew_30d; signed skew sufficient
+          tech_ATR           — Spearman r=0.949 with rv_21d; no incremental signal
+
+        Re-included (ElasticNet handles correlated groups — no arbitrary zeroing):
+          rv_5d, rv_10d, rv_63d   — short/medium RV windows; ElasticNet shrinks the
+                                    RV cluster proportionally instead of picking one
+          corr_sector_21d/252d    — rolling stock-sector correlation; captures regime-
+          sector_wedge              specific coupling tightness. JPM H63/H126 R² dropped
+                                    0.17 points after VIF exclusion. Signal is real for
+                                    financials/energy even when collinear with ETF ret/mom.
         """
         exclude_prefixes = ("y_", "close_")
         include_prefixes = (
             "ret_", "rv_", "vol_", "tech_", "event_", "iv_",
             "put_call_", "term_", "vrp_", "macro_", "beta_",
-            "res_", "price_", "corr_", "sector_", "ewma_",
+            "res_", "price_", "corr_", "sector_", "ewma_", "mom21_",
+            "garch_", "oi_", "fear_",
         )
+        exclude_exact = {
+            "rv_TARGET",              # literal alias for rv_21d (VIF=inf)
+            "iv_atm_30d",             # contained inside vrp_wedge (VIF=121)
+            "vol_trend",              # ratio form of vol_regime_zscore
+            "put_call_abs_skew_30d",  # Spearman r=0.92 with put_call_skew_30d
+            "tech_ATR",               # Spearman r=0.949 with rv_21d
+        }
         cols = []
         for c in df.columns:
+            if c in exclude_exact:
+                continue
             if any(c.startswith(p) for p in exclude_prefixes):
                 continue
             if any(c.startswith(p) for p in include_prefixes):
@@ -126,7 +180,14 @@ class FeatureBuilder:
     # ═══════════════════════════════════════════════════════════════════
 
     def _pivot_ohlcv(self, ohlcv: pd.DataFrame):
-        """Pivot long-form OHLCV into wide DataFrames indexed by date."""
+        """Pivot long-form OHLCV into wide DataFrames indexed by date.
+
+        Returns raw price pivots (closes, highs, lows, opens) for intraday
+        GK calculations, plus ``adj_closes`` — split-adjusted closes
+        reconstructed from CRSP total return.  Use adj_closes for all
+        cross-day return calculations (EWMA vol, RSI, MACD, factor returns)
+        so that stock splits do not inject phantom volatility.
+        """
         # Normalise column names (CRSP uses openprc/askhi/bidlo/prc)
         col_map = {}
         if "openprc" in ohlcv.columns:
@@ -147,28 +208,107 @@ class FeatureBuilder:
         lows = ohlcv.pivot(index="date", columns="ticker", values="low").ffill()
         opens = ohlcv.pivot(index="date", columns="ticker", values="open").ffill()
 
-        return closes, highs, lows, opens
+        # ── Split-adjusted closes ────────────────────────────────────────
+        # CRSP 'ret' is already adjusted for splits and dividends.
+        # Reconstruct adjusted close: cumulative product of (1+ret) forward,
+        # then scale so that adj_close[-1] == close[-1].
+        #
+        # Defensive: where ret is NA (Alpaca-appended rows past the CRSP
+        # cutoff), fill from raw close.pct_change(). The root-cause fix
+        # lives in data_loader.append_recent_data, but this keeps the
+        # pipeline correct if a stale parquet ever leaks through.
+        if "ret" in ohlcv.columns:
+            rets = ohlcv.pivot(index="date", columns="ticker", values="ret")
+            close_pct = closes.pct_change()
+            rets = rets.where(rets.notna(), close_pct)
+            rets = rets.ffill(limit=1).fillna(0.0)
+            cum = (1.0 + rets).cumprod()
+            # Scale per-ticker so adj_close[-1] == close[-1]
+            last_raw = closes.iloc[-1]
+            last_cum = cum.iloc[-1].replace(0, np.nan)
+            adj_closes = cum * (last_raw / last_cum)
+            # Align to closes index (handles any extra/missing dates)
+            adj_closes = adj_closes.reindex(closes.index).ffill()
+        else:
+            # Fallback: no ret column, use raw closes (pre-CRSP data sources)
+            adj_closes = closes.copy()
+
+        return closes, highs, lows, opens, adj_closes
 
     # ═══════════════════════════════════════════════════════════════════
     # PRIVATE — Feature groups
     # ═══════════════════════════════════════════════════════════════════
 
-    def _add_rv_features(self, df, ticker, closes, highs, lows, opens):
-        """Garman-Klass RV at multiple windows."""
-        log_hl = np.log(highs[ticker] / lows[ticker])
-        log_co = np.log(closes[ticker] / opens[ticker])
-        gk_var = 0.5 * (log_hl ** 2) - (2 * np.log(2) - 1) * (log_co ** 2)
+    def _add_rv_features(self, df, ticker, closes, highs, lows, opens, adj_closes):
+        """Realized vol features at multiple windows.
 
-        for w in self.mc.rv_windows:
-            df[f"rv_{w}d"] = np.sqrt(gk_var.rolling(window=w).mean()) * np.sqrt(252)
+        Estimator selected via `ModelConfig.vol_estimator`:
+          - 'gk': Garman-Klass (intraday only — original; misses overnight gaps)
+          - 'yz': Yang-Zhang (overnight + open-to-close + Rogers-Satchell intraday)
+
+        Both use raw same-day H/L/O/C for the per-day estimator (unaffected by
+        splits). EWMA vol uses adj_closes for cross-day returns (split-safe).
+        """
+        estimator = getattr(self.mc, "vol_estimator", "gk").lower()
+        h = highs[ticker]
+        l = lows[ticker]
+        o = opens[ticker]
+        c = closes[ticker]
+
+        if estimator == "yz":
+            # Yang-Zhang (2000): drift-independent estimator that combines
+            #   sigma2_O  = var of overnight returns ln(O_t / C_{t-1})
+            #   sigma2_CO = var of open-to-close returns ln(C_t / O_t)
+            #   sigma2_RS = mean of Rogers-Satchell intraday var
+            # Optimal weight k = 0.34 / (1.34 + (n+1)/(n-1))
+            c_prev = c.shift(1)
+            ln_oc_prev = np.log(o / c_prev)      # overnight log return
+            ln_co      = np.log(c / o)            # open-to-close log return
+            rs         = np.log(h / c) * np.log(h / o) \
+                       + np.log(l / c) * np.log(l / o)
+
+            for w in self.mc.rv_windows:
+                sigma2_o  = ln_oc_prev.rolling(w).var(ddof=1)
+                sigma2_co = ln_co.rolling(w).var(ddof=1)
+                sigma2_rs = rs.rolling(w).mean()
+                k = 0.34 / (1.34 + (w + 1) / (w - 1)) if w > 1 else 0.34
+                sigma2_yz = sigma2_o + k * sigma2_co + (1 - k) * sigma2_rs
+                # Clip tiny negative values from sample noise before sqrt
+                sigma2_yz = sigma2_yz.clip(lower=1e-12)
+                df[f"rv_{w}d"] = np.sqrt(sigma2_yz) * np.sqrt(252)
+        else:
+            # Default: Garman-Klass intraday-only estimator
+            log_hl = np.log(h / l)
+            log_co = np.log(c / o)
+            gk_var = 0.5 * (log_hl ** 2) - (2 * np.log(2) - 1) * (log_co ** 2)
+            for w in self.mc.rv_windows:
+                df[f"rv_{w}d"] = np.sqrt(gk_var.rolling(window=w).mean()) * np.sqrt(252)
 
         # Canonical target RV (21d) used by the backtest
         df["rv_TARGET"] = df["rv_21d"]
 
-        # EWMA vol (smoother estimator)
-        ret = np.log(closes[ticker] / closes[ticker].shift(1))
-        df["ewma_vol"] = np.sqrt(ret.pow(2).ewm(span=21).mean() * 252)
+        # EWMA vol — use split-adjusted returns (cross-day, split-sensitive)
+        adj_ret = np.log(adj_closes[ticker] / adj_closes[ticker].shift(1))
+        df["ewma_vol"] = np.sqrt(adj_ret.pow(2).ewm(span=21).mean() * 252)
 
+        return df
+
+    def _add_garch_features(self, df, adj_ret: pd.Series) -> pd.DataFrame:
+        """
+        GARCH(1,1)-skewt conditional volatility as a predictor feature.
+
+        Fits once on the full adj_ret series.  h_t at each date uses only
+        returns up to t, so there is no observation-level lookahead.
+        Parameters are estimated on the full series (mild lookahead, standard
+        for a feature input).
+
+        Adds:
+          garch_cond_vol   — annualised conditional vol (the GARCH 'h_t' series)
+        """
+        cond_vol = GarchForecaster.cond_vol_series(
+            adj_ret, dist=self.mc.garch_dist,
+        )
+        df["garch_cond_vol"] = cond_vol.reindex(df.index)
         return df
 
     def _add_technicals(self, df, ticker, closes, highs, lows):
@@ -182,12 +322,7 @@ class FeatureBuilder:
         rs = gain / (loss + 1e-9)
         df["tech_RSI"] = 100 - (100 / (1 + rs))
 
-        # ATR normalised (backtest :233-237)
-        tr1 = highs[ticker] - lows[ticker]
-        tr2 = (highs[ticker] - close.shift(1)).abs()
-        tr3 = (lows[ticker] - close.shift(1)).abs()
-        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        df["tech_ATR"] = tr.rolling(14).mean() / close
+        # ATR dropped — Spearman=0.949 with rv_21d, redundant for tree and Lasso models
 
         # MACD histogram (new)
         ema12 = close.ewm(span=12).mean()
@@ -257,6 +392,22 @@ class FeatureBuilder:
             date_col="datadate", ticker_col="tic",
             feature_name="event_div_gravity",
         )
+
+        # CPI release gravity (BLS macro event)
+        df["event_cpi_gravity"] = df.index.to_series().apply(
+            lambda d: 1.0 / (days_to_next_cpi(d) + 1)
+        )
+
+        # NFP release gravity (BLS Employment Situation)
+        df["event_nfp_gravity"] = df.index.to_series().apply(
+            lambda d: 1.0 / (days_to_next_nfp(d) + 1)
+        )
+
+        # NOTE: event_tech_gravity (CES/SXSW/GTC/etc.) was canaried 2026-05-01
+        # on AAPL+XOM and showed near-zero net effect on AAPL (its intended
+        # target) with -0.015 R² regression at H=63. Reverted from launch spec.
+        # TECH_EVENT_DATES + days_to_next_tech_event remain in utils.py as
+        # research artifacts for v11+ event-window analysis.
 
         return df
 
@@ -339,6 +490,52 @@ class FeatureBuilder:
         iv_mean = df["iv_atm_30d"].rolling(63).mean()
         iv_std = df["iv_atm_30d"].rolling(63).std()
         df["iv_atm_z_score"] = (df["iv_atm_30d"] - iv_mean) / (iv_std + 1e-9)
+
+        return df
+
+    def _add_oi_features(self, df, ticker, oi_data):
+        """Open interest features at 25-delta: put/call ratio, fear intensity.
+
+        fear_intensity_25d = IV skew x log(OI_put / OI_call)
+        Multiplicative interaction: requires both price asymmetry (skew)
+        AND quantity asymmetry (OI ratio) to fire.  If puts are expensive
+        but nobody is buying them, or OI is skewed but pricing is flat,
+        the signal stays near zero.
+        """
+        oi = oi_data[oi_data["ticker"] == ticker].copy()
+        if oi.empty:
+            for col in ["oi_put_call_ratio_25d", "fear_intensity_25d",
+                        "oi_hedge_pressure_chg_5d"]:
+                df[col] = np.nan
+            return df
+
+        oi["date"] = pd.to_datetime(oi["date"])
+
+        # Aggregate to daily put/call totals
+        put_oi = (oi[oi["cp_flag"] == "P"]
+                  .groupby("date")["total_oi"].sum()
+                  .sort_index())
+        call_oi = (oi[oi["cp_flag"] == "C"]
+                   .groupby("date")["total_oi"].sum()
+                   .sort_index())
+
+        put_oi = put_oi.reindex(df.index).ffill(limit=5)
+        call_oi = call_oi.reindex(df.index).ffill(limit=5)
+
+        # Put/call OI ratio
+        ratio = put_oi / (call_oi + 1e-6)
+        df["oi_put_call_ratio_25d"] = ratio
+
+        # Fear intensity: skew x log(OI ratio)
+        oi_log_ratio = np.log(put_oi / (call_oi + 1e-6))
+        skew = df.get("put_call_skew_30d")
+        if skew is not None:
+            df["fear_intensity_25d"] = skew * oi_log_ratio
+        else:
+            df["fear_intensity_25d"] = np.nan
+
+        # Hedging pressure momentum: 5d change in put/call ratio
+        df["oi_hedge_pressure_chg_5d"] = ratio.diff(5)
 
         return df
 

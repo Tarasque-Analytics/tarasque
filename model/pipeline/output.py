@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from .config import DataConfig, ModelConfig, BacktestConfig, SECTOR_ETF_MAP
+from .utils import DECIMAL_PRECISION, round_json_dict, round_scalar
 
 
 # GICS code → human-readable sector name
@@ -219,6 +220,8 @@ def write_ticker_payload(
         "calibration": calibration,
     }
 
+    payload = round_json_dict(payload, DECIMAL_PRECISION)
+
     path = output_dir / f"{ticker}_Payload.json"
     with open(path, "w") as f:
         json.dump(payload, f, indent=2, default=_json_safe)
@@ -349,6 +352,8 @@ def write_market_overview(
         "sector_risk_history": sector_risk_history,
     }
 
+    overview = round_json_dict(overview, DECIMAL_PRECISION)
+
     path = output_dir / "market_overview.json"
     with open(path, "w") as f:
         json.dump(overview, f, indent=2, default=_json_safe)
@@ -413,8 +418,10 @@ def write_metrics_summary(
     """Write metrics_summary.json for internal model monitoring."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    rounded = round_json_dict(all_metrics, DECIMAL_PRECISION)
+
     path = output_dir / "metrics_summary.json"
     with open(path, "w") as f:
-        json.dump(all_metrics, f, indent=2, default=_json_safe)
+        json.dump(rounded, f, indent=2, default=_json_safe)
 
     print(f"[OUTPUT] Wrote {path}")

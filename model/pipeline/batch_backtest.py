@@ -17,13 +17,10 @@ import sys
 import time
 from pathlib import Path
 
-# ── Tickers already tested (v1-v4 + 2026-04-06 session) ──────────────
-ALREADY_TESTED = {
-    "BA", "PG", "AAPL", "XOM", "JPM", "GS", "C", "CVX",
-    "AMZN", "GOOGL", "MRK", "NEE", "JNJ", "NVDA",
-    # v4 partial (incomplete — re-running to get clean results):
-    "WMT", "CAT", "MS", "LIN",
-}
+# ── v6 second pass (2026-04-11): only tickers that failed first pass ──
+# First pass (48 tickers) completed. These 49 failed due to missing
+# data_cache entries — now copied from D:/Tarasque_DB.
+ALREADY_TESTED: set = set()
 
 # ── Full 100-ticker universe (from config.py / claude_context.md) ─────
 FULL_UNIVERSE = [
@@ -56,8 +53,16 @@ FULL_UNIVERSE = [
 
 
 def get_untested_tickers():
-    """Return tickers from the full universe that haven't been tested yet."""
-    return [t for t in FULL_UNIVERSE if t not in ALREADY_TESTED]
+    """Return tickers that need running. Second pass: only the 49 that
+    failed first pass due to missing data_cache entries (now fixed)."""
+    second_pass = [
+        'BKNG','GE','GOOGL','KO','LIN','LLY','LMT','LOW','MCD','META',
+        'MMM','MO','MPC','MRK','MS','MSFT','MU','NEE','NEM','NFLX',
+        'NKE','NOC','NVDA','ORCL','OXY','PEP','PFE','PG','PLD','PM',
+        'PSX','QCOM','RTX','SBUX','SCHW','SLB','SO','SPG','T','TGT',
+        'TMO','TSLA','TXN','UNH','UPS','USB','VZ','WFC','WMT',
+    ]
+    return [t for t in second_pass if t not in ALREADY_TESTED]
 
 
 def batch_list(items, size):

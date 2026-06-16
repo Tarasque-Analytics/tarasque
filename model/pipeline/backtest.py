@@ -19,7 +19,8 @@ from .models import EnsembleVolModel as _EnsembleVolModel
 
 from .config import DataConfig, ModelConfig, BacktestConfig
 from .features import FeatureBuilder
-from .models import EnsembleVolModel
+from .models import EnsembleVolModel, QuantileVolModel
+from .utils import DECIMAL_PRECISION, round_for_output
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -115,14 +116,30 @@ class BacktestEngine:
         predictors = valid_predictors
 
         results: List[BacktestResult] = []
+        # Lasso tracking: accumulate fold-level records across all steps.
+        # Only collect on first horizon pass — train_wfa() trains all horizons
+        # internally, so subsequent outer-loop passes would triple-count.
+        ticker_lasso_records: list[dict] = []
+        # XGB importance: {horizon: np.ndarray summed across steps}
+        xgb_imp_sum: Dict[int, np.ndarray] = {}
+        xgb_imp_count: Dict[int, int] = {}
+        # Per-step XGB importance for feature_decay analysis:
+        #   {horizon: [(step_idx, importance_array), ...]}
+        xgb_imp_per_step: Dict[int, list] = {}
+        _first_h = self.mc.horizons[0] if self.mc.horizons else None
+        # Per-ticker prediction accumulator (long format, all horizons stacked)
+        per_ticker_pred_frames: list = []
 
         for h in self.mc.horizons:
             target_col = f"y_{h}"
             if target_col not in feature_df.columns:
                 continue
 
-            # Minimum training rows: max(252, 20 * n_features)
-            min_train = max(252, 20 * len(predictors))
+            # Minimum training rows: 3 years flat.
+            # 20x rule was conservative for Lasso instability with correlated
+            # features. ElasticNet's L2 term stabilises with shorter windows,
+            # so a fixed 756-day floor is sufficient and gives more predictions.
+            min_train = 756
             all_dates = feature_df.index[min_train:]
             test_starts = all_dates[::step]
 
@@ -168,15 +185,54 @@ class BacktestEngine:
                 model = EnsembleVolModel(self.mc)
                 model.train_wfa(X_tr, y_tr_dict, splits=3, model_names=model_names)
 
+                # Capture Lasso records on first horizon pass only
+                if h == _first_h and model.lasso_log:
+                    for rec in model.lasso_log:
+                        ticker_lasso_records.append({**rec, "step": t_idx})
+
+                # Accumulate XGB feature importances across steps (all horizons).
+                # Capture per-step trajectory in addition to the aggregate sum,
+                # so feature_decay analysis can detect importance drift over time.
+                # Only record per-step values on the first outer-horizon pass —
+                # train_wfa() fits all horizons together, so subsequent outer
+                # iterations re-record identical values.
+                if h == _first_h:
+                    for hh in self.mc.horizons:
+                        xgb_model = model.models[hh].get("XGB")
+                        if xgb_model is not None and hasattr(xgb_model, "feature_importances_"):
+                            imp = xgb_model.feature_importances_
+                            if hh not in xgb_imp_sum:
+                                xgb_imp_sum[hh] = np.zeros(len(imp))
+                                xgb_imp_count[hh] = 0
+                            xgb_imp_sum[hh] += imp
+                            xgb_imp_count[hh] += 1
+                            xgb_imp_per_step.setdefault(hh, []).append(
+                                (t_idx, imp.copy())
+                            )
+
+                # Quantile model — direct fit, no WFA folds needed
+                q_preds_step: Dict[int, Dict[int, np.ndarray]] = {}
+                for tau in getattr(self.mc, "quantile_alphas", []):
+                    try:
+                        q_model = QuantileVolModel(self.mc, tau=tau)
+                        q_model.fit(X_tr, y_tr_dict)
+                        q_preds_step[tau] = q_model.predict_batch(X_te)
+                    except Exception:
+                        pass
+
                 # Batch-predict all test rows at once
                 try:
                     pred_curves = model.predict_curve_batch(X_te)
                     for i, idx in enumerate(X_te.index):
-                        all_preds.append({
+                        row: dict = {
                             "date": idx,
                             "y_true": float(np.exp(feature_df.loc[idx, target_col])),
                             "y_pred": float(pred_curves[h][i]),
-                        })
+                        }
+                        for tau, q_by_h in q_preds_step.items():
+                            if h in q_by_h:
+                                row[f"y_pred_q{int(tau * 100)}"] = float(q_by_h[h][i])
+                        all_preds.append(row)
                 except Exception:
                     pass
 
@@ -203,10 +259,13 @@ class BacktestEngine:
                     on="date", how="left",
                 )
 
-            # Save per-ticker/horizon predictions for analysis scripts
-            self.bc.results_dir.mkdir(parents=True, exist_ok=True)
-            pred_path = self.bc.results_dir / f"predictions_{ticker}_H{h}.csv"
-            pred_df.to_csv(pred_path, index=False)
+            # Stage this horizon for the consolidated per-ticker CSV written
+            # after all horizons complete. ticker / horizon columns are added
+            # so the long-form schema matches the cross-ticker all_predictions.csv.
+            staged = pred_df.copy()
+            staged["ticker"] = ticker
+            staged["horizon"] = h
+            per_ticker_pred_frames.append(staged)
 
             metrics = self._compute_metrics(pred_df, feature_df, h)
 
@@ -220,6 +279,37 @@ class BacktestEngine:
                 predictions=pred_df, metrics=metrics,
             ))
 
+        # Write the consolidated per-ticker predictions CSV (all horizons stacked).
+        # This is the canonical artifact for downstream consumers (database team
+        # handoff schema, analysis scripts). Column order kept stable for diffability.
+        if per_ticker_pred_frames:
+            combined = pd.concat(per_ticker_pred_frames, ignore_index=True)
+            combined = combined.sort_values(["horizon", "date"]).reset_index(drop=True)
+            preferred = [
+                "date", "y_true", "y_pred", "y_pred_q15",
+                "vrp_wedge", "put_call_skew_30d", "ticker", "horizon",
+            ]
+            ordered_cols = [c for c in preferred if c in combined.columns]
+            ordered_cols += [c for c in combined.columns if c not in ordered_cols]
+            combined = combined[ordered_cols]
+            combined = round_for_output(combined, DECIMAL_PRECISION)
+
+            self.bc.results_dir.mkdir(parents=True, exist_ok=True)
+            out_path = self.bc.results_dir / f"predictions_{ticker}.csv"
+            combined.to_csv(out_path, index=False)
+            print(f"  [PREDICTIONS] Wrote {out_path.name}  "
+                  f"({len(combined)} rows, horizons={sorted(combined['horizon'].unique().tolist())})")
+
+        # Write Lasso tracking summary
+        if ticker_lasso_records:
+            self._write_lasso_summary(ticker, predictors, ticker_lasso_records)
+
+        # Write XGB importance summary
+        if xgb_imp_sum:
+            self._write_xgb_importance(
+                ticker, predictors, xgb_imp_sum, xgb_imp_count, xgb_imp_per_step,
+            )
+
         # Print model timing breakdown for this ticker
         prof = _EnsembleVolModel._profile
         if prof:
@@ -229,6 +319,121 @@ class BacktestEngine:
             _EnsembleVolModel._profile.clear()
 
         return results
+
+    # ── Lasso summary ─────────────────────────────────────────────────
+
+    def _write_lasso_summary(
+        self,
+        ticker: str,
+        feature_names: List[str],
+        records: list,
+    ) -> None:
+        """
+        Persist per-fold Lasso records as both a long-form detail CSV and a
+        per-feature aggregate summary.
+
+        ``lasso_detailed_{ticker}.csv`` keeps the (feature × horizon × step ×
+        fold × coef) trajectory needed by feature_decay analysis; the existing
+        ``lasso_tracking_{ticker}.csv`` keeps the aggregated summary used by
+        plot_beta and similar consumers.
+        """
+        rows = []
+        for rec in records:
+            for i, fname in enumerate(feature_names):
+                rows.append({
+                    "ticker": ticker,
+                    "horizon": rec["horizon"],
+                    "stage": rec["stage"],
+                    "step": rec["step"],
+                    "fold": rec["fold"],
+                    "alpha":    rec["alpha"],
+                    "l1_ratio": rec.get("l1_ratio", np.nan),
+                    "feature":  fname,
+                    "coef":     rec["coefs"][i] if i < len(rec["coefs"]) else 0.0,
+                })
+        if not rows:
+            return
+
+        df = pd.DataFrame(rows)
+
+        # Detailed per-step trajectory (input to feature_decay.py)
+        self.bc.results_dir.mkdir(parents=True, exist_ok=True)
+        detailed_path = self.bc.results_dir / f"lasso_detailed_{ticker}.csv"
+        round_for_output(df, DECIMAL_PRECISION).to_csv(detailed_path, index=False)
+        print(f"  [LASSO] Detailed records saved -> {detailed_path.name}")
+
+        # Aggregate summary (preserved for backwards compat)
+        summary = (
+            df.groupby(["feature", "horizon"])
+            .agg(
+                inclusion_freq  =("coef",     lambda x: (x != 0).mean()),
+                mean_abs_coef   =("coef",     lambda x: x.abs().mean()),
+                mean_alpha      =("alpha",    "mean"),
+                mean_l1_ratio   =("l1_ratio", "mean"),
+                n_fits          =("coef",     "count"),
+            )
+            .reset_index()
+        )
+        summary.insert(0, "ticker", ticker)
+        summary.sort_values(["horizon", "inclusion_freq"], ascending=[True, False], inplace=True)
+        summary = round_for_output(summary, DECIMAL_PRECISION)
+        out_path = self.bc.results_dir / f"lasso_tracking_{ticker}.csv"
+        summary.to_csv(out_path, index=False)
+        print(f"  [LASSO] Tracking saved -> {out_path.name}")
+
+    def _write_xgb_importance(
+        self,
+        ticker: str,
+        feature_names: List[str],
+        imp_sum: Dict[int, np.ndarray],
+        imp_count: Dict[int, int],
+        imp_per_step: Optional[Dict[int, list]] = None,
+    ) -> None:
+        """
+        Write mean XGB feature importances (averaged across WFA steps) plus
+        the per-step trajectory used by feature_decay analysis.
+        """
+        rows = []
+        for h, total in imp_sum.items():
+            mean_imp = total / max(imp_count[h], 1)
+            for i, fname in enumerate(feature_names):
+                rows.append({
+                    "ticker": ticker,
+                    "horizon": h,
+                    "feature": fname,
+                    "mean_importance": float(mean_imp[i]) if i < len(mean_imp) else 0.0,
+                })
+        if not rows:
+            return
+        df = pd.DataFrame(rows)
+        df.sort_values(["horizon", "mean_importance"], ascending=[True, False], inplace=True)
+        df = round_for_output(df, DECIMAL_PRECISION)
+        self.bc.results_dir.mkdir(parents=True, exist_ok=True)
+        out_path = self.bc.results_dir / f"xgb_importance_{ticker}.csv"
+        df.to_csv(out_path, index=False)
+        print(f"  [XGB] Importance saved -> {out_path.name}")
+
+        # Per-step long-form trajectory (input to feature_decay.py)
+        if imp_per_step:
+            step_rows = []
+            for h, entries in imp_per_step.items():
+                for step_idx, imp_arr in entries:
+                    for i, fname in enumerate(feature_names):
+                        if i >= len(imp_arr):
+                            continue
+                        step_rows.append({
+                            "ticker": ticker,
+                            "horizon": h,
+                            "step": step_idx,
+                            "feature": fname,
+                            "importance": float(imp_arr[i]),
+                        })
+            if step_rows:
+                step_df = pd.DataFrame(step_rows)
+                step_df = round_for_output(step_df, DECIMAL_PRECISION)
+                step_path = self.bc.results_dir / f"xgb_importance_steps_{ticker}.csv"
+                step_df.to_csv(step_path, index=False)
+                print(f"  [XGB] Per-step importance saved -> {step_path.name}")
 
     # ── Sector sweep ──────────────────────────────────────────────────
 
@@ -252,6 +457,7 @@ class BacktestEngine:
 
         if all_metrics:
             summary = pd.DataFrame(all_metrics)
+            summary = round_for_output(summary, DECIMAL_PRECISION)
             self.bc.results_dir.mkdir(parents=True, exist_ok=True)
 
             # ── Aggregate metrics ─────────────────────────────────────
@@ -260,20 +466,16 @@ class BacktestEngine:
             print(f"\n[BACKTEST] Results saved to {out_path}")
 
             # ── Per-prediction data ───────────────────────────────────
-            # Needed by vrp_analysis.py and residual_analysis.py.
+            # Cross-ticker view: read each per-ticker long-form CSV (already
+            # contains ticker + horizon columns) and concatenate.
             all_pred_frames = []
             for ticker in self.dc.tickers:
-                for h in self.mc.horizons:
-                    pred_path = (
-                        self.bc.results_dir / f"predictions_{ticker}_H{h}.csv"
-                    )
-                    if pred_path.exists():
-                        df = pd.read_csv(pred_path)
-                        df["ticker"] = ticker
-                        df["horizon"] = h
-                        all_pred_frames.append(df)
+                pred_path = self.bc.results_dir / f"predictions_{ticker}.csv"
+                if pred_path.exists():
+                    all_pred_frames.append(pd.read_csv(pred_path))
             if all_pred_frames:
                 combined_preds = pd.concat(all_pred_frames, ignore_index=True)
+                combined_preds = round_for_output(combined_preds, DECIMAL_PRECISION)
                 combined_path = self.bc.results_dir / "all_predictions.csv"
                 combined_preds.to_csv(combined_path, index=False)
                 print(f"[BACKTEST] Combined predictions saved to {combined_path}")
@@ -340,17 +542,41 @@ class BacktestEngine:
         completed = 0
         sweep_start = time.time()
 
-        # Cap workers to available cores / 4 (leave room for model-internal parallelism)
+        # Cap workers to cpu_count / 4 — each worker runs RF/ElasticNet with n_jobs=4,
+        # so total CPU threads = n_workers × 4 ≤ cpu_count. XGB uses CUDA independently.
         max_safe = max(1, (os.cpu_count() or 4) // 4)
         n_workers = min(n_workers, n_total, max_safe)
 
         print(f"\n[BACKTEST] Parallel sweep: {n_total} tickers, {n_workers} workers")
 
+        # Slice raw_data per ticker before pickling to workers.
+        # Sending the full 90+ ticker dataset to every worker causes MemoryError
+        # when all workers try to unpickle simultaneously.  Each worker only needs:
+        #   ohlcv  — its ticker + all factor ETFs (for feature computation)
+        #   vsurfd — its ticker only
+        #   fred / compustat_meta / crsp_index — already small, kept as-is
+        factor_etfs = set(self.dc.all_factor_etfs)
+
+        def _slice_raw(t: str) -> Dict:
+            sliced = {}
+            for key, df in raw_data.items():
+                if df is None or (hasattr(df, "empty") and df.empty):
+                    sliced[key] = df
+                    continue
+                if key == "ohlcv" and "ticker" in df.columns:
+                    keep = factor_etfs | {t}
+                    sliced[key] = df[df["ticker"].isin(keep)]
+                elif key == "vsurfd" and "ticker" in df.columns:
+                    sliced[key] = df[df["ticker"] == t]
+                else:
+                    sliced[key] = df   # fred, compustat_meta, crsp_index — shared
+            return sliced
+
         with ProcessPoolExecutor(max_workers=n_workers) as executor:
             futures = {
                 executor.submit(
                     _backtest_one_ticker,
-                    ticker, raw_data,
+                    ticker, _slice_raw(ticker),
                     self.dc, self.mc, self.bc, model_names,
                 ): ticker
                 for ticker in self.dc.tickers
@@ -426,13 +652,17 @@ class BacktestEngine:
             metrics_by_th[key] = m
 
         for ticker in self.dc.tickers:
-            # Load predictions from saved CSVs
+            # Load the consolidated per-ticker CSV and split by horizon.
             predictions: Dict[int, pd.DataFrame] = {}
             ticker_metrics: Dict[int, Dict[str, float]] = {}
+            pred_path = self.bc.results_dir / f"predictions_{ticker}.csv"
+            if pred_path.exists():
+                full_df = pd.read_csv(pred_path)
+                if "horizon" in full_df.columns:
+                    for h, sub in full_df.groupby("horizon"):
+                        predictions[int(h)] = sub.drop(columns=["horizon"]).reset_index(drop=True)
+
             for h in self.mc.horizons:
-                pred_path = self.bc.results_dir / f"predictions_{ticker}_H{h}.csv"
-                if pred_path.exists():
-                    predictions[h] = pd.read_csv(pred_path)
                 if (ticker, h) in metrics_by_th:
                     ticker_metrics[h] = metrics_by_th[(ticker, h)]
 
@@ -451,7 +681,7 @@ class BacktestEngine:
             # Placeholder weights (actual weights aren't preserved across runs;
             # we'd need to retrain to get them — use equal weights as default)
             weights: Dict[int, Dict[str, float]] = {
-                h: {"XGB": 0.33, "RF": 0.33, "LassoCV": 0.33}
+                h: {"XGB": 0.33, "RF": 0.33, "ElasticNet": 0.33}
                 for h in predictions.keys()
             }
 
@@ -525,6 +755,28 @@ class BacktestEngine:
         metrics["event_capture_rate"] = self._event_capture_rate(
             pred_df, feature_df, horizon,
         )
+
+        # 5. Quantile calibration — pinball loss and coverage per tau
+        #    coverage_q85 = fraction of y_true > y_pred_q85
+        #    Perfect calibration: coverage_q85 ≈ 0.15  (i.e. 1 - tau)
+        #    pinball_q85  = mean asymmetric loss L_tau(y_true, y_pred_q85)
+        for col in pred_df.columns:
+            if not col.startswith("y_pred_q"):
+                continue
+            try:
+                tau_pct = int(col.replace("y_pred_q", ""))
+            except ValueError:
+                continue
+            tau    = tau_pct / 100.0
+            q_vals = pred_df[col].values
+            valid_q = np.isfinite(q_vals) & (q_vals > 0)
+            if valid_q.sum() > 20:
+                q  = np.clip(q_vals[valid_q], 1e-6, None)
+                yt = y_true[valid_q]   # already clipped above
+                diff    = yt - q
+                pinball = np.where(diff >= 0, tau * diff, (tau - 1) * diff)
+                metrics[f"pinball_q{tau_pct}"] = float(np.mean(pinball))
+                metrics[f"coverage_q{tau_pct}"] = float(np.mean(yt > q))
 
         metrics["n_predictions"] = len(y_true)
 

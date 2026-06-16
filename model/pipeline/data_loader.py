@@ -245,6 +245,71 @@ class WRDSLoader:
         combined = combined.merge(secid_df[["secid", "ticker"]], on="secid", how="left")
         return combined
 
+    # ── OptionMetrics Open Interest (25-delta) ─────────────────────────
+
+    def fetch_oi_25delta(self, tickers: Optional[List[str]] = None) -> pd.DataFrame:
+        """
+        Open interest at ~25-delta puts and calls from OptionMetrics opprcd.
+
+        Aggregates per (secid, date, cp_flag):
+          - total_oi: SUM(open_interest) for contracts near 25-delta, 20-40 DTE
+          - oi_weighted_iv: OI-weighted implied volatility
+
+        Used downstream to build fear_intensity_25d (IV skew x log(OI_put/OI_call)).
+        """
+        tickers = tickers or self.config.tickers
+        ticker_str = ", ".join(f"'{t}'" for t in tickers)
+
+        print("[OPTIONM] Mapping tickers to SECIDs for OI pull...")
+        secid_df = self.db.raw_sql(f"""
+            SELECT secid, ticker
+            FROM optionm.secnmd
+            WHERE ticker IN ({ticker_str})
+        """)
+        if secid_df.empty:
+            print("[OPTIONM] No SECID mappings found.")
+            return pd.DataFrame()
+
+        secid_str = ", ".join(str(int(s)) for s in secid_df["secid"].unique())
+
+        start_year = int(self.config.start_date[:4])
+        end_year = datetime.today().year
+
+        print(f"[OPTIONM] Fetching 25-delta OI for {len(secid_df['secid'].unique())} SECIDs "
+              f"(years={start_year}-{end_year})...")
+
+        frames: list[pd.DataFrame] = []
+        for year in range(start_year, end_year + 1):
+            sql = f"""
+                SELECT secid, date, cp_flag,
+                       SUM(open_interest) as total_oi,
+                       SUM(open_interest * impl_volatility)
+                           / NULLIF(SUM(open_interest), 0) as oi_weighted_iv
+                FROM optionm.opprcd{year}
+                WHERE secid IN ({secid_str})
+                    AND ABS(delta) BETWEEN 0.20 AND 0.30
+                    AND (exdate - date) BETWEEN 20 AND 40
+                    AND open_interest > 0
+                GROUP BY secid, date, cp_flag
+            """
+            try:
+                df = self.db.raw_sql(sql)
+                if df is not None and not df.empty:
+                    frames.append(df)
+                    print(f"  [opprcd{year}] {len(df):,} rows")
+                else:
+                    print(f"  [opprcd{year}] no data")
+            except Exception as e:
+                print(f"  [opprcd{year}] ERROR: {e}")
+
+        if not frames:
+            return pd.DataFrame()
+
+        combined = pd.concat(frames, ignore_index=True)
+        secid_map = secid_df[["secid", "ticker"]].drop_duplicates(subset=["secid"])
+        combined = combined.merge(secid_map, on="secid", how="left")
+        return combined
+
     # ── Compustat: GICS sector codes ──────────────────────────────────
 
     def fetch_compustat_meta(self, tickers: Optional[List[str]] = None) -> pd.DataFrame:
@@ -601,7 +666,7 @@ def fetch_dataset(
             df = loader.fetch_crsp_daily()
             if not df.empty:
                 store.save(df, "ohlcv", partition_cols=["ticker"])
-        result["ohlcv"] = store.load("ohlcv", tickers=config.tickers)
+        result["ohlcv"] = store.load("ohlcv", tickers=config.tickers + config.all_factor_etfs)
 
         # ── Vol surface ──────────────────────────────────────────────
         if include_options:
@@ -610,6 +675,14 @@ def fetch_dataset(
                 if not df.empty:
                     store.save(df, "vsurfd", partition_cols=["ticker"])
             result["vsurfd"] = store.load("vsurfd", tickers=config.tickers)
+
+        # ── Open Interest (25-delta) ─────────────────────────────────
+        if include_options:
+            if force_refresh or not store.exists("oi_25delta"):
+                df = loader.fetch_oi_25delta()
+                if not df.empty:
+                    store.save(df, "oi_25delta", partition_cols=["ticker"])
+            result["oi_25delta"] = store.load("oi_25delta", tickers=config.tickers)
 
         # ── FRED macro ───────────────────────────────────────────────
         if include_macro:
@@ -675,11 +748,35 @@ def append_recent_data(
         recent = cont.fetch_recent_ohlcv(config.tickers, since_date=last_date)
         if not recent.empty:
             combined = pd.concat([ohlcv, recent], ignore_index=True)
-            # Normalize to tz-naive UTC dates — Alpaca returns tz-aware, CRSP is tz-naive.
-            combined["date"] = pd.to_datetime(combined["date"], utc=True).dt.tz_localize(None)
+            # Truncate to YYYY-MM-DD — handles mixed string/Timestamp/tz-aware/tz-naive
+            # rows in the concat. Daily bars are calendar dates; the time component carries
+            # no information and parses inconsistently across CRSP cache vs Alpaca fresh pull.
+            combined["date"] = pd.to_datetime(combined["date"].astype(str).str[:10])
             combined = combined.drop_duplicates(
                 subset=["date", "ticker"], keep="last",
             )
+
+            # ── Backfill `ret` on Alpaca-appended rows ───────────────────
+            # Alpaca bars don't carry CRSP's split-and-dividend-adjusted `ret`
+            # column, so rows from Alpaca arrive with ret=NA. Downstream
+            # features.py computes adj_close via cumprod of (1+ret) and any
+            # NA→0 fill flattens the cumulative product, warping the
+            # close[-1]/cum[-1] anchor scale across the entire series.
+            # Fix: where ret is missing, fill from abs(prc).pct_change()
+            # per ticker. abs() handles CRSP's negative-price (bid/ask mid)
+            # convention so the cross-boundary pct_change stays clean.
+            combined = combined.sort_values(["ticker", "date"]).reset_index(drop=True)
+            if "ret" in combined.columns and "prc" in combined.columns:
+                fallback_ret = combined.groupby("ticker", observed=True, sort=False)["prc"].transform(
+                    lambda s: s.abs().pct_change()
+                )
+                na_before = int(combined["ret"].isna().sum())
+                combined["ret"] = combined["ret"].fillna(fallback_ret)
+                na_after = int(combined["ret"].isna().sum())
+                if na_before > na_after:
+                    print(f"[CONTINUE] Backfilled `ret` on {na_before - na_after:,} rows "
+                          f"from prc.pct_change()")
+
             store.save(combined, "ohlcv", partition_cols=["ticker"])
             existing_data["ohlcv"] = combined
             print(f"[CONTINUE] OHLCV extended to {combined['date'].max()}")

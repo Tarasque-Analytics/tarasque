@@ -1,5 +1,7 @@
 import { useLoaderData, useParams } from "react-router";
+import Search from "~/components/ui/search";
 import PriceHistoryChart from "../components/equity/price_history_chart";
+import EquityMetaData from "~/components/equity/metadata";
 import ForwardVolForecast from "../components/equity/forward_vol_forecast";
 import OptionsChainTable from "../components/equity/options_chain_table";
 import ContractSkewChart from "../components/equity/contract_skew_chart";
@@ -19,13 +21,23 @@ export default function TickerView() {
 
   return (
     <EquityDataProvider data={equity}>
-      <div className="flex flex-col gap-6">
+      {/* Redesigned equity page — new components go here */}
+      <div className="grid grid-cols-6 gap-4">
+        {/* Left col*/}
+        <div className="flex flex-col gap-4">
+          <Search />
+          <EquityMetaData />
+        </div>
+        {/* Center col*/}
+        <div className="col-span-4 flex flex-col gap-6">
+          <PriceHistoryChart />
+          <ForwardVolForecast />
+          <ContractSkewChart />
+          <OptionsChainTable />
+        </div>
+        {/* Right col*/}
+        <div className="flex flex-col gap-6"></div>
         <Overview />
-        {/* DB-backed equity page — new components go here, top-down. */}
-        <PriceHistoryChart />
-        <ForwardVolForecast />
-        <OptionsChainTable />
-        <ContractSkewChart />
       </div>
     </EquityDataProvider>
   );

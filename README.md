@@ -98,4 +98,5 @@ docker run -p 3000:3000 volarbmodel-app
 
 ## Additional Developer Documentation
 
-For app developer workflows, contribution process, and detailed run/build/deploy instructions, see `CONTRIBUTING.md`.
+- `TECH_STACK.md` — overview of the technologies used across the app, backend, and automation.
+- `CONTRIBUTING.md` — app developer workflows, contribution process, and detailed run/build/deploy instructions.

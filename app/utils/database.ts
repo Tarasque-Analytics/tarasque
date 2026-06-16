@@ -6,7 +6,6 @@
  * GET /api/equity/:symbol. Numeric columns that are nullable in the DB are typed `| null`.
  */
 
-
 const API_BASE_URL = "http://localhost:8000/api";
 
 // Volatility and forecasting data (volatility_history)
@@ -215,4 +214,3 @@ export async function loadLatestModelRun(): Promise<ModelRun | null> {
     return null;
   }
 }
-

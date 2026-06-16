@@ -6,8 +6,14 @@
  * GET /api/equity/:symbol. Numeric columns that are nullable in the DB are typed `| null`.
  */
 
+// API base URL - defaults to localhost for local dev, can be overridden by environment variable
+// const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+const API_BASE_URL = "http://backend:8000/api";
 
-const API_BASE_URL = "http://localhost:8000/api";
+// DEBUG: Log all available environment variables
+console.log("=== VITE Environment Variables ===");
+console.log(import.meta.env);
+console.log("=================================");
 
 // Volatility and forecasting data (volatility_history)
 export interface VolatilityRecord {
@@ -154,6 +160,7 @@ export interface EquitiesPayload {
  * Used for /equity/:symbol.
  */
 export async function loadEquityData(symbol: string): Promise<EquitiesPayload> {
+  console.log(`${API_BASE_URL}/equity/${symbol}`);
   try {
     const response = await fetch(`${API_BASE_URL}/equity/${symbol}`);
     if (!response.ok) {

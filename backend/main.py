@@ -49,6 +49,10 @@ async def lifespan(app: FastAPI):
             f"VITE_SUPABASE_URL found: {bool(url)}, VITE_SUPABASE_PUBLISHABLE_KEY found: {bool(key)}"
         )
     
+    # Debug: print the connection details
+    print(f"✓ Connecting to Supabase at: {url}")
+    print(f"✓ Using API key: {key[:20]}..." if key else "✗ No API key provided")
+    
     supabase_client = await acreate_client(url, key)
     database.initialize_db(supabase_client)
     yield

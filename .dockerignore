@@ -1,4 +1,50 @@
+# Build outputs
 .react-router
 build
 node_modules
+dist
+
+# Package managers
+npm-debug.log
+package-lock.json.bak
+
+# Git
+.git
+.gitignore
+.github
+
+# Documentation
 README.md
+*.md
+CONTRIBUTING.md
+
+# Development
+.env
+.env.local
+.env.*.local
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Python
+.pytest_cache
+__pycache__
+*.pyc
+.venv
+venv
+env
+
+# Project specific
+supabase/
+automation/
+model/
+Results/
+coverage
+.turbo
+.vite
+
+# OS
+.DS_Store
+Thumbs.db

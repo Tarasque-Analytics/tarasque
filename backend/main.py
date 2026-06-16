@@ -14,6 +14,7 @@ from supabase import acreate_client
 import asyncio
 from contextlib import asynccontextmanager
 import traceback
+from openrouter import OpenRouter
 from backend import database
 from backend.database import (
     get_active_tickers,
@@ -72,7 +73,18 @@ async def health_check():
     """Health check endpoint"""
     return {"status": "ok"}
 
-
+@app.get("api/equity/aislop")
+async def ai_overview():
+    with OpenRouter(api_key = os.environ.get("llm_api_key")) as client:
+        response = client.chat.send(
+            model = "nvidia/nemotron-3-ultra-550b-a55b:free",
+            messages = [
+                {"role": "user",
+                 "content": ""
+                    }
+            ]
+        )
+    return message
 @app.get("/api/equity/{symbol}")
 async def get_equity_data(symbol: str):
     """

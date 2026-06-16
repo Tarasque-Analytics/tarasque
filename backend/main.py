@@ -73,20 +73,20 @@ async def health_check():
     """Health check endpoint"""
     return {"status": "ok"}
 
-# @app.get("/api/equity/aislop")
-# async def ai_overview():
-#     with OpenRouter(api_key = os.environ.get("llm_api_key")) as client:
-#         response = client.chat.send(
-#             model = "nvidia/nemotron-3-ultra-550b-a55b:free",
-#             messages = [
-#                 {"role": "user",
-#                  "content": """Create jokes based on the "I am at a very Chinese time in my life" meme, where daily habits and logic are completely overtaken by Chinese cultural norms.
+@app.get("/api/equity/aislop")
+async def ai_overview():
+    with OpenRouter(api_key = os.environ.get("llm_api_key")) as client:
+        response = client.chat.send(
+            model = "nvidia/nemotron-3-ultra-550b-a55b:free",
+            messages = [
+                {"role": "user",
+                 "content": """Create jokes based on the "I am at a very Chinese time in my life" meme, where daily habits and logic are completely overtaken by Chinese cultural norms.
 
-# Each joke must follow this exact structure: [Mundane setup] + [Hilariously practical/traditional Chinese reaction] + "That is how Chinese my mind has become."""
-#                     }
-#             ]
-#         )
-#         return response.choices[0].message.content
+Each joke must follow this exact structure: [Mundane setup] + [Hilariously practical/traditional Chinese reaction] + "That is how Chinese my mind has become."""
+                    }
+            ]
+        )
+        return response.choices[0].message.content
 @app.get("/api/equity/{symbol}")
 async def get_equity_data(symbol: str):
     """

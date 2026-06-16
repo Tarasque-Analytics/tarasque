@@ -1,25 +1,6 @@
 import OpenAI from "openai";
 import { useState, useEffect } from "react";
 import { Card, Empty } from "./section";
-// async function run() {
-//     const [ message, setMessage ] = useState<String>('Loading...');
-
-//     const openai = new OpenAI({
-//     baseURL: "https://openrouter.ai/api/v1",
-//     apiKey: import.meta.env.VITE_llm_api_key,
-//     });
-//     const completion = await openai.chat.completions.create({
-//     model: 'nvidia/nemotron-3-ultra-550b-a55b:free',
-//     messages: [
-//       {
-//         role: 'user',
-//         content: 'What is the meaning of life?',
-//       }, 
-//     ],
-//   });
-//   setMessage(completion.choices[0].message.content);
-//   return (message)
-// }
 
 export default function Overview() {
     const [message, setMessage] = useState<String>("Loading...");
@@ -51,6 +32,9 @@ loadAI();
 return (
     <Card>
     <div className = "flex flex-wrap items-start justify-between gap-3">
+        <h2 className="text-2xl font-bold tracking-tight text-(--text-primary)">
+          AI Overview
+        </h2>
         <p>{message}</p>
         <Empty>
             {/* <p>{reply}</p> */}

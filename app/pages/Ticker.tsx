@@ -6,7 +6,7 @@ import ContractSkewChart from "../components/equity/contract_skew_chart";
 import EquityUnavailable from "../components/equity/equity_unavailable";
 import { EquityDataProvider } from "../context/EquityDataContext";
 import type { TickerLoaderData } from "../routes/ticker";
-
+import Overview from "../components/equity/overview";
 export default function TickerView() {
   const { equity } = useLoaderData() as TickerLoaderData;
   const { symbol } = useParams();
@@ -20,6 +20,7 @@ export default function TickerView() {
   return (
     <EquityDataProvider data={equity}>
       <div className="flex flex-col gap-6">
+        <Overview />
         {/* DB-backed equity page — new components go here, top-down. */}
         <PriceHistoryChart />
         <ForwardVolForecast />

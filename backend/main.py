@@ -75,18 +75,22 @@ async def health_check():
 
 @app.get("/api/equity/aislop")
 async def ai_overview():
-    with OpenRouter(api_key = os.environ.get("llm_api_key")) as client:
-        response = client.chat.send(
+    request = """You are a memelord, and have been winning awards for years.
+    Your task is to translate 朋友是一个坚韧不拔的纪录片， 在香港这座城市的设置。 主演：钱德勒 索罗斯 傅博斯1 瑞秋 莫妮卡 和一些其他他妈的演员。
+    into a random Romance language, including old languages like Latin.
+    Only output the translation itself, nothing else, and make sure you only give me one version of the translation.
+     """
+    async with OpenRouter(api_key = os.environ.get("llm_api_key")) as client:
+        response = await client.chat.send_async(
             model = "nvidia/nemotron-3-ultra-550b-a55b:free",
             messages = [
                 {"role": "user",
-                 "content": """Create jokes based on the "I am at a very Chinese time in my life" meme, where daily habits and logic are completely overtaken by Chinese cultural norms.
-
-Each joke must follow this exact structure: [Mundane setup] + [Hilariously practical/traditional Chinese reaction] + "That is how Chinese my mind has become."""
+                 "content": request
                     }
             ]
         )
-        return response.choices[0].message.content
+        # return response.choices[0].message.content
+        print(response.choices[0].message.content)
 @app.get("/api/equity/{symbol}")
 async def get_equity_data(symbol: str):
     """

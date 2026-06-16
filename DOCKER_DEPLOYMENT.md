@@ -285,3 +285,73 @@ Consider creating a `docker-compose.dev.yml` for local development with:
 - Volume mounts for code directories
 - Development environment variables
 - Exposed ports for debugging
+
+## Current Issues
+
+### Frontend-Backend Communication: Environment Variables Not Embedding in Vite Bundle
+
+**Problem:**
+The frontend container is unable to query the backend API because Vite environment variables (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_API_URL`) are not being embedded into the JavaScript bundle during the Docker build process. As a result:
+- The frontend falls back to `http://localhost:8000/api` instead of `http://backend:8000/api`(hardcoded default)
+- API requests fail when the frontend container tries to reach `localhost` (which doesn't exist in the container context)
+- The Supabase client cannot initialize due to missing credentials
+- Console errors: "supabaseUrl is required."
+
+**Root Cause:**
+Vite requires environment variables to be available at **build time** (when `npm run build` runs), not at runtime. Variables must be replaced in the source code during compilation to be available via `import.meta.env.VITE_*`. Simply passing them as runtime environment variables does not work.
+
+**Attempts Made to Fix:**
+
+1. **Attempt 1: ENV statements in Dockerfile**
+   - Used `ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL` after ARG declaration
+   - Result: Variables did not reach npm run build; vite.config.ts debug logs never appeared
+   - Issue: ENV after ARG only applies to subsequent layers, not the RUN command in the same layer
+
+2. **Attempt 2: Inline RUN command with variable export**
+   - Changed to: `RUN VITE_API_URL=$VITE_API_URL npm run build`
+   - Result: Still undefined; variables not visible to Vite
+   - Issue: Shell variable syntax did not properly export to child process
+
+3. **Attempt 3: .env.production with .env file creation**
+   - Created `.env.production` with placeholder values
+   - Modified Dockerfile RUN to create `.env` file before build: `echo "VITE_API_URL=..." >> .env`
+   - Result: Vite still read placeholders, not actual values
+   - Issue: .env file was created but values not substituted from ARG before file write
+
+4. **Attempt 4: Medium article "build once, inject later" approach**
+   - Created `.env.production` with placeholders: `VITE_API_URL=PREFIX_API_URL`
+   - Implemented `env.sh` script to run at container startup using sed replacement
+   - Modified Dockerfile with entrypoint to run injection before `npm start`
+   - Result: sed replacement did not find or modify placeholders in built JavaScript
+   - Issue: Likely because sed pattern matching or file paths were incorrect; reverted
+
+5. **Current Approach: ARG → ENV with docker-compose build args**
+   - Using Dockerfile: `ARG VITE_API_URL` then `ENV VITE_API_URL=$VITE_API_URL` before RUN
+   - Using docker-compose: `args:` section to pass `${VITE_API_URL}` from .env
+   - Using docker-run.ps1: Explicitly parsing .env and passing `--build-arg` to docker build
+   - Status: Build args are confirmed to be passed (visible in docker output), but still not reaching npm
+   - Issue: Unknown; variables reach docker build command but not npm run build subprocess
+
+**Evidence:**
+- Debug logging added to database.ts shows `import.meta.env.VITE_API_URL` is `undefined` in the browser
+- Console logs in vite.config.ts do not appear in build output, indicating Vite is not receiving the variables
+- Frontend falls back to hardcoded `http://localhost:8000/api`
+- Backend is working correctly and responds to requests (verified with wget tests)
+- Network communication between containers is working — verified with:
+  ```bash
+  docker-compose exec frontend wget -O- http://backend:8000/api/equity/AAPL
+  ```
+  This command successfully retrieved the full equity data JSON payload from the backend, proving that:
+  - The frontend container can resolve the `backend` service name via Docker's internal DNS
+  - The backend is running and accessible on port 8000
+  - The API endpoint `/api/equity/AAPL` is functional
+
+**Next Steps to Investigate:**
+1. Verify the exact syntax for passing ARG values to npm/Vite during RUN
+2. Check if npm scripts have special environment variable handling that requires different syntax
+3. Consider alternative: using a build script wrapper that logs environment variables before calling npm
+4. Explore whether Vite config needs explicit handling of undefined variables
+5. Review Vite build process documentation for how it discovers and uses environment variables
+
+**Workaround (Not Recommended for Production):**
+The frontend can be built locally with the correct .env file, then the built `/build` directory committed and deployed without rebuilding in Docker. This defeats the purpose of containerization but would allow the app to function. 

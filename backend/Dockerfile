@@ -31,7 +31,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 ENV PYTHONUNBUFFERED=1
 
 # Copy application code
-COPY . .
+COPY . ./backend
 
 # Create non-root user for security and fix permissions
 RUN useradd -m -u 1001 fastapi && chown -R fastapi:fastapi /app
@@ -42,4 +42,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
   CMD curl -f http://localhost:8000/docs || exit 1
 
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENV PYTHONPATH=/app
+
+CMD ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

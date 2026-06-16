@@ -64,7 +64,7 @@ app = FastAPI(title="Volarbear Ticker API", version="1.0.0", lifespan=lifespan)
 # Add CORS middleware to allow requests from the React frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],  # Adjust for your frontend port
+    allow_origins=["*"],  # Adjust for your frontend port
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

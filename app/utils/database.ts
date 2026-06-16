@@ -7,8 +7,8 @@
  */
 
 // API base URL - defaults to localhost for local dev, can be overridden by environment variable
-// const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
-const API_BASE_URL = "http://backend:8000/api";
+const API_BASE_URL = "http://tarasque-alb-289086194.us-east-2.elb.amazonaws.com/api";
+// const API_BASE_URL = "http://backend:8000/api";
 
 // DEBUG: Log all available environment variables
 console.log("=== VITE Environment Variables ===");

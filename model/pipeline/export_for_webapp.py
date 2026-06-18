@@ -103,6 +103,13 @@ PER_TICKER_COLUMNS = [
     'fwd_premium_21d','fwd_premium_63d','fwd_premium_126d',
     'fwd_premium_21_to_63d','fwd_premium_63_to_126d',
     'fwd_premium_ewma_21d','fwd_premium_ewma_63d','fwd_premium_ewma_126d',
+    # Regime betas — Macro page 2x2 Regime Modeler (β_mkt vs β_mz plane).
+    # β_mkt: CAPM market beta vs SPY, 252-BD rolling, log returns.
+    # β_mz_h{H}: calibration slope log(y_true_H) ~ log(y_pred_H), 252-BD rolling.
+    # mz_alpha_h{H}: matching MZ intercept on the same window.
+    'beta_mkt_252d',
+    'beta_mz_h21','beta_mz_h63','beta_mz_h126',
+    'mz_alpha_h21','mz_alpha_h63','mz_alpha_h126',
     'shap_h21_top10','shap_h63_top10','shap_h126_top10',
     'next_earnings_date','days_to_earnings',
     'next_dividend_date','days_to_dividend',
@@ -340,8 +347,14 @@ def build_per_ticker_file(
     predictions: pd.DataFrame,
     ohlcv: pd.DataFrame,
     run_id: int,
+    ohlcv_mkt: pd.DataFrame = None,
 ) -> pd.DataFrame:
-    """Compose the 28-column per-ticker file for one ticker."""
+    """Compose the per-ticker file for one ticker.
+
+    `ohlcv_mkt` is the market-index OHLCV (SPY) used for the β_mkt computation.
+    If None, it's loaded inline — passing it from the caller avoids redundant
+    loads when iterating the corpus.
+    """
 
     # Merge OHLCV onto prediction dates (left join — keep all prediction days)
     df = predictions.merge(ohlcv, on='date', how='left')
@@ -412,6 +425,17 @@ def build_per_ticker_file(
         out[f'fwd_premium_ewma_{_h}d'] = (
             out[f'fwd_premium_{_h}d'].ewm(span=21, adjust=False).mean()
         )
+
+    # Regime betas — β_mkt (CAPM market beta vs SPY) and β_mz (calibration
+    # slope log y_true ~ log y_pred per horizon). Powers the Macro page's
+    # 2×2 Regime Modeler. Both 252-BD rolling.
+    from .regimes import add_regime_columns
+    if ohlcv_mkt is None:
+        # Standalone-mode fallback. The corpus path passes SPY through.
+        start = pd.to_datetime(df['date']).min().strftime('%Y-%m-%d')
+        end = (pd.to_datetime(df['date']).max() + pd.Timedelta(days=2)).strftime('%Y-%m-%d')
+        ohlcv_mkt = fetch_ohlcv('SPY', start, end)
+    out = add_regime_columns(out, df, ohlcv, ohlcv_mkt)
 
     # SHAP — NULL on backtest rows. Real SHAP for daily forecast dates is
     # merged in below from forecasts/<TICKER>_shap.csv (written by
@@ -637,6 +661,9 @@ VOLATILITY_COLS = [
     'fwd_premium_21d', 'fwd_premium_63d', 'fwd_premium_126d',
     'fwd_premium_21_to_63d', 'fwd_premium_63_to_126d',
     'fwd_premium_ewma_21d', 'fwd_premium_ewma_63d', 'fwd_premium_ewma_126d',
+    'beta_mkt_252d',
+    'beta_mz_h21', 'beta_mz_h63', 'beta_mz_h126',
+    'mz_alpha_h21', 'mz_alpha_h63', 'mz_alpha_h126',
     'next_earnings_date', 'days_to_earnings',
     'next_dividend_date', 'days_to_dividend',
     'model_run_id',
@@ -703,6 +730,7 @@ def export_one_ticker(
     run_id: int = 1,
     db = None,
     append_only: bool = False,
+    ohlcv_mkt: pd.DataFrame = None,
 ):
     """Generate the per-ticker file for one symbol. Optionally push to Supabase."""
     EXPORT_DIR.mkdir(exist_ok=True)
@@ -721,7 +749,7 @@ def export_one_ticker(
     ohlcv = fetch_ohlcv(ticker, start, end)
     print(f'  {len(ohlcv):,} OHLCV rows from CRSP parquet (v6 split-fix methodology)')
 
-    out = build_per_ticker_file(ticker, wide, ohlcv, run_id)
+    out = build_per_ticker_file(ticker, wide, ohlcv, run_id, ohlcv_mkt=ohlcv_mkt)
     out_path = TICKERS_DIR / f'predictions_{ticker}.csv'
     out.to_csv(out_path, index=False)
     print(f'\nWrote {len(out):,} rows -> {out_path}')
@@ -756,6 +784,14 @@ def export_all(
     tickers = sorted(preds['ticker'].unique())
     print(f'Exporting {len(tickers)} tickers...')
 
+    # Pre-load SPY OHLCV once and pass through. Reused for beta_mkt computation
+    # in every ticker; loading per-ticker would be 93x redundant I/O.
+    start = preds['date'].min().strftime('%Y-%m-%d')
+    end = (preds['date'].max() + pd.Timedelta(days=2)).strftime('%Y-%m-%d')
+    print(f'Pre-loading SPY OHLCV for beta_mkt computation ({start} -> {end})...')
+    ohlcv_mkt = fetch_ohlcv('SPY', start, end)
+    print(f'  {len(ohlcv_mkt):,} SPY rows')
+
     # Insert a new model_runs row first (DB writes will FK to this)
     if db is not None and not append_only:
         manifest = {
@@ -774,7 +810,8 @@ def export_all(
     for i, t in enumerate(tickers, start=1):
         try:
             print(f'\n[{i}/{len(tickers)}] {t}')
-            export_one_ticker(t, run_id=run_id, db=db, append_only=append_only)
+            export_one_ticker(t, run_id=run_id, db=db, append_only=append_only,
+                              ohlcv_mkt=ohlcv_mkt)
         except Exception as e:
             print(f'  FAILED: {e}')
 

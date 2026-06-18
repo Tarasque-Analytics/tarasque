@@ -79,6 +79,10 @@ EXPECTED_COLUMNS = {
         'fwd_premium_21d', 'fwd_premium_63d', 'fwd_premium_126d',
         'fwd_premium_21_to_63d', 'fwd_premium_63_to_126d',
         'fwd_premium_ewma_21d', 'fwd_premium_ewma_63d', 'fwd_premium_ewma_126d',
+        # Regime betas — Macro page 2x2 Regime Modeler (added 2026-06).
+        'beta_mkt_252d',
+        'beta_mz_h21', 'beta_mz_h63', 'beta_mz_h126',
+        'mz_alpha_h21', 'mz_alpha_h63', 'mz_alpha_h126',
         'next_earnings_date', 'days_to_earnings',
         'next_dividend_date', 'days_to_dividend',
         'model_run_id',

@@ -116,11 +116,16 @@ def _normalize_flow_to_qtd(rows: List[dict], col_name: str) -> pd.DataFrame:
         return pd.DataFrame(columns=['period_end', 'fy', 'fp', 'form', 'filed',
                                       'accn', col_name])
 
-    # Restatement dedup: per (start, end), keep latest-filed
+    # Per (start, end), keep the FIRST-filed row (the original filing that
+    # reported this period). Later restatements via comparative entries in
+    # subsequent 10-Ks/10-Qs are ignored — the as-of join then sees the
+    # original filing's value at the original filing's date, which is the
+    # point-in-time correct value. Proper restatement-anchored time series
+    # is a v2 concern requiring all restatements to stay in the frame.
     latest: Dict[tuple, dict] = {}
     for r in rows:
         key = (r['start'], r['end'])
-        if key not in latest or r['filed'] > latest[key]['filed']:
+        if key not in latest or r['filed'] < latest[key]['filed']:
             latest[key] = r
 
     # Group by `start` (a YTD chain shares its start date)
@@ -130,22 +135,46 @@ def _normalize_flow_to_qtd(rows: List[dict], col_name: str) -> pd.DataFrame:
 
     out_rows = []
     for start, group in by_start.items():
-        # Sort by end ascending; consecutive subtractions give QTD
+        # Sort by end ascending; consecutive subtractions give QTD.
         group.sort(key=lambda x: x['end'])
-        prev = 0.0
-        for r in group:
-            qtd_val = float(r['val']) - prev
-            out_rows.append({
-                'period_end': pd.Timestamp(r['end']),
-                'fy': r.get('fy'),
-                'fp': r.get('fp'),
-                'form': r.get('form'),
-                'filed': pd.Timestamp(r['filed']),
-                'accn': r.get('accn'),
-                col_name: qtd_val,
-            })
-            prev = float(r['val'])
 
+        # Require a quarterly anchor in the group: the smallest-`end` entry
+        # must have ~89-day duration (= Q1 QTD). Without this, the chain
+        # has no Q1 baseline and later YTD entries can't be safely diffed.
+        # Common case: 10-K comparatives for old fiscal years come in as
+        # standalone annual rows (364d) — those polluted the per-period
+        # frame as if they were quarterly. Skip such groups entirely.
+        first = group[0]
+        first_dur = (pd.Timestamp(first['end']) - pd.Timestamp(first['start'])).days
+        if not (85 <= first_dur <= 100):
+            continue
+
+        prev_val = 0.0
+        prev_end = None
+        for r in group:
+            curr_end = pd.Timestamp(r['end'])
+            if prev_end is None:
+                eff_dur = (curr_end - pd.Timestamp(r['start'])).days
+            else:
+                eff_dur = (curr_end - prev_end).days
+            qtd_val = float(r['val']) - prev_val
+            if 85 <= eff_dur <= 100:
+                # Quarterly effective interval — emit.
+                out_rows.append({
+                    'period_end': curr_end,
+                    'fy': r.get('fy'),
+                    'fp': r.get('fp'),
+                    'form': r.get('form'),
+                    'filed': pd.Timestamp(r['filed']),
+                    'accn': r.get('accn'),
+                    col_name: qtd_val,
+                })
+            prev_val = float(r['val'])
+            prev_end = curr_end
+
+    if not out_rows:
+        return pd.DataFrame(columns=['period_end', 'fy', 'fp', 'form', 'filed',
+                                      'accn', col_name])
     df = pd.DataFrame(out_rows).sort_values('period_end').reset_index(drop=True)
     # Dedup just in case (period_end could appear in multiple `start` groups
     # if a filer is wonky); keep latest filed.
@@ -222,6 +251,8 @@ def _extract_instant(blob: Dict, taxonomy: str, tag: str,
         'accn': r.get('accn'),
         col_name: float(r['val']),
     } for r in rows])
+    # Per period_end, keep ALL filings as separate rows; downstream code
+    # (extract_facts) picks first-filed per period for point-in-time correctness.
     return df.sort_values(['period_end', 'filed']).reset_index(drop=True)
 
 
@@ -306,13 +337,15 @@ def extract_facts(blob: Dict) -> pd.DataFrame:
         base = pd.DataFrame(columns=['period_end', 'fy', 'fp', 'form', 'filed',
                                       'accn', 'equity', 'shares'])
     else:
-        latest_per_period = eq_long.groupby('period_end', as_index=False).last()
-        primary_per_period = (
-            eq_long.groupby('period_end', as_index=False)
-                   .first()[['period_end', 'accn']]
-                   .rename(columns={'accn': 'primary_accn'})
-        )
-        base = latest_per_period.merge(primary_per_period, on='period_end', how='left')
+        # Use the FIRST (original) filing per period for both VALUES and the
+        # primary-accn lookup. Restatement-stepping is v2. The values then
+        # match the period as it was first reported, so the as-of join lands
+        # on a row whose `filed` is the original filing's date (which falls
+        # inside the historical window we're projecting onto).
+        first_per_period = eq_long.groupby('period_end', as_index=False).first()
+        base = first_per_period.copy()
+        base = base.rename(columns={'accn': 'primary_accn'})
+        base['accn'] = base['primary_accn']
         if not sh.empty:
             base = base.merge(
                 sh[['accn', 'shares']].rename(columns={'accn': 'primary_accn'}),

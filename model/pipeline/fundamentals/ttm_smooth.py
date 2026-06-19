@@ -98,13 +98,18 @@ def compute_per_share_legs(facts: pd.DataFrame) -> pd.DataFrame:
     df['book_ps'] = pd.to_numeric(df['equity'],      errors='coerce') / shares
     df['dps']     = pd.to_numeric(df['dps_ttm'],     errors='coerce')
 
-    # Smooth only the cyclical legs (per spec). Book and dps are stable enough.
-    df['rev_ps_smoothed'] = (
-        df['rev_ps'].rolling(SMOOTH_WINDOW, min_periods=SMOOTH_MIN_PERIODS).mean()
-    )
-    df['ocf_ps_smoothed'] = (
-        df['ocf_ps'].rolling(SMOOTH_WINDOW, min_periods=SMOOTH_MIN_PERIODS).mean()
-    )
+    # Smooth ALL 4 legs with the 20Q trailing window. Spec language said only
+    # cyclical legs need smoothing, but in practice book_ps + dps step
+    # discontinuously at M&A events (e.g. CVX Hess Q3 2025: shares +16%,
+    # equity +30%, book_ps jumps in a single quarter). Without smoothing,
+    # the RAFI composite shows a sharp step at the M&A. Per the validated
+    # CVX visual reference (gentle rise rather than step at Hess close),
+    # all 4 legs share the 5yr smoother. Structural break flag still
+    # surfaces the underlying event for chart annotation.
+    for col in ('rev_ps', 'ocf_ps', 'book_ps', 'dps'):
+        df[f'{col}_smoothed'] = (
+            df[col].rolling(SMOOTH_WINDOW, min_periods=SMOOTH_MIN_PERIODS).mean()
+        )
 
     return df
 

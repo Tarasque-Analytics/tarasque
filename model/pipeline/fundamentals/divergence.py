@@ -49,13 +49,23 @@ def asof_project_to_daily(per_period_legs: pd.DataFrame,
       from the most-recent filing on/before each date. Also carries
       'last_filing_date' = the `filed` of that source row.
     """
-    cols_to_carry = list(LEGS) + ['filed', 'period_end', 'structural_break_flag']
+    cols_to_carry = list(LEGS) + ['book_ps', 'dps', 'filed', 'period_end',
+                                    'structural_break_flag']
     # Make sure these exist even if upstream skipped them
     df = per_period_legs.copy()
     if 'structural_break_flag' not in df.columns:
         df['structural_break_flag'] = False
     have = [c for c in cols_to_carry if c in df.columns]
-    df = df[have].dropna(subset=['filed']).sort_values('filed').reset_index(drop=True)
+    df = (
+        df[have].dropna(subset=['filed'])
+        # Sort by filed then period_end so merge_asof's backward direction
+        # picks the LATEST PERIOD at a given filing date, not an older
+        # restatement that happens to share the filed timestamp. A 10-K
+        # filed Oct-Y1 publishes the current FY-end period AND comparatives
+        # for prior years; we want the current period at the join.
+        .sort_values(['filed', 'period_end'])
+        .reset_index(drop=True)
+    )
 
     spine = pd.DataFrame({'date': pd.to_datetime(daily_dates)}).sort_values('date').reset_index(drop=True)
     if df.empty:
@@ -126,7 +136,8 @@ def compute_divergence_for_firm(
 
     keep = [
         'date', 'price', 'price_index', 'rafi_composite', 'divergence',
-        'rev_ps_smoothed', 'ocf_ps_smoothed', 'book_ps', 'dps',
+        'rev_ps_smoothed', 'ocf_ps_smoothed', 'book_ps_smoothed', 'dps_smoothed',
+        'book_ps', 'dps',  # raw kept for transparency
         'last_filing_date', 'structural_break', 'n_legs_present',
     ]
     keep = [c for c in keep if c in out.columns]

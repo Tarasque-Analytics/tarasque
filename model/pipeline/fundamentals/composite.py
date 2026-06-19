@@ -32,7 +32,9 @@ import pandas as pd
 
 
 # Order matters only for readability — the composite is a simple equal-weight mean.
-LEGS = ('rev_ps_smoothed', 'ocf_ps_smoothed', 'book_ps', 'dps')
+# All 4 legs use the 20Q smoothed version so M&A steps don't show as a
+# discontinuous step in the composite.
+LEGS = ('rev_ps_smoothed', 'ocf_ps_smoothed', 'book_ps_smoothed', 'dps_smoothed')
 
 
 def _value_at_canonical(daily_legs: pd.DataFrame, canonical_date: pd.Timestamp,

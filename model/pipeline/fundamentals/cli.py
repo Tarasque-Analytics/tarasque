@@ -88,6 +88,13 @@ def load_prices_for_ticker(ticker: str) -> Optional[pd.DataFrame]:
         rets = df['ret'].copy()
         fallback = df['close'].pct_change()
         rets = rets.where(rets.notna(), fallback).fillna(0.0)
+        # Strip stock splits: source occasionally reports a 10-for-1 split as
+        # ret = -0.9 instead of split-adjusting (NFLX 2025-01-02 e.g.).
+        # Detect returns close to -(1 - 1/N) for integer N in [2, 30] and
+        # zero them — cumprod then stays continuous through the split and
+        # adj_close (cum * scale-to-last-raw-close) gives the post-split
+        # convention historically continuous series.
+        rets = _strip_split_returns(rets)
         cum = (1.0 + rets).cumprod()
         last_close = float(df['close'].iloc[-1])
         df['adj_close'] = cum * (last_close / float(cum.iloc[-1]))
@@ -95,6 +102,31 @@ def load_prices_for_ticker(ticker: str) -> Optional[pd.DataFrame]:
         df['adj_close'] = df['close']
 
     return df[['date', 'adj_close']].dropna()
+
+
+def _strip_split_returns(rets: pd.Series,
+                          tolerance: float = 0.02) -> pd.Series:
+    """Zero out returns that look like stock splits.
+
+    A clean N-for-1 forward split appears as a single return of -(1 - 1/N).
+    For N in {2,3,4,5,7,10,15,20,30} that's {-0.5, -0.667, -0.75, -0.80,
+    -0.857, -0.90, -0.933, -0.95, -0.967}. We accept any return within
+    `tolerance` of those values.
+
+    Pure stock-price crashes (earnings disasters, fraud) don't land
+    precisely on integer-split ratios, so this filter is safe for ordinary
+    drops. NFLX 2025-01-02 ret = -0.9005 → exactly the 10-for-1 signature.
+    """
+    out = rets.copy()
+    split_ratios = [-(1.0 - 1.0 / n) for n in (2, 3, 4, 5, 7, 10, 15, 20, 30)]
+    for i, r in enumerate(out):
+        if pd.isna(r) or r > -0.4:  # splits are < -0.5 by construction
+            continue
+        for target in split_ratios:
+            if abs(r - target) < tolerance:
+                out.iloc[i] = 0.0
+                break
+    return out
 
 
 def backfill_one(ticker: str, cik: int, client: EdgarXbrlClient,

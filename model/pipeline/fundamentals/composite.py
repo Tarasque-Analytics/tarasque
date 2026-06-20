@@ -78,15 +78,26 @@ def index_legs_and_composite(daily_legs: pd.DataFrame,
 
     base_vals = {leg: _value_at_canonical(df, canonical_date, leg) for leg in legs}
 
-    # Index each leg. Where the base is NaN, the leg's indexed series is NaN.
+    # Index each leg. Two ways a leg gets nullified:
+    #   1. Canonical (base) value is NaN, zero, or negative — drop leg
+    #      entirely for that firm. The ratio leg(t)/base would be sign-
+    #      flipped or undefined.
+    #   2. Per row: the leg's current value is non-positive. Philip Morris
+    #      has positive book equity in 2008-2013 (when smoothing window at
+    #      canonical includes them) but goes negative from 2014 from
+    #      leveraged buybacks. Without per-row nullification, the indexed
+    #      value flips sign and drags the composite negative.
+    # Either nullification just drops the leg from the row's mean —
+    # composite reverts to a 3-leg mean (n_legs_present tracks it).
     indexed_cols = []
     for leg in legs:
         base = base_vals[leg]
         col = f'{leg}_indexed'
-        if not np.isfinite(base) or base == 0:
+        if not np.isfinite(base) or base <= 0:
             df[col] = np.nan
         else:
-            df[col] = df[leg] / base
+            ratio = df[leg] / base
+            df[col] = ratio.where(df[leg] > 0)
         indexed_cols.append(col)
 
     # Equal-weight composite: mean across the 4 indexed legs, skipping NaN.

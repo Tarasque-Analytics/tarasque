@@ -75,6 +75,12 @@ def compute_per_share_legs(facts: pd.DataFrame) -> pd.DataFrame:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
 
+    # ffill shares: many filers report shares only in 10-Ks (annually) or
+    # in some 10-Qs but not others. The share count is stable quarter-to-
+    # quarter (small buybacks/issuance aside) — carrying the last known
+    # value forward gives valid per-share legs without inventing data.
+    df['shares'] = df['shares'].ffill()
+
     # Split adjustment. XBRL's shares-outstanding does NOT auto-adjust for
     # splits, but adj_close does. To keep per-share legs comparable to the
     # split-adjusted price series, back-adjust historical shares AND dps_q

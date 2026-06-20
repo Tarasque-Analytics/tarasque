@@ -61,7 +61,26 @@ TAG_EQUITY_PRIORITY = (
 )
 MIN_EQUITY_ROWS = 20  # Below this, fall back to the next priority tag.
 
-TAG_SHARES = 'EntityCommonStockSharesOutstanding'   # taxonomy: dei
+TAG_SHARES_PRIORITY = (
+    # Point-in-time shares (per spec) — preferred.
+    ('dei', 'EntityCommonStockSharesOutstanding', 'shares'),
+    # Fallback: weighted-average shares from the income statement (used for
+    # EPS). Available for nearly every filer with 200+ rows. Approximates
+    # point-in-time well for stable share counts; ~1-3% drift during quarters
+    # with buybacks / new issuance. Used when dei tag has < 20 rows (i.e.,
+    # the filer doesn't report point-in-time consistently — Ford, SPG, etc.).
+    ('us-gaap', 'WeightedAverageNumberOfSharesOutstandingBasic', 'shares'),
+)
+MIN_SHARES_PRIMARY_ROWS = 20
+
+# Outlier filter for shares: a single filing's value can be off by 1e6x
+# (CRM 2011-04-30 reported "133.9" instead of "133900000" — a missing-units
+# filer error). Reject any shares observation that's < 30% of the running
+# median of the trailing 4 valid observations (after the firm's first 4Q).
+SHARES_OUTLIER_LOW_RATIO = 0.3
+SHARES_OUTLIER_HIGH_RATIO = 3.5    # > 3.5x trailing median is also suspicious
+                                    # (splits handled by ttm_smooth.split_adjust)
+SHARES_OUTLIER_MIN_HISTORY = 4
 
 TAG_DPS_PRIORITY = (
     'CommonStockDividendsPerShareDeclared',
@@ -263,25 +282,51 @@ def _extract_instant(blob: Dict, taxonomy: str, tag: str,
 def _extract_shares_per_accn(blob: Dict) -> pd.DataFrame:
     """One shares value per accession (the filing that published it).
 
-    The dei tag's `end` is typically a few days before the filing date, NOT
-    period_end. So we tag by accn — later, per-accn join attaches the shares
-    value to whatever period that accn was reporting.
+    Priority: dei point-in-time tag first; falls back to weighted-average
+    shares when the dei tag is too sparse (Ford has only 8 dei rows). Then
+    applies an outlier filter to reject filing errors (e.g. CRM 2011-04-30
+    published 133.9 instead of 133900000).
     """
-    rows = _accepted(_rows_for_tag(blob, 'dei', TAG_SHARES, 'shares'))
-    if not rows:
+    chosen: List[dict] = []
+    for taxonomy, tag, unit in TAG_SHARES_PRIORITY:
+        rows = _accepted(_rows_for_tag(blob, taxonomy, tag, unit))
+        if len(rows) >= MIN_SHARES_PRIMARY_ROWS:
+            chosen = rows
+            break
+        if rows and not chosen:
+            chosen = rows  # at least something to fall back on
+    if not chosen:
         return pd.DataFrame(columns=['accn', 'shares', 'shares_as_of'])
+
     df = pd.DataFrame([{
         'accn': r.get('accn'),
         'shares_as_of': pd.Timestamp(r['end']),
         'shares': float(r['val']),
         'filed': pd.Timestamp(r['filed']),
     } for r in rows])
-    # Per accn, keep the latest dei row (some accns publish multiple snapshots).
+    # Per accn, keep the LAST (latest within-accn) — some accns publish
+    # multiple snapshots (mid-quarter + end-quarter). Latest = most current.
     df = (
         df.sort_values(['accn', 'filed', 'shares_as_of'])
           .drop_duplicates(subset=['accn'], keep='last')
           .reset_index(drop=True)
     )
+
+    # Outlier filter: reject filings with shares value wildly off from
+    # the trailing median (after the first MIN_HISTORY filings). Filing
+    # errors typically off by 1e6x (missing units) — easy to catch.
+    df = df.sort_values('filed').reset_index(drop=True)
+    keep_mask = pd.Series(True, index=df.index)
+    for i in range(SHARES_OUTLIER_MIN_HISTORY, len(df)):
+        recent = df.loc[max(0, i - SHARES_OUTLIER_MIN_HISTORY):i - 1, 'shares']
+        recent_valid = recent[keep_mask.loc[recent.index]]
+        if len(recent_valid) < SHARES_OUTLIER_MIN_HISTORY:
+            continue
+        med = float(recent_valid.median())
+        val = float(df.loc[i, 'shares'])
+        if val < med * SHARES_OUTLIER_LOW_RATIO or val > med * SHARES_OUTLIER_HIGH_RATIO:
+            keep_mask.iloc[i] = False
+    df = df[keep_mask].reset_index(drop=True)
     return df
 
 

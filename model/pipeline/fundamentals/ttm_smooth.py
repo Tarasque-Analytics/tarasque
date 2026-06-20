@@ -32,11 +32,16 @@ import pandas as pd
 
 TTM_WINDOW = 4         # quarters in a trailing 12 months
 SMOOTH_WINDOW = 20     # quarters in a 5-year cyclical smoother
-SMOOTH_MIN_PERIODS = 8    # 2yr warm-up; converges to true 5yr after 20Q.
-                          #   Strict 20 means canonical=2014 has NaN smoothed
-                          #   legs at the 2013-Q3 most-recent filing (only 19Q
-                          #   since 2009-Q1 XBRL start). 8 keeps the canonical
-                          #   value defined while sacrificing only ~1Q precision.
+SMOOTH_MIN_PERIODS = 1    # Smoothed = raw when only 1 observation in window;
+                          # converges to true 5yr trailing mean once 20Q accumulate.
+                          # Strict 8 broke recent spinoffs / IPOs (ABBV had 2Q
+                          # at canonical → all legs NaN). With min_periods=1
+                          # every firm gets a canonical-1.0 anchor as long as
+                          # ANY data exists pre-canonical; the smoothing
+                          # "warms up" naturally as more quarters land.
+                          # For firms with full pre-canonical history (CVX,
+                          # JNJ, etc.) the value at canonical is identical to
+                          # min_periods=8 because there are >= 8 obs there.
 
 # Split detection bounds. Forward splits 2:1 through 30:1 are common; reverse
 # splits 1:2 through 1:30 likewise. Tolerance: ratio must be within 5% of an

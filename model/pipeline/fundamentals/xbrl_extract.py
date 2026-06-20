@@ -318,14 +318,31 @@ def extract_facts(blob: Dict) -> pd.DataFrame:
             break
     dps = _normalize_flow_to_qtd(dps_rows, 'dps_q')
 
-    eq_long = pd.DataFrame()
-    for tag in TAG_EQUITY_PRIORITY:
-        candidate = _extract_instant(blob, 'us-gaap', tag, 'equity', 'USD')
-        if len(candidate) >= MIN_EQUITY_ROWS:
-            eq_long = candidate
-            break
-        if not candidate.empty and eq_long.empty:
-            eq_long = candidate  # at least something to fall back on
+    # Equity stitch (per-period priority, NOT count-based). Use parent equity
+    # where the filer publishes it; fall back to the combined "including
+    # noncontrolling interest" tag for periods where the parent tag is missing.
+    # UNH (and many post-2015 filers) switched mid-life from parent-only to
+    # combined; a count-based fallback (v1) picked the stale parent tag
+    # because it had >20 historical rows — leaving the post-switch periods
+    # invisible. Per-period stitch fixes this without losing point-in-time
+    # discipline.
+    parent = _extract_instant(blob, 'us-gaap',
+                                'StockholdersEquity', 'equity', 'USD')
+    combined = _extract_instant(blob, 'us-gaap',
+        'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest',
+        'equity', 'USD')
+    if parent.empty and combined.empty:
+        eq_long = parent  # empty frame with correct columns
+    elif parent.empty:
+        eq_long = combined
+    elif combined.empty:
+        eq_long = parent
+    else:
+        # Stitch: parent rows win where they exist; combined fills gaps.
+        parent_periods = set(parent['period_end'].unique())
+        combined_fill = combined[~combined['period_end'].isin(parent_periods)]
+        eq_long = pd.concat([parent, combined_fill], ignore_index=True)
+        eq_long = eq_long.sort_values(['period_end', 'filed']).reset_index(drop=True)
     sh = _extract_shares_per_accn(blob)
 
     # Build per-period spine from equity. Two roles per period_end:

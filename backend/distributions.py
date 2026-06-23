@@ -44,7 +44,7 @@ LOOKBACKS: dict[str, int | None] = {
 MIN_SAMPLES = 30
 
 # Number of equal-width frequency bins ("deciles" in #128 = 10 buckets, not equal-count quantiles).
-NUM_BINS = 20
+NUM_BINS = 10
 
 
 def _parse_date(value) -> _date | None:

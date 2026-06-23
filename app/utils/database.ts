@@ -113,7 +113,7 @@ export interface DistributionBin {
 export interface DistributionSet {
   scope: "stock" | "sector" | "market";
   metric: "rv" | "iv" | "vrp";
-  lookback: "1Y" | "2Y" | "5Y" | "MAX";
+  lookback: "3M" | "6M" | "YTD" | "1Y" | "2Y" | "5Y" | "MAX";
   current_value: number;
   current_percentile: number;
   mean: number;

@@ -39,7 +39,10 @@ const METRICS = [
 ] as const;
 type MetricKey = (typeof METRICS)[number]["key"];
 
-const LOOKBACKS = ["1Y", "2Y", "5Y", "MAX"] as const;
+// Ordered narrowest -> widest (mirrors the price chart's range menu minus 1M). The order matters:
+// when the selected lookback has no data, the chart falls back to the first one in this list that
+// does, so the fallback lands on the tightest available window.
+const LOOKBACKS = ["3M", "6M", "YTD", "1Y", "2Y", "5Y", "MAX"] as const;
 type LookbackKey = (typeof LOOKBACKS)[number];
 
 const SCOPES = [
@@ -180,10 +183,33 @@ export default function DistributionChart() {
   const [scope, setScope] = useState<ScopeKey>("stock");
 
   const sets = (equity?.distribution_data ?? []) as DistributionSet[];
+
+  // Which lookback windows actually have a set for the current metric/scope.
+  const availableLookbacks = useMemo(() => {
+    const avail = new Set<LookbackKey>();
+    for (const s of sets) {
+      if (s.scope === scope && s.metric === metric) avail.add(s.lookback);
+    }
+    return avail;
+  }, [sets, scope, metric]);
+
+  // On-load fallback: keep the user's selected window if it has data, otherwise show the first
+  // (narrowest) window that does. A symbol with <MIN_SAMPLES in the default 1Y window therefore
+  // renders its 2Y/5Y/MAX data instead of an empty panel; only a metric/scope with NO populated
+  // window falls through to the empty state. Selection is preserved, so switching metrics back
+  // restores the user's original lookback when it's available again.
+  const effectiveLookback: LookbackKey | null = availableLookbacks.has(lookback)
+    ? lookback
+    : (LOOKBACKS.find((l) => availableLookbacks.has(l)) ?? null);
+
   const set = useMemo(
     () =>
-      sets.find((s) => s.scope === scope && s.metric === metric && s.lookback === lookback) ?? null,
-    [sets, scope, metric, lookback],
+      effectiveLookback
+        ? sets.find(
+            (s) => s.scope === scope && s.metric === metric && s.lookback === effectiveLookback,
+          ) ?? null
+        : null,
+    [sets, scope, metric, effectiveLookback],
   );
 
   const sec = equity?.security;
@@ -194,7 +220,8 @@ export default function DistributionChart() {
       sec={sec}
       metric={metric}
       onMetric={setMetric}
-      lookback={lookback}
+      activeLookback={effectiveLookback}
+      availableLookbacks={availableLookbacks}
       onLookback={setLookback}
       scope={scope}
       onScope={setScope}
@@ -319,7 +346,8 @@ function Header({
   sec,
   metric,
   onMetric,
-  lookback,
+  activeLookback,
+  availableLookbacks,
   onLookback,
   scope,
   onScope,
@@ -328,7 +356,9 @@ function Header({
   sec: SecurityMeta | undefined;
   metric: MetricKey;
   onMetric: (m: MetricKey) => void;
-  lookback: LookbackKey;
+  // The window actually shown (selected, or the fallback when the selection has no data).
+  activeLookback: LookbackKey | null;
+  availableLookbacks: Set<LookbackKey>;
   onLookback: (l: LookbackKey) => void;
   scope: ScopeKey;
   onScope: (s: ScopeKey) => void;
@@ -362,17 +392,22 @@ function Header({
         </div>
 
         <div className="segmented">
-          {LOOKBACKS.map((l) => (
-            <button
-              key={l}
-              type="button"
-              className="segmented-btn"
-              data-active={lookback === l}
-              onClick={() => onLookback(l)}
-            >
-              {l}
-            </button>
-          ))}
+          {LOOKBACKS.map((l) => {
+            const has = availableLookbacks.has(l);
+            return (
+              <button
+                key={l}
+                type="button"
+                className="segmented-btn disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-(--text-secondary)"
+                data-active={activeLookback === l}
+                disabled={!has}
+                title={has ? undefined : "Not enough history for this window"}
+                onClick={() => onLookback(l)}
+              >
+                {l}
+              </button>
+            );
+          })}
         </div>
 
         <div className="segmented">

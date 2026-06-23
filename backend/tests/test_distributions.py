@@ -127,11 +127,29 @@ def test_combo_below_min_samples_is_omitted():
 # --- date windowing ----------------------------------------------------------
 
 def test_lookback_windows_select_by_date():
-    # ~2.2 years of daily rows: 1Y and 2Y windows are strict subsets; 5Y/MAX cover all 800.
+    # ~2.2 years of consecutive daily rows ending 2026-06-01: each lookback selects an exact,
+    # date-bounded subset (inclusive of both ends). 5Y/MAX cover all 800.
     n = 800
     result = build_distribution_data(_rows(rv=list(range(n)), n=n))
     sums = {s["lookback"]: sum(b["count"] for b in s["bins"]) for s in result if s["metric"] == "rv"}
-    assert sums == {"1Y": 366, "2Y": 731, "5Y": 800, "MAX": 800}
+    assert sums == {
+        "3M": 92,    # 2026-03-02 .. 2026-06-01
+        "6M": 183,   # 2025-12-01 .. 2026-06-01
+        "YTD": 152,  # 2026-01-01 .. 2026-06-01 (calendar year-to-date)
+        "1Y": 366,   # 2025-06-01 .. 2026-06-01
+        "2Y": 731,   # 2024-06-01 .. 2026-06-01
+        "5Y": 800,   # window wider than the data -> all rows
+        "MAX": 800,  # every row
+    }
+
+
+def test_ytd_window_uses_calendar_year_not_trailing_days():
+    # Rows straddle a year boundary (2025-10-01 .. 2026-03-15). YTD must cut at 2026-01-01,
+    # not "365 days back": Jan(31) + Feb(28) + Mar 1..15(15) = 74 rows.
+    n = (date(2026, 3, 15) - date(2025, 10, 1)).days + 1
+    result = build_distribution_data(_rows(date(2026, 3, 15), rv=list(range(n)), n=n))
+    ytd = _set(result, "rv", "YTD")
+    assert sum(b["count"] for b in ytd["bins"]) == 74
 
 
 # --- never raises ------------------------------------------------------------

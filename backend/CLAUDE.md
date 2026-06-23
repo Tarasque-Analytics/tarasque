@@ -154,7 +154,7 @@ Two separate event sources; do not conflate them:
   query, so it was disabled; the dead RPC helper + its `main.py` call sites were removed (#74).
   It is replaced for **stock scope** by `backend/distributions.py` (`build_distribution_data`), a
   pure, dependency-free function that builds RV/IV/VRP frequency histograms (10 equal-width bins,
-  per lookback `1Y/2Y/5Y/MAX`) from the `volatility_history` rows already fetched in
+  per lookback `3M/6M/YTD/1Y/2Y/5Y/MAX`) from the `volatility_history` rows already fetched in
   `get_equity_data` — **no second DB query and not part of the `asyncio.gather`**. It must never
   raise (returns `[]` on no data) so it can't fail the composite payload. Sector/market scope and
   `E(RV)` are deferred (the frontend scope toggle shows them disabled). Because it is pure compute

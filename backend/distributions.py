@@ -30,9 +30,14 @@ METRICS: dict[str, str] = {
     "vrp": "vrp_wedge",
 }
 
-# Lookback label -> window length in days (None = MAX / every available row). Short windows
-# (1M/3M/6M/YTD) are intentionally omitted — too few points for a 10-bin histogram.
-LOOKBACKS: dict[str, int | None] = {
+# Lookback label -> window spec: a day-count, "ytd" (calendar year-to-date), or None (MAX / every
+# available row). Mirrors the price chart's range menu minus 1M (too few points for a 10-bin
+# histogram given MIN_SAMPLES). Ordered narrowest -> widest so the frontend's "first available"
+# fallback lands on the tightest window that actually has data.
+LOOKBACKS: dict[str, int | str | None] = {
+    "3M": 91,
+    "6M": 182,
+    "YTD": "ytd",
     "1Y": 365,
     "2Y": 730,
     "5Y": 1825,
@@ -144,11 +149,15 @@ def build_distribution_data(vol_rows: list[dict]) -> list[dict]:
 
         sets: list[dict] = []
         for metric, column in METRICS.items():
-            for lookback, days in LOOKBACKS.items():
-                if days is None:
+            for lookback, spec in LOOKBACKS.items():
+                if spec is None:
                     window = dated
+                elif spec == "ytd":
+                    # Calendar year-to-date, relative to the latest row's year.
+                    cutoff = _date(latest.year, 1, 1)
+                    window = [dr for dr in dated if dr[0] >= cutoff]
                 else:
-                    cutoff = latest - timedelta(days=days)
+                    cutoff = latest - timedelta(days=spec)
                     window = [dr for dr in dated if dr[0] >= cutoff]
 
                 # Non-null metric values in date order; current = latest non-null in the window.

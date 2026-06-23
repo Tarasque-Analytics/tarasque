@@ -73,7 +73,9 @@ shared non-secret defaults.
   sector/industry) pulled from the `securities` row already fetched to resolve `security_id`.
   Current payload keys: `symbol, security, volatility_history,
   price_history, options_chain, ai_overview,
-  latest_shap_snapshot, events`. **`distribution_data` is temporarily disabled** (see below).
+  latest_shap_snapshot, distribution_data, events`. `distribution_data` is **live (stock scope)** —
+  computed in plain Python from the already-fetched `volatility_history` (no RPC, no extra query);
+  see below.
 - `/api/equities` returns the list of active ticker symbols (`securities.active`, via
   `get_active_tickers()` in `database.py`) and feeds the frontend ticker search. It replaced the
   legacy filesystem-scan `/api/tickers*` endpoints, removed in the file-data cleanup (issue #83).
@@ -147,11 +149,17 @@ Two separate event sources; do not conflate them:
   Latest row per `(security_id, model_ver, prompt_ver)` where `flagged = false`.
 - `volatility_history` is the wide feature table (RV/IV, VRP wedge, `pfv_*` and `fwd_premium_*`
   term-structure features, cached SHAP top-10 JSONB per horizon 21/63/126).
-- `get_distribution` is a Postgres RPC (stored procedure), **not** a table — it is not in
-  `database_SQL_defs.sql`. **Currently commented out** in both `main.py` and `database.py`
-  (grep `distribution PR`): the RPC hits a Postgres statement timeout (code `57014`), so it was
-  disabled to keep `/api/equity` working. Re-enabling is deferred to a separate PR pending
-  finance-side input on the distribution structure — see the tracking GitHub issue.
+- **`distribution_data` is computed in-Python, not via an RPC.** The old `get_distribution`
+  Postgres RPC hit a statement timeout (code `57014`) under the cross-sectional sector/market
+  query, so it was disabled; the dead RPC helper + its `main.py` call sites were removed (#74).
+  It is replaced for **stock scope** by `backend/distributions.py` (`build_distribution_data`), a
+  pure, dependency-free function that builds RV/IV/VRP frequency histograms (10 equal-width bins,
+  per lookback `1Y/2Y/5Y/MAX`) from the `volatility_history` rows already fetched in
+  `get_equity_data` — **no second DB query and not part of the `asyncio.gather`**. It must never
+  raise (returns `[]` on no data) so it can't fail the composite payload. Sector/market scope and
+  `E(RV)` are deferred (the frontend scope toggle shows them disabled). Because it is pure compute
+  it imports no Supabase client, so it can't cross the read/write client boundary. Uses only the
+  stdlib `statistics` module — no numpy/scipy.
 
 ## Conventions
 
@@ -213,7 +221,10 @@ still open. After it merges:
    stg/prod `API_BASE_URL`, and update backend CORS (`main.py`, currently localhost-only) to allow
    the deployed frontend origin(s).
 3. **Link Supabase** (`supabase link`) and reconcile remaining local↔hosted drift via
-   `supabase db pull` (RLS, grants, the real `get_distribution` body — none of which are in
-   `database_SQL_defs.sql`).
+   `supabase db pull` (RLS, grants — none of which are in `database_SQL_defs.sql`).
 4. **Set platform env vars** per deploy target (`APP_ENV`, Supabase URL/key); never commit hosted secrets.
-5. **Re-enable `get_distribution`** (its own tracking issue) before prod relies on distributions.
+
+Note: `distribution_data` no longer blocks deploy — stock-scope distributions are computed
+in-Python (`backend/distributions.py`), so the old `get_distribution` RPC is gone. Only a future
+sector/market scope would need a cross-sectional query (and would have to avoid the 57014 timeout
+that sank the original RPC).

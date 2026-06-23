@@ -143,12 +143,14 @@ Returns the list of active ticker symbols (from the `securities` table) for the 
 ### GET /api/equity/{symbol}
 
 The main **Supabase-backed** endpoint. Resolves the ticker to a `security_id`, then aggregates
-several DB queries in parallel into one payload. Current keys: `symbol, volatility_history,
-price_history, options_chain, ai_overview, latest_shap_snapshot, events`.
+several DB queries in parallel into one payload. Current keys: `symbol, security, volatility_history,
+price_history, options_chain, ai_overview, latest_shap_snapshot, distribution_data, events`.
 
-Note: `distribution_data` is temporarily disabled (the `get_distribution` RPC times out —
-tracked in a separate issue/PR). Because all queries share one `asyncio.gather`, any single
-failing query returns an error for the whole payload.
+Note: `distribution_data` is **live (stock scope)** — RV/IV/VRP histograms computed in plain
+Python (`backend/distributions.py`) from the already-fetched `volatility_history`, not via an RPC
+(the old `get_distribution` RPC timed out and was removed). It's derived after the gather and
+never raises (returns `[]` on no data), so it can't fail the payload. Because all the DB queries
+share one `asyncio.gather`, any single failing query still returns an error for the whole payload.
 
 ### GET /api/dashboard, /api/sector/{sector}, /api/macro
 
@@ -234,5 +236,6 @@ Current:
 
 Planned:
 - Migrate the remaining endpoints (dashboard/sector/macro stubs) to Supabase
-- Re-enable `distribution_data` once the `get_distribution` RPC is fixed (separate PR)
+- Extend `distribution_data` beyond stock scope (sector/market) — deferred; would need a
+  cross-sectional query that avoids the 57014 timeout the original `get_distribution` RPC hit
 - Optional caching layer for frequently accessed tickers

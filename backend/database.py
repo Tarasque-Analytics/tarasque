@@ -215,32 +215,6 @@ async def get_shap_snapshot(security_id: int):
     return response.data
 
 
-# TODO: re-enable in a separate PR once finance defines the distribution structure.
-# The get_distribution RPC currently hits a Postgres statement timeout (code 57014).
-# async def get_distribution(
-#     security_id: int,
-#     metric: str = "rv",
-#     lookback_days: int = 1260
-# ):
-#     """Get distribution data (stock/sector/market scopes)"""
-#     try:
-#         response = await supabase.rpc(
-#             "get_distribution",
-#             {
-#                 "p_security_id": security_id,
-#                 "p_metric": metric,
-#                 "p_lookback_days": lookback_days
-#             }
-#         ).execute()
-#     except Exception as e:
-#         print(f"Exception at get_distribution: {str(e)}", flush=True)
-#         raise HTTPException(
-#             status_code=500,
-#             detail="Error fetching from get_distribution RPC"
-#         )
-#     return response.data
-
-
 async def get_events(security_id: int):
     """Get all per-security events (event_history) for a security, oldest -> newest.
 

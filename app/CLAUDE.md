@@ -131,7 +131,7 @@ than letting one diverge.
 | `ai_overview` | `AIOverview \| null` | Latest unflagged AI commentary, or null |
 | `latest_shap_snapshot` | `SHAPSnapshot[]` | SHAP feature attributions per horizon |
 | `events` | `EventRecord[]` | Per-security events (full history) — drawn as event-annotation lines on the price chart |
-| `distribution_data` | `DistributionBin[]?` | Currently disabled — see `backend/CLAUDE.md` |
+| `distribution_data` | `DistributionSet[]?` | Live (stock scope) — per `(metric, lookback)` RV/IV/VRP histograms computed in-Python from `volatility_history`; drives the Historical Distribution chart. Sector/market deferred. See `backend/CLAUDE.md` |
 
 The DB call is non-fatal; consumers **must handle `useEquityData()` returning `null`**.
 

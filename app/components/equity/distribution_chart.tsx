@@ -415,13 +415,20 @@ function Header({
             <button
               key={s.key}
               type="button"
-              className="segmented-btn disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-(--text-secondary)"
+              className="segmented-btn inline-flex items-center gap-1 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:text-(--text-muted)"
               data-active={scope === s.key}
               disabled={!s.enabled}
-              title={s.enabled ? undefined : "Coming soon"}
+              title={s.enabled ? undefined : `${s.label} scope is coming soon`}
               onClick={() => s.enabled && onScope(s.key)}
             >
-              {s.label}
+              {/* Disabled scopes are muted + carry a visible "soon" tag (the toggle's active/disabled
+                  colors read too similarly on their own to signal "not built yet"). */}
+              <span className={s.enabled ? undefined : "text-(--text-muted)"}>{s.label}</span>
+              {!s.enabled && (
+                <span className="rounded-sm border border-(--panel-border) px-1 text-[9px] font-semibold uppercase tracking-wide text-(--text-muted)">
+                  soon
+                </span>
+              )}
             </button>
           ))}
         </div>

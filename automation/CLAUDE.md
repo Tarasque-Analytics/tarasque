@@ -44,6 +44,11 @@ python -m automation.tools.sync_sp500 --update-existing --apply       # refresh 
 python -m pytest automation/tests                                     # pure-function tests
 ```
 
+Lint + format this package with **Ruff** (config in the repo-root `pyproject.toml`; `model/`
+excluded). From the repo root: `npm run lint:py` (`ruff check --fix`) and `npm run format:py`
+(`ruff format`), each with a `:check` variant that CI runs on every PR. `automation/tests` runs in
+CI as its own check — see `CONTRIBUTING.md` §7.
+
 ## 3. Boundaries & secrets
 
 - **Writes only.** `backend/database.py` reads with the publishable/anon key (read-only under RLS).

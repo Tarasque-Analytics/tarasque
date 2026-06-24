@@ -4,6 +4,7 @@ No DB / no creds — the function is pure compute over already-fetched volatilit
 Fixtures are deterministic so bin counts, percentiles, mean/stdev, windowing, and the
 MIN_SAMPLES omission can be asserted exactly.
 """
+
 import statistics
 from datetime import date, timedelta
 
@@ -52,6 +53,7 @@ def _set_list(result, metric):
 
 # --- shape, tagging, bin invariants ------------------------------------------
 
+
 def test_bins_sum_shape_and_contiguous_edges():
     rows = _rows(rv=list(range(40)))  # 40 rows, all within 1Y -> every lookback included
     result = build_distribution_data(rows)
@@ -94,6 +96,7 @@ def test_all_three_metrics_tagged():
 
 # --- current value / percentile / mean / stdev -------------------------------
 
+
 def test_current_value_stats_when_latest_is_max():
     vals = list(range(40))
     one = _set(build_distribution_data(_rows(rv=vals)), "rv", "MAX")
@@ -114,10 +117,11 @@ def test_current_percentile_midrange():
 
 # --- MIN_SAMPLES omission ----------------------------------------------------
 
+
 def test_combo_below_min_samples_is_omitted():
     short = MIN_SAMPLES - 1
     rv = [float(i) for i in range(short)] + [None] * 11  # 29 non-null rv
-    iv = list(range(short + 11))                          # 40 non-null iv
+    iv = list(range(short + 11))  # 40 non-null iv
     result = build_distribution_data(_rows(rv=rv, iv=iv, n=short + 11))
 
     assert not [s for s in result if s["metric"] == "rv"]  # rv dropped everywhere
@@ -126,19 +130,22 @@ def test_combo_below_min_samples_is_omitted():
 
 # --- date windowing ----------------------------------------------------------
 
+
 def test_lookback_windows_select_by_date():
     # ~2.2 years of consecutive daily rows ending 2026-06-01: each lookback selects an exact,
     # date-bounded subset (inclusive of both ends). 5Y/MAX cover all 800.
     n = 800
     result = build_distribution_data(_rows(rv=list(range(n)), n=n))
-    sums = {s["lookback"]: sum(b["count"] for b in s["bins"]) for s in result if s["metric"] == "rv"}
+    sums = {
+        s["lookback"]: sum(b["count"] for b in s["bins"]) for s in result if s["metric"] == "rv"
+    }
     assert sums == {
-        "3M": 92,    # 2026-03-02 .. 2026-06-01
-        "6M": 183,   # 2025-12-01 .. 2026-06-01
+        "3M": 92,  # 2026-03-02 .. 2026-06-01
+        "6M": 183,  # 2025-12-01 .. 2026-06-01
         "YTD": 152,  # 2026-01-01 .. 2026-06-01 (calendar year-to-date)
-        "1Y": 366,   # 2025-06-01 .. 2026-06-01
-        "2Y": 731,   # 2024-06-01 .. 2026-06-01
-        "5Y": 800,   # window wider than the data -> all rows
+        "1Y": 366,  # 2025-06-01 .. 2026-06-01
+        "2Y": 731,  # 2024-06-01 .. 2026-06-01
+        "5Y": 800,  # window wider than the data -> all rows
         "MAX": 800,  # every row
     }
 
@@ -153,6 +160,7 @@ def test_ytd_window_uses_calendar_year_not_trailing_days():
 
 
 # --- never raises ------------------------------------------------------------
+
 
 def test_empty_none_and_unparseable_return_empty():
     assert build_distribution_data([]) == []

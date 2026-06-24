@@ -1,7 +1,6 @@
-import type { SHAPSnapshot, ModelRun } from "./database"
+import type { SHAPSnapshot, ModelRun } from "./database";
 
 const API_BASE_URL = "http://localhost:8000/api";
-
 
 // NOTE: Add and subtract from payload here
 export interface ModelDataPayload {
@@ -32,9 +31,8 @@ export async function loadModelData(symbol: string | undefined): Promise<ModelDa
 
     return {
       runs: runs,
-      shap: shap
+      shap: shap,
     };
-
   } catch (error) {
     console.error(`Error loading model data for ${symbol}:`, error);
     throw error;

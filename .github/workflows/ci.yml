@@ -1,0 +1,115 @@
+name: CI
+
+# Runs on every pull request targeting main. Each job below surfaces as its own status check, so
+# branch protection can require them individually (Settings → Branches → Require status checks).
+#
+# None of these jobs need secrets: lint, typecheck, the frontend tests, and build are all
+# self-contained, and the backend's live Supabase tests SKIP automatically when DB creds are absent
+# (see backend/CLAUDE.md) — so CI stays green without exposing any keys.
+on:
+  pull_request:
+    branches: [main]
+
+# A new push to a PR cancels that PR's still-running CI (saves runner minutes).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least-privilege: CI only needs to read the repo.
+permissions:
+  contents: read
+
+jobs:
+  # ── Lint & format: ESLint + Prettier (app/) and Ruff (backend/ + automation/; model/ excluded).
+  lint:
+    name: Lint & format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint:app:check
+      - run: npm run format:app:check
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      # Ruff is pinned in requirements-dev.txt; one install lints + format-checks both Python roots.
+      - run: pip install -r backend/requirements-dev.txt
+      - run: npm run lint:py:check
+      - run: npm run format:py:check
+
+  # ── Typecheck: react-router typegen && tsc (the bundler strips types without checking them).
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+
+  # ── Frontend tests: Vitest (app/).
+  frontend-tests:
+    name: Frontend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run test:frontend
+
+  # ── Backend tests: pytest (backend/tests). Live DB tests skip without Supabase creds.
+  backend-tests:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+      - run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+      - run: python -m pytest
+
+  # ── Automation tests: pytest (automation/tests) — separate test root from backend.
+  automation-tests:
+    name: Automation tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            automation/requirements.txt
+            automation/requirements-dev.txt
+      - run: pip install -r automation/requirements.txt -r automation/requirements-dev.txt
+      - run: python -m pytest automation/tests
+
+  # ── Build: the same `npm run build` the Dockerfile runs, so a broken SSR bundle fails the PR.
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build

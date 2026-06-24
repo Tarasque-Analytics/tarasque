@@ -17,10 +17,12 @@ Design contract:
 Each returned set is one (scope, metric, lookback) histogram with current value / percentile /
 mean / stdev overlays, shaped for `DistributionSet` in app/utils/database.ts.
 """
+
 from __future__ import annotations
 
 import statistics
-from datetime import date as _date, timedelta
+from datetime import date as _date
+from datetime import timedelta
 
 # Frontend metric key -> source column in volatility_history.
 # (IV uses the at-the-money `iv_atm` column; RV the realized `rv`; VRP the `vrp_wedge` premium.)

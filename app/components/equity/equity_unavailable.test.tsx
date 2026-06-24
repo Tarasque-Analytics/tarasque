@@ -6,9 +6,7 @@ describe("EquityUnavailable", () => {
   it("renders the unavailable heading inside an alert region", () => {
     render(<EquityUnavailable />);
     expect(screen.getByRole("alert")).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: /equity data unavailable/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /equity data unavailable/i })).toBeInTheDocument();
   });
 
   it("shows the uppercased symbol in the message when one is provided", () => {

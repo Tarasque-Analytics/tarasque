@@ -13,21 +13,21 @@
 // Sector codes (first 2 digits)
 // ─────────────────────────────────────────────────────────────
 export const GICS_SECTORS: Record<string, string> = {
-  "Energy": "10",
-  "Materials": "15",
-  "Industrials": "20",
+  Energy: "10",
+  Materials: "15",
+  Industrials: "20",
   "Consumer Discretionary": "25",
   "Consumer Staples": "30",
   "Health Care": "35",
-  "Financials": "40",
+  Financials: "40",
   "Information Technology": "45",
   "Communication Services": "50",
-  "Utilities": "55",
+  Utilities: "55",
   "Real Estate": "60",
 };
 
 export const GICS_SECTORS_REVERSE: Record<string, string> = Object.fromEntries(
-  Object.entries(GICS_SECTORS).map(([name, code]) => [code, name])
+  Object.entries(GICS_SECTORS).map(([name, code]) => [code, name]),
 );
 
 // ─────────────────────────────────────────────────────────────
@@ -449,7 +449,8 @@ export const GICS_SUBINDUSTRIES: Record<string, string> = {
   // Water Utilities (04)
   "55|Water Utilities|Water Utilities": "01",
   // Independent Power Producers & Energy Traders (05)
-  "55|Independent Power Producers & Energy Traders|Independent Power Producers & Energy Traders": "01",
+  "55|Independent Power Producers & Energy Traders|Independent Power Producers & Energy Traders":
+    "01",
 
   // ========== REAL ESTATE (60) ==========
   // Diversified Real Estate Activities (01)
@@ -474,7 +475,7 @@ export function constructGicsCode(
   sector: string | null | undefined,
   industryGroup?: string | null | undefined,
   industry?: string | null | undefined,
-  subindustry?: string | null | undefined
+  subindustry?: string | null | undefined,
 ): string {
   if (!sector) return "";
 

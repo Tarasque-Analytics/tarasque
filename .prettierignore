@@ -1,0 +1,8 @@
+# Build output & generated files — not source, never formatted.
+build/
+.react-router/
+node_modules/
+package-lock.json
+
+# Owned by a separate team — never format.
+model/

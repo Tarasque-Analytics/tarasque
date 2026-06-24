@@ -143,6 +143,11 @@ python -m pytest automation/tests
 
 - **Package management:** npm (frontend, `package.json` / `package-lock.json`); pip +
   `requirements.txt` per Python component.
+- **Linting & formatting:** ESLint + Prettier for the frontend (`app/`), Ruff for the Python
+  (`backend/` + `automation/`); `model/` excluded. Config: `eslint.config.js`, `.prettierrc.json`,
+  `pyproject.toml`. Run via `npm run lint` / `npm run format` (see `CONTRIBUTING.md` §7).
+- **CI:** GitHub Actions (`.github/workflows/ci.yml`) runs lint/format, typecheck, the three test
+  suites, and build on every PR to `main` — no secrets required.
 - **Containerization:** multi-stage `Dockerfile` (Node 20 Alpine) builds and serves the SSR
   frontend.
 - **Local orchestration:** `concurrently` runs the frontend and backend together via `npm run dev`.

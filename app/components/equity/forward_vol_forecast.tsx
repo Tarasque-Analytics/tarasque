@@ -61,6 +61,8 @@ type OverlayLabel = { x: number; modelY: number | null; selected: boolean };
 type OverlayCallout = { x: number; ivY: number; modelY: number; ratioText: string } | null;
 
 declare module "chart.js" {
+  // `TType` must match chart.js's generic for declaration merging — intentionally unused here.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface PluginOptionsByType<TType extends ChartType> {
     fvfOverlay?: { labels: OverlayLabel[]; callout: OverlayCallout };
   }
@@ -203,9 +205,7 @@ export default function ForwardVolForecast() {
     datasets: [
       {
         label: "Model forecast",
-        data: points
-          .filter((p) => p.model != null)
-          .map((p) => ({ x: p.h, y: p.model as number })),
+        data: points.filter((p) => p.model != null).map((p) => ({ x: p.h, y: p.model as number })),
         borderColor: MODEL_LINE,
         backgroundColor: MODEL_LINE,
         borderWidth: 2,

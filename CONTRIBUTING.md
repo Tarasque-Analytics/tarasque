@@ -11,9 +11,11 @@ Current app stack:
 - Backend: FastAPI (Python), serving per-equity data over REST endpoints.
 - Data source for app: Supabase (Postgres) database, queried by the backend (`backend/database.py`).
 
-Planned infrastructure track:
-- CI/CD: GitHub Actions workflow for install, typecheck, lint/test (when present), and build.
-- Testing: Vitest for frontend unit tests and Playwright for end-to-end tests.
+Infrastructure track:
+- CI/CD: GitHub Actions (`.github/workflows/ci.yml`) runs lint/format, typecheck, the frontend/
+  backend/automation tests, and build on every PR to `main` (see §7). CI-driven *deployment* is
+  still planned (see §5.4).
+- Testing: Vitest for frontend unit tests (Playwright end-to-end still planned).
 - Deployment: Containerized frontend path exists today (Dockerfile). CI-driven deployment target is planned after test gates are in place.
 
 ## 2. Quickstart Commands for Local Development
@@ -166,5 +168,49 @@ git push
 Recommended PR checklist:
 - Frontend starts and loads at `http://localhost:5173`
 - Backend starts and responds at `/api/health`
+- `npm run lint:check` and `npm run format:check` pass (run `npm run lint && npm run format` to auto-fix)
 - `npm run typecheck` passes
+- `npm run test` passes (frontend + backend + automation)
 - `npm run build` passes
+
+CI runs all of these on every PR to `main` (see §7) — failures block merge once branch protection
+requires the checks.
+
+## 7. Code Quality & CI
+
+### 7.1 Linting & formatting
+
+Two stacks, two tools: **ESLint + Prettier** for the frontend (`app/`) and **Ruff** (lint + format)
+for the Python (`backend/`, `automation/`). The `model/` directory is owned by a separate team and
+is **never** linted or formatted.
+
+Run from the repo root:
+
+```bash
+npm run lint            # auto-fix: ESLint --fix (app) + Ruff check --fix (backend, automation)
+npm run format          # auto-format: Prettier (app) + Ruff format (backend, automation)
+npm run lint:check      # report only, no changes (what CI runs)
+npm run format:check    # report only, no changes (what CI runs)
+```
+
+Touched only one stack? Use the per-stack variants: `lint:app` / `lint:py` and `format:app` /
+`format:py` (each with a `:check` suffix). Tooling installs via `npm install` (JS) and
+`pip install -r backend/requirements-dev.txt` (Ruff, pinned). Tip: `npm run lint && npm run format`
+fixes your whole branch in one pass — then `git diff` to review.
+
+### 7.2 Tests
+
+```bash
+npm run test            # all three suites
+npm run test:frontend   # Vitest (app/)
+npm run test:backend    # pytest (backend/tests) — live DB tests skip without Supabase creds
+npm run test:automation # pytest (automation/tests)
+```
+
+### 7.3 Continuous integration
+
+Every pull request to `main` runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — six
+independent checks, each of which must pass to merge (once branch protection requires them):
+**lint/format**, **typecheck**, **frontend tests**, **backend tests**, **automation tests**, and
+**build**. The jobs run the same commands you run locally; none need secrets (the live DB tests
+skip without creds). Node 20, Python 3.11, with npm + pip caching.

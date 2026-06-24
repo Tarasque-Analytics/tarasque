@@ -22,12 +22,14 @@ Notes:
   - snapshot_date is the most recent trading session (data-derived, so a midnight run stamps the
     prior session, holiday-safe); override with --snapshot-date.
 """
+
 from __future__ import annotations
 
 import argparse
 import asyncio
 import sys
-from datetime import date, datetime, time as dt_time, timedelta
+from datetime import date, datetime, timedelta
+from datetime import time as dt_time
 from zoneinfo import ZoneInfo
 
 from ..config import load_config
@@ -44,9 +46,9 @@ def _computed_session_date(now_et: datetime) -> date:
     holiday-aware — that's why the data-derived `provider.latest_session_date()` is preferred.
     """
     d = now_et.date()
-    if now_et.time() < dt_time(9, 30):   # before the 9:30 ET open → today's session has no data yet
+    if now_et.time() < dt_time(9, 30):  # before the 9:30 ET open → today's session has no data yet
         d -= timedelta(days=1)
-    while d.weekday() >= 5:               # Sat/Sun → roll back to Friday
+    while d.weekday() >= 5:  # Sat/Sun → roll back to Friday
         d -= timedelta(days=1)
     return d
 
@@ -72,14 +74,25 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         prog="python -m automation.tools.fetch_options",
         description="Standalone daily options-chain import (yfinance → options_chain).",
     )
-    p.add_argument("--tickers", nargs="+", default=DEFAULT_TICKERS,
-                   help=f"Tickers to import (default: {' '.join(DEFAULT_TICKERS)}).")
-    p.add_argument("--dry-run", action="store_true",
-                   help="Fetch + print only; no DB writes/reads (no Supabase creds needed).")
-    p.add_argument("--force", action="store_true",
-                   help="Re-fetch even if today's snapshot already exists.")
-    p.add_argument("--snapshot-date", default=None,
-                   help="Override the snapshot/business date (YYYY-MM-DD). Default: today US/Eastern.")
+    p.add_argument(
+        "--tickers",
+        nargs="+",
+        default=DEFAULT_TICKERS,
+        help=f"Tickers to import (default: {' '.join(DEFAULT_TICKERS)}).",
+    )
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Fetch + print only; no DB writes/reads (no Supabase creds needed).",
+    )
+    p.add_argument(
+        "--force", action="store_true", help="Re-fetch even if today's snapshot already exists."
+    )
+    p.add_argument(
+        "--snapshot-date",
+        default=None,
+        help="Override the snapshot/business date (YYYY-MM-DD). Default: today US/Eastern.",
+    )
     return p.parse_args(argv)
 
 
@@ -112,16 +125,23 @@ async def _run(args: argparse.Namespace) -> int:
                 continue
 
             res = await import_options_for_security(
-                db, provider,
-                ticker=ticker, security_id=sid, snapshot_date=snapshot_date,
-                config=cfg.options, force=cfg.force, dry_run=cfg.dry_run,
+                db,
+                provider,
+                ticker=ticker,
+                security_id=sid,
+                snapshot_date=snapshot_date,
+                config=cfg.options,
+                force=cfg.force,
+                dry_run=cfg.dry_run,
             )
 
             if res.error:
                 print(f"  {ticker:6s} ERROR — {res.error}")
                 n_err += 1
             elif res.skipped:
-                print(f"  {ticker:6s} SKIP — today's snapshot already present (use --force to refetch)")
+                print(
+                    f"  {ticker:6s} SKIP — today's snapshot already present (use --force to refetch)"
+                )
                 n_skip += 1
             else:
                 spot = f"{res.spot:.2f}" if res.spot is not None else "n/a"

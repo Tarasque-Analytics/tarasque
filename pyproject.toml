@@ -1,0 +1,25 @@
+# Ruff — Python linter + formatter for the app-team Python (backend/ + automation/).
+# Docs: https://docs.astral.sh/ruff/
+#
+# Scope: backend/ and automation/ only. The quant `model/` pipeline is owned by a separate
+# team — it is a hard boundary and is never linted/formatted here (excluded below, and the
+# lint/format commands target backend+automation explicitly as belt-and-suspenders).
+
+[tool.ruff]
+target-version = "py310"            # backend requires Python >= 3.10 (per backend/requirements.txt)
+line-length = 100
+extend-exclude = ["model"]          # never touch the model team's code
+
+[tool.ruff.lint]
+# Start lean ("basics"). Expand later (e.g. "UP", "B", "SIM") once the team is comfortable.
+#   F = pyflakes      — real bugs: unused imports, undefined names, f-string issues
+#   E/W = pycodestyle — baseline style (whitespace, comparisons, etc.)
+#   I = isort         — import ordering (ruff format does NOT sort imports; the linter does)
+select = ["E", "F", "W", "I"]
+# The formatter owns line length; E501 would double-report and can't auto-fix long
+# strings/comments, so we let `ruff format` handle wrapping instead.
+ignore = ["E501"]
+
+[tool.ruff.format]
+# Defaults mirror Black (double quotes, trailing commas, 4-space indent). Explicit for clarity.
+quote-style = "double"

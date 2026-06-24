@@ -9,9 +9,19 @@
     "dev:backend": "python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir backend",
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc",
-    "test:backend": "python -m pytest",
+    "lint": "eslint app",
+    "lint:fix": "eslint app --fix",
+    "format": "prettier --write \"app/**/*.{ts,tsx,css}\"",
+    "format:check": "prettier --check \"app/**/*.{ts,tsx,css}\"",
+    "lint:py": "ruff check backend automation",
+    "lint:py:fix": "ruff check --fix backend automation",
+    "format:py": "ruff format backend automation",
+    "format:py:check": "ruff format --check backend automation",
+    "test": "npm run test:frontend && npm run test:backend && npm run test:automation",
     "test:frontend": "vitest run",
-    "test:frontend:watch": "vitest"
+    "test:frontend:watch": "vitest",
+    "test:backend": "python -m pytest",
+    "test:automation": "python -m pytest automation/tests"
   },
   "dependencies": {
     "@react-router/node": "7.12.0",

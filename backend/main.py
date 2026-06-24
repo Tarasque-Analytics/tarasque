@@ -23,11 +23,11 @@ from backend.database import (
     get_options_chain,
     get_ai_overview,
     get_shap_snapshot,
-    # get_distribution,  # TODO: re-enable once finance defines distribution structure (separate PR)
     get_events,
     get_latest_model_run,
     get_model,
 )
+from backend.distributions import build_distribution_data
 
 
 
@@ -90,12 +90,12 @@ async def get_equity_data(symbol: str):
             {
                 "symbol": str,                          # Normalized uppercase ticker
                 "security": dict,                       # Metadata: company_name, gics_sector/industry
-                "volatility_history": list[dict],       # 5 years of vol/IV/forecast data
+                "volatility_history": list[dict],       # full available vol/IV/forecast history (paginated)
                 "price_history": list[dict],            # full available OHLCV history (paginated)
                 "options_chain": list[dict],            # Latest snapshot options
                 "ai_overview": dict | None,             # Latest AI commentary
                 "latest_shap_snapshot": list[dict],     # Latest SHAP features per horizon
-                # "distribution_data": list[dict],      # temporarily disabled — pending finance input (separate PR)
+                "distribution_data": list[dict],        # Stock-scope RV/IV/VRP histograms per lookback
                 "events": list[dict]                    # Past year of events
             }
     """
@@ -105,17 +105,21 @@ async def get_equity_data(symbol: str):
         sec_id = security_metadata["security_id"]
 
         # gather everything async
-        # NOTE: distributions temporarily removed from the unpack/gather (see distribution PR)
         vol_hist, price_hist, options, ai_overview, shap, events = await asyncio.gather(
             get_volatility_history(sec_id),
             get_price_history(sec_id),
             get_options_chain(sec_id),
             get_ai_overview(sec_id),
             get_shap_snapshot(sec_id),
-            # get_distribution(sec_id),  # TODO: re-enable in distribution PR
             get_events(sec_id)
         )
-        
+
+        # Distributions are computed in plain Python from the vol_hist we already fetched — no
+        # second DB query and NOT part of the gather (the old cross-sectional get_distribution RPC
+        # hit a 57014 statement timeout). build_distribution_data never raises (returns [] on no
+        # data), so it can't fail this composite payload. Stock scope only; sector/market deferred.
+        distribution_data = build_distribution_data(vol_hist)
+
         return {
             "symbol": symbol,
             # Curated security metadata for the page header (company name + sector/industry
@@ -134,7 +138,7 @@ async def get_equity_data(symbol: str):
             "options_chain": options,
             "ai_overview": ai_overview,
             "latest_shap_snapshot": shap,
-            # "distribution_data": distributions,  # TODO: re-enable in distribution PR
+            "distribution_data": distribution_data,
             "events": events
         }
     except HTTPException:

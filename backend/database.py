@@ -3,7 +3,6 @@ Database operations for Volarbear Ticker API
 Handles all Supabase queries for equity data
 """
 
-from datetime import datetime, timedelta
 from fastapi import HTTPException
 from supabase import AsyncClient
 
@@ -64,23 +63,39 @@ async def get_active_tickers() -> list[str]:
 
 
 async def get_volatility_history(security_id: int):
-    """Get 5 years of volatility data for a security"""
-    five_years_ago = (datetime.now() - timedelta(days=365*5)).strftime('%Y-%m-%d')
+    """Get the full available volatility history for a security (oldest -> newest).
+
+    Pages through PostgREST's per-request row cap (default 1000) so the entire multi-year history
+    is returned. The prior single, un-paged request silently capped at ~1000 rows (~4y), which made
+    the distribution chart's 5Y/MAX lookbacks short and misleading; vol history actually goes back
+    as far as the price history (~2014 for older listings). The frontend windows it client-side per
+    component. Paging by ascending date stays correct even when the server caps rows per request.
+    """
+    PAGE = 1000
+    rows: list = []
+    offset = 0
     try:
-        response = await (supabase.table("volatility_history") 
-            .select("*") 
-            .eq("security_id", security_id) 
-            .gte("date", five_years_ago) 
-            .order("date", desc=False) 
-            .execute()
-        )
+        while True:
+            response = await (supabase.table("volatility_history")
+                .select("*")
+                .eq("security_id", security_id)
+                .order("date", desc=False)
+                .range(offset, offset + PAGE - 1)
+                .execute()
+            )
+            batch = response.data or []
+            rows.extend(batch)
+            if len(batch) < PAGE:
+                break
+            offset += PAGE
     except Exception as e:
         print(f"Exception at get_volatility_history: {str(e)}", flush=True)
         raise HTTPException(
             status_code=500,
             detail="Error fetching from volatility_history table"
         )
-    return response.data
+
+    return rows
 
 
 async def get_price_history(security_id: int):
@@ -213,32 +228,6 @@ async def get_shap_snapshot(security_id: int):
         )
     
     return response.data
-
-
-# TODO: re-enable in a separate PR once finance defines the distribution structure.
-# The get_distribution RPC currently hits a Postgres statement timeout (code 57014).
-# async def get_distribution(
-#     security_id: int,
-#     metric: str = "rv",
-#     lookback_days: int = 1260
-# ):
-#     """Get distribution data (stock/sector/market scopes)"""
-#     try:
-#         response = await supabase.rpc(
-#             "get_distribution",
-#             {
-#                 "p_security_id": security_id,
-#                 "p_metric": metric,
-#                 "p_lookback_days": lookback_days
-#             }
-#         ).execute()
-#     except Exception as e:
-#         print(f"Exception at get_distribution: {str(e)}", flush=True)
-#         raise HTTPException(
-#             status_code=500,
-#             detail="Error fetching from get_distribution RPC"
-#         )
-#     return response.data
 
 
 async def get_events(security_id: int):

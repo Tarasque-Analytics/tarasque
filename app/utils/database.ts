@@ -102,7 +102,7 @@ export interface SHAPSnapshot {
 
 // Distribution data — one frequency histogram per (scope, metric, lookback). Live for stock
 // scope: the backend computes these in plain Python from volatility_history (RV/IV/VRP), no RPC.
-// Sector/market scope is deferred (the toggle shows them disabled). `bins` is 10 equal-width
+// Sector/market scope is deferred (the toggle shows them disabled). `bins` is 15 equal-width
 // buckets between the window min/max; the overlays (current value, mean, ±stdev) are precomputed.
 export interface DistributionBin {
   bin_low: number;

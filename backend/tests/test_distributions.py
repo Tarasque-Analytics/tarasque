@@ -75,10 +75,10 @@ def test_bins_sum_shape_and_contiguous_edges():
 
 
 def test_known_uniform_histogram_counts():
-    # 40 evenly-spaced values -> 10 equal-width bins of 4 each (the max lands in the last bin).
-    result = build_distribution_data(_rows(rv=list(range(40))))
+    # 45 evenly-spaced values -> NUM_BINS (15) equal-width bins of 3 each (max lands in last bin).
+    result = build_distribution_data(_rows(rv=list(range(45))))
     counts = [b["count"] for b in _set(result, "rv", "MAX")["bins"]]
-    assert counts == [4] * NUM_BINS
+    assert counts == [3] * NUM_BINS
 
 
 def test_all_three_metrics_tagged():

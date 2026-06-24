@@ -31,7 +31,7 @@ METRICS: dict[str, str] = {
 }
 
 # Lookback label -> window spec: a day-count, "ytd" (calendar year-to-date), or None (MAX / every
-# available row). Mirrors the price chart's range menu minus 1M (too few points for a 10-bin
+# available row). Mirrors the price chart's range menu minus 1M (too few points for a 15-bin
 # histogram given MIN_SAMPLES). Ordered narrowest -> widest so the frontend's "first available"
 # fallback lands on the tightest window that actually has data.
 LOOKBACKS: dict[str, int | str | None] = {
@@ -48,8 +48,9 @@ LOOKBACKS: dict[str, int | str | None] = {
 # (metric, lookback) combo is omitted entirely, so the frontend shows an empty state for it.
 MIN_SAMPLES = 30
 
-# Number of equal-width frequency bins ("deciles" in #128 = 10 buckets, not equal-count quantiles).
-NUM_BINS = 10
+# Number of equal-width frequency bins. #128 framed these as "deciles" (10 buckets); finance
+# later asked for 15. Still equal-width frequency bins — NOT equal-count quantiles.
+NUM_BINS = 15
 
 
 def _parse_date(value) -> _date | None:
@@ -76,15 +77,15 @@ def _build_set(values: list[float], current_value: float, *, metric: str, lookba
     hi = max(values)
     span = hi - lo
     # Equal-width bins. If the window is perfectly flat (span == 0, e.g. a constant series) there
-    # is no width to bin by — collapse everything into the first bin and keep 10 (zero-width) bins
-    # so the shape is stable for the frontend.
+    # is no width to bin by — collapse everything into the first bin and keep NUM_BINS (zero-width)
+    # bins so the shape is stable for the frontend.
     width = span / NUM_BINS if span > 0 else 0.0
 
     counts = [0] * NUM_BINS
     for v in values:
         if width > 0:
             idx = int((v - lo) / width)
-            if idx >= NUM_BINS:  # the maximum value lands in the last bin, not a phantom 11th
+            if idx >= NUM_BINS:  # the maximum value lands in the last bin, not an extra bin past it
                 idx = NUM_BINS - 1
             elif idx < 0:
                 idx = 0

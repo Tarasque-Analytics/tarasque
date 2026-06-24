@@ -168,7 +168,7 @@ const distMarkersPlugin: Plugin<"bar"> = {
 };
 
 /**
- * Historical Distribution for /equity/:symbol — a 10-bin frequency histogram of the security's
+ * Historical Distribution for /equity/:symbol — a 15-bin frequency histogram of the security's
  * own RV / IV / VRP over a selectable lookback, with the current value and mean overlaid.
  *
  * Reads the precomputed `distribution_data` sets via useEquityData() (loader → EquityDataContext →

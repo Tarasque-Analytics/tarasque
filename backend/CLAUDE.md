@@ -66,10 +66,12 @@ shared non-secret defaults.
 
 - DB endpoint `/api/equity/{symbol}` resolves the ticker to a `security_id` via `securities`,
   then aggregates Supabase queries (in `database.py`) in parallel via `asyncio.gather`.
-  `price_history` returns the **full available history** (paginated through the per-request row
-  cap; some securities go back ~12 years) so the chart's range selector works at every range.
+  `price_history` and `volatility_history` both return the **full available history** (each
+  paginated through the per-request row cap; some securities go back ~12 years) so the price
+  chart's range selector and the distribution chart's lookbacks work at every range — vol history
+  was previously a single un-paged request that silently capped at ~1000 rows (~4y).
   `events` likewise returns the security's full `event_history` (sparse, so a single request); the
-  frontend windows both to the selected range. `security` is curated metadata (company name, GICS
+  frontend windows them all to the selected range. `security` is curated metadata (company name, GICS
   sector/industry) pulled from the `securities` row already fetched to resolve `security_id`.
   Current payload keys: `symbol, security, volatility_history,
   price_history, options_chain, ai_overview,
@@ -153,7 +155,7 @@ Two separate event sources; do not conflate them:
   Postgres RPC hit a statement timeout (code `57014`) under the cross-sectional sector/market
   query, so it was disabled; the dead RPC helper + its `main.py` call sites were removed (#74).
   It is replaced for **stock scope** by `backend/distributions.py` (`build_distribution_data`), a
-  pure, dependency-free function that builds RV/IV/VRP frequency histograms (10 equal-width bins,
+  pure, dependency-free function that builds RV/IV/VRP frequency histograms (15 equal-width bins,
   per lookback `3M/6M/YTD/1Y/2Y/5Y/MAX`, where `YTD` is calendar year-to-date relative to the
   latest row and `MAX` is every available row) from the `volatility_history` rows already fetched
   in `get_equity_data` — **no second DB query and not part of the `asyncio.gather`**. It must never

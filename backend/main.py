@@ -90,7 +90,7 @@ async def get_equity_data(symbol: str):
             {
                 "symbol": str,                          # Normalized uppercase ticker
                 "security": dict,                       # Metadata: company_name, gics_sector/industry
-                "volatility_history": list[dict],       # 5 years of vol/IV/forecast data
+                "volatility_history": list[dict],       # full available vol/IV/forecast history (paginated)
                 "price_history": list[dict],            # full available OHLCV history (paginated)
                 "options_chain": list[dict],            # Latest snapshot options
                 "ai_overview": dict | None,             # Latest AI commentary

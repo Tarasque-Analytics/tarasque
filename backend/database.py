@@ -3,7 +3,6 @@ Database operations for Volarbear Ticker API
 Handles all Supabase queries for equity data
 """
 
-from datetime import datetime, timedelta
 from fastapi import HTTPException
 from supabase import AsyncClient
 
@@ -64,23 +63,39 @@ async def get_active_tickers() -> list[str]:
 
 
 async def get_volatility_history(security_id: int):
-    """Get 5 years of volatility data for a security"""
-    five_years_ago = (datetime.now() - timedelta(days=365*5)).strftime('%Y-%m-%d')
+    """Get the full available volatility history for a security (oldest -> newest).
+
+    Pages through PostgREST's per-request row cap (default 1000) so the entire multi-year history
+    is returned. The prior single, un-paged request silently capped at ~1000 rows (~4y), which made
+    the distribution chart's 5Y/MAX lookbacks short and misleading; vol history actually goes back
+    as far as the price history (~2014 for older listings). The frontend windows it client-side per
+    component. Paging by ascending date stays correct even when the server caps rows per request.
+    """
+    PAGE = 1000
+    rows: list = []
+    offset = 0
     try:
-        response = await (supabase.table("volatility_history") 
-            .select("*") 
-            .eq("security_id", security_id) 
-            .gte("date", five_years_ago) 
-            .order("date", desc=False) 
-            .execute()
-        )
+        while True:
+            response = await (supabase.table("volatility_history")
+                .select("*")
+                .eq("security_id", security_id)
+                .order("date", desc=False)
+                .range(offset, offset + PAGE - 1)
+                .execute()
+            )
+            batch = response.data or []
+            rows.extend(batch)
+            if len(batch) < PAGE:
+                break
+            offset += PAGE
     except Exception as e:
         print(f"Exception at get_volatility_history: {str(e)}", flush=True)
         raise HTTPException(
             status_code=500,
             detail="Error fetching from volatility_history table"
         )
-    return response.data
+
+    return rows
 
 
 async def get_price_history(security_id: int):

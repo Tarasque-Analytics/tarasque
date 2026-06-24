@@ -132,7 +132,7 @@ than letting one diverge.
 |---|---|---|
 | `security` | `SecurityMeta?` | Company name + GICS sector/industry for the page header (resolved from `securities`; present whenever the payload is) |
 | `price_history` | `PriceRecord[]` | Full available OHLCV history per security (paginated; ~12y for older listings) — source for the price-history chart (range selector filters client-side) |
-| `volatility_history` | `VolatilityRecord[]` | ~5 years of vol/IV term structures, VRP wedge, forecast features (full column list in `backend/CLAUDE.md`) |
+| `volatility_history` | `VolatilityRecord[]` | Full available vol/IV term structures, VRP wedge, forecast features (paginated, ~12y for older listings; full column list in `backend/CLAUDE.md`) |
 | `options_chain` | `OptionRecord[]` | Latest snapshot — strike/expiry/type + bid/ask/iv/delta |
 | `ai_overview` | `AIOverview \| null` | Latest unflagged AI commentary, or null |
 | `latest_shap_snapshot` | `SHAPSnapshot[]` | SHAP feature attributions per horizon |

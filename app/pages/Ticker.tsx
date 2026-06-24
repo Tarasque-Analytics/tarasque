@@ -30,14 +30,14 @@ export default function TickerView() {
           <EquityMetaData />
         </div>
         {/* Center col*/}
-        <div className="col-span-9 flex flex-col gap-6">
+        <div className="col-span-10 flex flex-col gap-6">
           <PriceHistoryChart />
           <ForwardVolForecast />
           <ContractSkewChart />
           <OptionsChainTable />
         </div>
         {/* Right col*/}
-        <div className="col-span-4 flex flex-col gap-6">
+        <div className="col-span-3 flex flex-col gap-6">
           <DistributionChart />
         </div>
       </div>

@@ -10,11 +10,6 @@
 const API_BASE_URL = "https://www.tarasqueanalytics.com/api";
 // const API_BASE_URL = "http://backend:8000/api";
 
-// DEBUG: Log all available environment variables
-console.log("=== VITE Environment Variables ===");
-console.log(import.meta.env);
-console.log("=================================");
-
 // Volatility and forecasting data (volatility_history)
 export interface VolatilityRecord {
   date: string;
@@ -160,7 +155,6 @@ export interface EquitiesPayload {
  * Used for /equity/:symbol.
  */
 export async function loadEquityData(symbol: string): Promise<EquitiesPayload> {
-  console.log(`${API_BASE_URL}/equity/${symbol}`);
   try {
     const response = await fetch(`${API_BASE_URL}/equity/${symbol}`);
     if (!response.ok) {

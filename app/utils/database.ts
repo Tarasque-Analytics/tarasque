@@ -7,7 +7,7 @@
  */
 
 // API base URL - defaults to localhost for local dev, can be overridden by environment variable
-const API_BASE_URL = "https://api.tarasqueanalytics.com/api";
+const API_BASE_URL = "https://www.tarasqueanalytics.com/api";
 // const API_BASE_URL = "http://backend:8000/api";
 
 // DEBUG: Log all available environment variables

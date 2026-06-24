@@ -68,7 +68,6 @@ app.add_middleware(
     "http://localhost:5173",
     "https://tarasqueanalytics.com",
     "https://www.tarasqueanalytics.com",
-    "https://api.tarasqueanalytics.com",
     "https://main.d123456.amplifyapp.com"
     ],  # Adjust for your frontend port
     allow_credentials=True,

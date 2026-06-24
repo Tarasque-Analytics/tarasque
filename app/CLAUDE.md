@@ -23,9 +23,16 @@ changes).
 npm run dev           # Vite dev server on http://localhost:5173
 npm run dev:backend   # FastAPI on :8000 (required for any data-backed page)
 npm run typecheck     # react-router typegen && tsc
+npm run lint:app      # ESLint (app) — `--fix`; use `lint:app:check` to check only
+npm run format:app    # Prettier (app) — use `format:app:check` to check only
+npm run test:frontend # Vitest (app/)
 ```
 
-Anything under `ProtectedLayout` needs the backend running.
+Anything under `ProtectedLayout` needs the backend running. `npm run lint` / `npm run format`
+(no suffix) cover **both** the app and the Python stacks at once; CI runs the `:check` variants on
+every PR — see `CONTRIBUTING.md` §7. Section components under `app/components/equity/` have
+app-side render tests (`*.test.tsx`, e.g. `equity_unavailable.test.tsx`); mirror that pattern for
+new ones.
 
 ## Routing
 

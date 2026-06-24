@@ -183,6 +183,19 @@ Two separate event sources; do not conflate them:
     opportunistically, in whatever PR/call is already touching that helper.
 - `/api/equity/{symbol}` re-raises `HTTPException` as-is to preserve status codes.
 
+## Linting & formatting
+
+Python lint + format is **Ruff** (config in the repo-root `pyproject.toml`; targets `backend/` +
+`automation/`, `model/` excluded). From the repo root:
+
+```bash
+pip install -r backend/requirements-dev.txt   # installs Ruff (pinned) + pytest
+npm run lint:py        # ruff check --fix (backend, automation); lint:py:check to check only
+npm run format:py      # ruff format;                            format:py:check to check only
+```
+
+CI runs `lint:py:check` + `format:py:check` on every PR (see `CONTRIBUTING.md` §7).
+
 ## Testing
 
 Tests live in `backend/tests/` (pytest). Config is `pytest.ini` at the repo root

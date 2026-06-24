@@ -79,6 +79,8 @@ type DistMarkers = {
 };
 
 declare module "chart.js" {
+  // `TType` must match chart.js's generic for declaration merging — intentionally unused here.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface PluginOptionsByType<TType extends ChartType> {
     distMarkers?: DistMarkers;
   }
@@ -205,9 +207,9 @@ export default function DistributionChart() {
   const set = useMemo(
     () =>
       effectiveLookback
-        ? sets.find(
+        ? (sets.find(
             (s) => s.scope === scope && s.metric === metric && s.lookback === effectiveLookback,
-          ) ?? null
+          ) ?? null)
         : null,
     [sets, scope, metric, effectiveLookback],
   );
@@ -470,7 +472,15 @@ function Stats({
         </span>
         <span className="inline-flex items-center gap-1.5">
           <svg width="16" height="6" aria-hidden="true">
-            <line x1="0" y1="3" x2="16" y2="3" stroke="#b08d3e" strokeWidth="1.5" strokeDasharray="4 2" />
+            <line
+              x1="0"
+              y1="3"
+              x2="16"
+              y2="3"
+              stroke="#b08d3e"
+              strokeWidth="1.5"
+              strokeDasharray="4 2"
+            />
           </svg>
           Mean
         </span>

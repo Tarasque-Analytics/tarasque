@@ -5,10 +5,7 @@ export default function Navigation() {
   return (
     <div className="navigation-container">
       <h1>Navigation Page</h1>
-      <p>
-        Volarbear is a go. Use the links below to navigate the site for testing
-        purposes.
-      </p>
+      <p>Volarbear is a go. Use the links below to navigate the site for testing purposes.</p>
       <nav>
         <ul className="nav-list">
           <li className="nav-item">

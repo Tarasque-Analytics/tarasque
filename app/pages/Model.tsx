@@ -1,6 +1,6 @@
 import { useParams } from "react-router";
 import { useEffect, useState } from "react";
-import { ModelDataProvider }  from "~/context/ModelDataContext"
+import { ModelDataProvider } from "~/context/ModelDataContext";
 import { loadModelData } from "~/utils/model";
 import type { ModelDataPayload } from "~/utils/model";
 
@@ -12,9 +12,7 @@ export default function Model() {
     loadModelData(symbol).then(setData);
   }, [symbol]);
 
-
   return (
-
     <div className="flex min-h-[60vh] items-center justify-center">
       <ModelDataProvider data={data}>
         {/**Place components here */}

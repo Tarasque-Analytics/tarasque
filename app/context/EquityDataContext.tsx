@@ -12,11 +12,7 @@ interface EquityDataProviderProps {
 }
 
 export function EquityDataProvider({ data, children }: EquityDataProviderProps) {
-  return (
-    <EquityDataContext.Provider value={data}>
-      {children}
-    </EquityDataContext.Provider>
-  );
+  return <EquityDataContext.Provider value={data}>{children}</EquityDataContext.Provider>;
 }
 
 export function useEquityData(): EquitiesPayload | null {

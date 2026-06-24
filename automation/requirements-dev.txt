@@ -1,6 +1,6 @@
-# Dev/test dependencies (not required to run the backend).
-# Install: pip install -r backend/requirements-dev.txt
-# Run tests from the repo root: python -m pytest
+# Dev/test dependencies for the automation package (not required to run the tools).
+# Install (from repo root): pip install -r automation/requirements-dev.txt
+# Run tests: python -m pytest automation/tests
 pytest
 
 # Linter + formatter (app-team Python; config in pyproject.toml [tool.ruff]). Pinned so a

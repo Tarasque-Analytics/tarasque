@@ -5,6 +5,7 @@ config.py — configuration + environment wiring for the automation tooling.
 here makes network calls. Secrets are read from the environment — **never** hard-code them. See the
 root `.env.example` and `automation/CLAUDE.md` §3 for the full var list.
 """
+
 from __future__ import annotations
 
 import os
@@ -20,7 +21,7 @@ REPO_ROOT: Path = Path(__file__).resolve().parent.parent
 class SupabaseConfig:
     """Write-side Supabase connection — the secret API key bypasses RLS. See CLAUDE.md §3."""
 
-    url: str = ""          # SUPABASE_URL (may reuse VITE_SUPABASE_URL's value)
+    url: str = ""  # SUPABASE_URL (may reuse VITE_SUPABASE_URL's value)
     # New Supabase "secret" API key (sb_secret_...), which bypasses RLS. Falls back to the legacy
     # service_role JWT if only that is set. SECRET — never commit or expose to the frontend.
     secret_key: str = ""
@@ -34,7 +35,8 @@ class SupabaseConfig:
             missing.append("SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY)")
         if missing:
             raise RuntimeError(
-                "Missing write-side Supabase env var(s): " + ", ".join(missing)
+                "Missing write-side Supabase env var(s): "
+                + ", ".join(missing)
                 + ". Set them in the repo-root .env (see .env.example). The secret key is created in "
                 "the Supabase dashboard → Project Settings → API keys (it bypasses RLS)."
             )
@@ -47,7 +49,7 @@ class OptionsImportConfig:
     yfinance → Polygon/Tradier later is a config change, not a rewrite.
     """
 
-    provider: str = "yfinance"                 # registry key for the options data source
+    provider: str = "yfinance"  # registry key for the options data source
 
     # Expiry selection (preset A + front monthlies) — see expiry_selection.py.
     term_dte_targets: tuple[int, ...] = (30, 60, 90, 180)
@@ -69,9 +71,9 @@ class OptionsImportConfig:
 class AutomationConfig:
     """Top-level configuration."""
 
-    env: str = "dev"               # AUTOMATION_ENV: dev|stg|prod (mirrors backend APP_ENV)
-    dry_run: bool = False          # if True, no external calls and no DB writes
-    force: bool = False            # ignore freshness/skip checks and re-fetch
+    env: str = "dev"  # AUTOMATION_ENV: dev|stg|prod (mirrors backend APP_ENV)
+    dry_run: bool = False  # if True, no external calls and no DB writes
+    force: bool = False  # ignore freshness/skip checks and re-fetch
 
     supabase: SupabaseConfig = field(default_factory=SupabaseConfig)
     options: OptionsImportConfig = field(default_factory=OptionsImportConfig)
@@ -87,6 +89,7 @@ def load_config(*, dry_run: bool = False, force: bool = False) -> AutomationConf
     """
     try:
         from dotenv import load_dotenv
+
         load_dotenv(dotenv_path=REPO_ROOT / ".env")
     except ImportError:
         pass  # dotenv optional; process env still honored

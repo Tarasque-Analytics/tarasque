@@ -4,6 +4,7 @@ Handles all Supabase queries for equity data
 """
 
 from fastapi import HTTPException
+
 from supabase import AsyncClient
 
 # Global supabase instance - initialized in main.py
@@ -20,23 +21,13 @@ async def get_security_data(symbol: str):
     """Get security metadata (ID, sector, etc.) for a ticker symbol"""
     symbol = symbol.upper()
     try:
-        response = await (supabase.table("securities")
-            .select("*")
-            .eq("ticker", symbol)
-            .execute()
-        )
+        response = await supabase.table("securities").select("*").eq("ticker", symbol).execute()
     except Exception as e:
         print(f"Exception at get_security_data: {str(e)}", flush=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Error fetching from securities table"
-        )
+        raise HTTPException(status_code=500, detail="Error fetching from securities table")
     if not response.data:
         print(f"Symbol not found: {symbol}", flush=True)
-        raise HTTPException(
-            status_code=404,
-            detail=f"No security found for symbol: {symbol}"
-        )
+        raise HTTPException(status_code=404, detail=f"No security found for symbol: {symbol}")
     return response.data[0]
 
 
@@ -47,7 +38,8 @@ async def get_active_tickers() -> list[str]:
     sorted alphabetically.
     """
     try:
-        response = await (supabase.table("securities")
+        response = await (
+            supabase.table("securities")
             .select("ticker")
             .eq("active", True)
             .order("ticker", desc=False)
@@ -55,10 +47,7 @@ async def get_active_tickers() -> list[str]:
         )
     except Exception as e:
         print(f"Exception at get_active_tickers: {str(e)}", flush=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Error fetching from securities table"
-        )
+        raise HTTPException(status_code=500, detail="Error fetching from securities table")
     return [row["ticker"] for row in (response.data or []) if row.get("ticker")]
 
 
@@ -76,7 +65,8 @@ async def get_volatility_history(security_id: int):
     offset = 0
     try:
         while True:
-            response = await (supabase.table("volatility_history")
+            response = await (
+                supabase.table("volatility_history")
                 .select("*")
                 .eq("security_id", security_id)
                 .order("date", desc=False)
@@ -90,10 +80,7 @@ async def get_volatility_history(security_id: int):
             offset += PAGE
     except Exception as e:
         print(f"Exception at get_volatility_history: {str(e)}", flush=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Error fetching from volatility_history table"
-        )
+        raise HTTPException(status_code=500, detail="Error fetching from volatility_history table")
 
     return rows
 
@@ -111,7 +98,8 @@ async def get_price_history(security_id: int):
     offset = 0
     try:
         while True:
-            response = await (supabase.table("prices_history")
+            response = await (
+                supabase.table("prices_history")
                 .select("*")
                 .eq("security_id", security_id)
                 .order("date", desc=False)
@@ -125,10 +113,7 @@ async def get_price_history(security_id: int):
             offset += PAGE
     except Exception as e:
         print(f"Exception at get_price_history: {str(e)}", flush=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Error fetching from prices_history table"
-        )
+        raise HTTPException(status_code=500, detail="Error fetching from prices_history table")
 
     return rows
 
@@ -137,21 +122,23 @@ async def get_options_chain(security_id: int):
     """Get latest options chain for a security"""
     try:
         # Get the most recent snapshot date
-        latest_snapshot = await (supabase.table("options_chain")
+        latest_snapshot = await (
+            supabase.table("options_chain")
             .select("snapshot_date")
             .eq("security_id", security_id)
             .order("snapshot_date", desc=True)
             .limit(1)
             .execute()
         )
-        
+
         if not latest_snapshot.data:
             return []
-        
+
         snapshot_date = latest_snapshot.data[0]["snapshot_date"]
-        
+
         # Get all options for that snapshot
-        response = await (supabase.table("options_chain")
+        response = await (
+            supabase.table("options_chain")
             .select("*")
             .eq("security_id", security_id)
             .eq("snapshot_date", snapshot_date)
@@ -161,22 +148,16 @@ async def get_options_chain(security_id: int):
         )
     except Exception as e:
         print(f"Exception at get_options_chain: {str(e)}", flush=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Error fetching from options_chain table"
-        )
-    
+        raise HTTPException(status_code=500, detail="Error fetching from options_chain table")
+
     return response.data
 
 
-async def get_ai_overview(
-    security_id: int,
-    model_version: str = "v1",
-    prompt_version: str = "v1"
-):
+async def get_ai_overview(security_id: int, model_version: str = "v1", prompt_version: str = "v1"):
     """Get latest AI overview for a security"""
     try:
-        response = await (supabase.table("ai_overview")
+        response = await (
+            supabase.table("ai_overview")
             .select("*")
             .eq("security_id", security_id)
             .eq("model_ver", model_version)
@@ -188,11 +169,8 @@ async def get_ai_overview(
         )
     except Exception as e:
         print(f"Exception at get_ai_overview: {str(e)}", flush=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Error fetching from ai_overview table"
-        )
-    
+        raise HTTPException(status_code=500, detail="Error fetching from ai_overview table")
+
     return response.data[0] if response.data else None
 
 
@@ -200,21 +178,23 @@ async def get_shap_snapshot(security_id: int):
     """Get latest SHAP snapshot per horizon for a security"""
     try:
         # Get the most recent retrain date
-        latest_retrain = await (supabase.table("shap_snapshot")
+        latest_retrain = await (
+            supabase.table("shap_snapshot")
             .select("retrain_date")
             .eq("security_id", security_id)
             .order("retrain_date", desc=True)
             .limit(1)
             .execute()
         )
-        
+
         if not latest_retrain.data:
             return []
-        
+
         retrain_date = latest_retrain.data[0]["retrain_date"]
-        
+
         # Get all horizons for the latest retrain
-        response = await (supabase.table("shap_snapshot")
+        response = await (
+            supabase.table("shap_snapshot")
             .select("*")
             .eq("security_id", security_id)
             .eq("retrain_date", retrain_date)
@@ -222,11 +202,8 @@ async def get_shap_snapshot(security_id: int):
         )
     except Exception as e:
         print(f"Exception at get_shap_snapshot: {str(e)}", flush=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Error fetching from shap_snapshot table"
-        )
-    
+        raise HTTPException(status_code=500, detail="Error fetching from shap_snapshot table")
+
     return response.data
 
 
@@ -238,7 +215,8 @@ async def get_events(security_id: int):
     window. Per-security events are sparse, so a single request suffices.
     """
     try:
-        response = await (supabase.table("event_history")
+        response = await (
+            supabase.table("event_history")
             .select("*")
             .eq("security_id", security_id)
             .order("event_date", desc=False)
@@ -246,10 +224,7 @@ async def get_events(security_id: int):
         )
     except Exception as e:
         print(f"Exception at get_events: {str(e)}", flush=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Error fetching from event_history table"
-        )
+        raise HTTPException(status_code=500, detail="Error fetching from event_history table")
 
     return response.data
 
@@ -262,7 +237,8 @@ async def get_latest_model_run():
     API (already applied; same gotcha as event_history — see backend/CLAUDE.md).
     """
     try:
-        response = await (supabase.table("model_runs")
+        response = await (
+            supabase.table("model_runs")
             .select("model_version, run_date")
             .order("run_date", desc=True)
             .order("id", desc=True)
@@ -273,16 +249,15 @@ async def get_latest_model_run():
         # Log the raw error server-side; return a generic detail so internal Supabase/PostgREST
         # error text (schema/table internals) isn't leaked to API clients.
         print(f"Exception at get_latest_model_run: {str(e)}", flush=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Error fetching from model_runs table"
-        )
+        raise HTTPException(status_code=500, detail="Error fetching from model_runs table")
 
     return response.data[0] if response.data else None
 
+
 async def get_model():
     try:
-        response = await (supabase.table("model_runs")
+        response = await (
+            supabase.table("model_runs")
             .select("model_version, run_date")
             .order("run_date", desc=True)
             .order("id", desc=True)
@@ -292,11 +267,6 @@ async def get_model():
         # Log the raw error server-side; return a generic detail so internal Supabase/PostgREST
         # error text (schema/table internals) isn't leaked to API clients.
         print(f"Exception at get_latest_model_run: {str(e)}", flush=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Error fetching from model_runs table" 
-        )
-    
-    return response.data if response.data else []
+        raise HTTPException(status_code=500, detail="Error fetching from model_runs table")
 
-        
+    return response.data if response.data else []

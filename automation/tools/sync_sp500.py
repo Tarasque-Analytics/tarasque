@@ -17,6 +17,7 @@ Usage (from repo root):
     python -m automation.tools.sync_sp500                    # preview what would be added (no writes)
     python -m automation.tools.sync_sp500 --apply            # add missing rows to hosted securities
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,7 +31,7 @@ from ..config import load_config
 from ..db import WriteClient
 
 WIKI_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-PKG_DIR = Path(__file__).resolve().parent.parent          # automation/
+PKG_DIR = Path(__file__).resolve().parent.parent  # automation/
 DATA_DIR = PKG_DIR / "data"
 CSV_PATH = DATA_DIR / "sp500.csv"
 CIK_FILE = PKG_DIR / "company_tickers.json"
@@ -66,11 +67,14 @@ def _load_cik_map() -> dict[str, int]:
 # ── 1) refresh the reference CSV ───────────────────────────────────────────────────────────────
 def refresh_csv() -> list[dict]:
     """Fetch the S&P 500 table from Wikipedia, map to SEC CIK, write the reference CSV."""
-    import requests  # lazy — only needed for --refresh
-    import pandas as pd
     from io import StringIO
 
-    resp = requests.get(WIKI_URL, headers={"User-Agent": "Mozilla/5.0 volarbmodel-research"}, timeout=30)
+    import pandas as pd
+    import requests  # lazy — only needed for --refresh
+
+    resp = requests.get(
+        WIKI_URL, headers={"User-Agent": "Mozilla/5.0 volarbmodel-research"}, timeout=30
+    )
     resp.raise_for_status()
     df = pd.read_html(StringIO(resp.text))[0]
     cik_map = _load_cik_map()
@@ -81,16 +85,18 @@ def refresh_csv() -> list[dict]:
         ticker = _norm_ticker(x["Symbol"])
         cik = cik_map.get(ticker)
         if cik is None and pd.notna(x.get("CIK")):
-            cik = int(x["CIK"])           # fallback to Wikipedia's CIK column
+            cik = int(x["CIK"])  # fallback to Wikipedia's CIK column
         if cik is None:
             unmatched.append(ticker)
-        rows.append({
-            "ticker": ticker,
-            "company_name": str(x["Security"]).strip(),
-            "gics_sector": str(x["GICS Sector"]).strip(),
-            "gics_sub_industry": str(x["GICS Sub-Industry"]).strip(),
-            "cik": cik,
-        })
+        rows.append(
+            {
+                "ticker": ticker,
+                "company_name": str(x["Security"]).strip(),
+                "gics_sector": str(x["GICS Sector"]).strip(),
+                "gics_sub_industry": str(x["GICS Sub-Industry"]).strip(),
+                "cik": cik,
+            }
+        )
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with open(CSV_PATH, "w", newline="", encoding="utf-8") as f:
@@ -98,8 +104,10 @@ def refresh_csv() -> list[dict]:
         w.writeheader()
         w.writerows(rows)
 
-    print(f"[sync_sp500] wrote {CSV_PATH} — {len(rows)} members"
-          + (f", {len(unmatched)} unmatched: {unmatched}" if unmatched else ", all CIK-matched"))
+    print(
+        f"[sync_sp500] wrote {CSV_PATH} — {len(rows)} members"
+        + (f", {len(unmatched)} unmatched: {unmatched}" if unmatched else ", all CIK-matched")
+    )
     return rows
 
 
@@ -138,18 +146,20 @@ def _build_rows(
             skipped.append(m["ticker"])
             continue
         if cik in seen_cik:
-            dropped.append(m["ticker"])     # second share class of a company already in the batch
+            dropped.append(m["ticker"])  # second share class of a company already in the batch
             continue
         seen_cik.add(cik)
-        rows.append({
-            "security_id": cik,
-            "ticker": (cur["ticker"] if cur and cur.get("ticker") else m["ticker"]),
-            "company_name": m["company_name"] or None,
-            "gics_sector": m["gics_sector"] or None,
-            "gics_subindustry": m["gics_sub_industry"] or None,
-            "sector_etf": SECTOR_ETF.get(m["gics_sector"], None),
-            "active": (cur["active"] if cur else True),
-        })
+        rows.append(
+            {
+                "security_id": cik,
+                "ticker": (cur["ticker"] if cur and cur.get("ticker") else m["ticker"]),
+                "company_name": m["company_name"] or None,
+                "gics_sector": m["gics_sector"] or None,
+                "gics_subindustry": m["gics_sub_industry"] or None,
+                "sector_etf": SECTOR_ETF.get(m["gics_sector"], None),
+                "active": (cur["active"] if cur else True),
+            }
+        )
     return rows, skipped, dropped
 
 
@@ -171,14 +181,20 @@ async def sync(apply: bool, update_existing: bool = False) -> int:
     try:
         existing = await db.securities_detail()
         existing_by_id = {r["security_id"]: r for r in existing}
-        rows, skipped, dropped = _build_rows(members, existing_by_id, include_existing=update_existing)
+        rows, skipped, dropped = _build_rows(
+            members, existing_by_id, include_existing=update_existing
+        )
 
         if not update_existing:
             to_write = rows  # every row is a missing CIK by construction (the "add missing" pass)
-            print(f"[sync_sp500] members={len(members)}  already present={len(skipped)}  "
-                  f"dual-class dropped={len(dropped)} {dropped}  to-add={len(to_write)}")
+            print(
+                f"[sync_sp500] members={len(members)}  already present={len(skipped)}  "
+                f"dual-class dropped={len(dropped)} {dropped}  to-add={len(to_write)}"
+            )
             for r in to_write[:8]:
-                print(f"    + {r['ticker']:6s} cik={r['security_id']:>9}  {r['gics_sector']:<24} {r['company_name']}")
+                print(
+                    f"    + {r['ticker']:6s} cik={r['security_id']:>9}  {r['gics_sector']:<24} {r['company_name']}"
+                )
             if len(to_write) > 8:
                 print(f"    … and {len(to_write) - 8} more")
         else:
@@ -194,13 +210,17 @@ async def sync(apply: bool, update_existing: bool = False) -> int:
                     if cols:
                         changing.append((r, cols))
             to_write = [r for r, _ in changing] + new_rows
-            print(f"[sync_sp500] update-existing: members={len(members)}  to-write={len(to_write)}  "
-                  f"changing={len(changing)}  new={len(new_rows)}  "
-                  f"unchanged={len(rows) - len(to_write)}  dual-class dropped={dropped}")
+            print(
+                f"[sync_sp500] update-existing: members={len(members)}  to-write={len(to_write)}  "
+                f"changing={len(changing)}  new={len(new_rows)}  "
+                f"unchanged={len(rows) - len(to_write)}  dual-class dropped={dropped}"
+            )
             for r, cols in changing[:12]:
                 cur = existing_by_id[r["security_id"]]
-                print(f"    ~ {r['ticker']:6s} {', '.join(cols)}"
-                      f"  [{cur.get('gics_sector')!r}->{r['gics_sector']!r}]")
+                print(
+                    f"    ~ {r['ticker']:6s} {', '.join(cols)}"
+                    f"  [{cur.get('gics_sector')!r}->{r['gics_sector']!r}]"
+                )
             if len(changing) > 12:
                 print(f"    … and {len(changing) - 12} more changing")
 
@@ -220,14 +240,21 @@ def main(argv: list[str] | None = None) -> int:
         prog="python -m automation.tools.sync_sp500",
         description="Maintain the S&P 500 reference CSV and add missing constituents to securities.",
     )
-    p.add_argument("--refresh", action="store_true",
-                   help="Standalone: rebuild automation/data/sp500.csv from Wikipedia (network only, "
-                        "no DB connection or creds). Run a separate (no-flag) invocation to sync.")
-    p.add_argument("--apply", action="store_true",
-                   help="Write to securities (default is preview only).")
-    p.add_argument("--update-existing", action="store_true",
-                   help="Also refresh metadata (GICS/company_name/etf) on rows already present, "
-                        "not just add missing. Preserves existing ticker/active.")
+    p.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Standalone: rebuild automation/data/sp500.csv from Wikipedia (network only, "
+        "no DB connection or creds). Run a separate (no-flag) invocation to sync.",
+    )
+    p.add_argument(
+        "--apply", action="store_true", help="Write to securities (default is preview only)."
+    )
+    p.add_argument(
+        "--update-existing",
+        action="store_true",
+        help="Also refresh metadata (GICS/company_name/etf) on rows already present, "
+        "not just add missing. Preserves existing ticker/active.",
+    )
     args = p.parse_args(argv)
 
     if args.refresh:

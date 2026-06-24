@@ -73,7 +73,7 @@ def refresh_csv() -> list[dict]:
     import requests  # lazy — only needed for --refresh
 
     resp = requests.get(
-        WIKI_URL, headers={"User-Agent": "Mozilla/5.0 volarbmodel-research"}, timeout=30
+        WIKI_URL, headers={"User-Agent": "Mozilla/5.0 tarasque-research"}, timeout=30
     )
     resp.raise_for_status()
     df = pd.read_html(StringIO(resp.text))[0]

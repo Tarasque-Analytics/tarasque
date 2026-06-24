@@ -138,8 +138,8 @@ npm run start
 ### 5.3 Container build/run (frontend)
 
 ```bash
-docker build -t volarbmodel-app .
-docker run -p 3000:3000 volarbmodel-app
+docker build -t tarasque-app .
+docker run -p 3000:3000 tarasque-app
 ```
 
 ### 5.4 Planned deployment path

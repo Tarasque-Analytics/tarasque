@@ -1,6 +1,6 @@
 # Tech Stack Overview
 
-A high-level map of the technologies used across **volarbmodel**, split by the three
+A high-level map of the technologies used across **tarasque**, split by the three
 app-team components: the **frontend app**, the **backend API**, and the **automation**
 data tooling. They share one Supabase (Postgres) database.
 

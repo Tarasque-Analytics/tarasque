@@ -1,6 +1,6 @@
 # automation
 
-Data tooling for the volarbmodel DB — the only component that **writes** to Supabase (via a secret-key
+Data tooling for the tarasque DB — the only component that **writes** to Supabase (via a secret-key
 client). Ships an options-chain import and a securities/universe sync; the broader nightly pipeline is
 designed but not yet built.
 

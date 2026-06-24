@@ -86,6 +86,7 @@ logs/
 # Supabase local state
 supabase/.branches
 supabase/.temp
+supabase/snippets/
 
 # Model pipeline artifacts
 model/.env

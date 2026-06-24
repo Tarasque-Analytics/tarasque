@@ -31,8 +31,8 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run lint
-      - run: npm run format:check
+      - run: npm run lint:app:check
+      - run: npm run format:app:check
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -40,7 +40,7 @@ jobs:
           cache-dependency-path: backend/requirements-dev.txt
       # Ruff is pinned in requirements-dev.txt; one install lints + format-checks both Python roots.
       - run: pip install -r backend/requirements-dev.txt
-      - run: npm run lint:py
+      - run: npm run lint:py:check
       - run: npm run format:py:check
 
   # ── Typecheck: react-router typegen && tsc (the bundler strips types without checking them).

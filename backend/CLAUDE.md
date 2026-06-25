@@ -217,3 +217,9 @@ still open. After it merges:
    `database_SQL_defs.sql`).
 4. **Set platform env vars** per deploy target (`APP_ENV`, Supabase URL/key); never commit hosted secrets.
 5. **Re-enable `get_distribution`** (its own tracking issue) before prod relies on distributions.
+
+**Docker bind-mount (optional follow-up, from the containerization work #124).** `docker-compose.yml`
+bind-mounts `./backend:/app/backend`, which overrides the code baked into the backend image with the
+host tree. That's handy for local live-reload but makes the image non-reproducible (the tested image
+is bypassed) and is a no-op on ECS (no host path on the task). Optional: move the mount to a
+`docker-compose.dev.yml` override so the base compose stays production-faithful.

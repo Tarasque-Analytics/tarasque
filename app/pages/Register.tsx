@@ -28,7 +28,6 @@ export default function Register() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    console.log("Register attempt:", { email, password });
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -74,15 +73,13 @@ export default function Register() {
       <div className="p-8 rounded-lg shadow-lg w-96 bg-neutral-100 dark:bg-neutral-800">
         <h1 className="text-2xl font-bold text-center mb-6">Register</h1>
 
-        {error && (
-          <div className="error-box">
-            {error}
-          </div>
-        )}
+        {error && <div className="error-box">{error}</div>}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Email</label>
+            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+              Email
+            </label>
             <input
               type="email"
               placeholder="Enter your email"
@@ -100,11 +97,15 @@ export default function Register() {
               border border-neutral-300 dark:border-neutral-700"
               required
             />
-            {emailError ? <p className="text-xs text-red-500 dark:text-red-400 mt-1">{emailError}</p> : null}
+            {emailError ? (
+              <p className="text-xs text-red-500 dark:text-red-400 mt-1">{emailError}</p>
+            ) : null}
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Password</label>
+            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+              Password
+            </label>
             <input
               type="password"
               placeholder="Enter your password"
@@ -119,7 +120,9 @@ export default function Register() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Confirm Password</label>
+            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+              Confirm Password
+            </label>
             <input
               type="password"
               placeholder="Confirm your password"
@@ -135,7 +138,9 @@ export default function Register() {
               password === reenterPassword ? (
                 <p className="text-xs text-green-600 dark:text-green-400 mt-1">Passwords match</p>
               ) : (
-                <p className="text-xs text-red-500 dark:text-red-400 mt-1">Passwords do not match</p>
+                <p className="text-xs text-red-500 dark:text-red-400 mt-1">
+                  Passwords do not match
+                </p>
               )
             ) : null}
           </div>
@@ -160,11 +165,7 @@ export default function Register() {
             disabled={isLoading}
             className="oauth-button"
           >
-
-            <img
-              src="app\assets\Google__G__logo.svg"
-              alt="Google Logo"
-            />
+            <img src="app\assets\Google__G__logo.svg" alt="Google Logo" />
             Continue with Google
           </button>
 

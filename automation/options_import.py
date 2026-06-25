@@ -10,6 +10,7 @@ Provider network calls are synchronous (yfinance); they're invoked directly here
 concurrency can wrap `import_options_for_security` with `asyncio.to_thread`, but sequential is fine
 for a handful of tickers.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -51,7 +52,7 @@ class ImportResult:
     snapshot_date: date
     n_contracts: int = 0
     rows_written: int = 0
-    skipped: bool = False              # today's snapshot already present (skip-if-done)
+    skipped: bool = False  # today's snapshot already present (skip-if-done)
     error: Optional[str] = None
     expiries: list[date] = field(default_factory=list)
     spot: Optional[float] = None
@@ -83,13 +84,15 @@ async def import_options_for_security(
 
         available = provider.list_expiries(ticker)
         expiries = select_expiries(
-            available, snapshot_date,
+            available,
+            snapshot_date,
             term_dte_targets=tuple(config.term_dte_targets),
             front_monthlies=config.front_monthlies,
         )
         if not expiries:
-            return ImportResult(ticker, security_id, snapshot_date,
-                                error="no future expiries available")
+            return ImportResult(
+                ticker, security_id, snapshot_date, error="no future expiries available"
+            )
 
         spot = provider.fetch_spot(ticker)
         scope = OptionsScope(
@@ -97,16 +100,24 @@ async def import_options_for_security(
             max_strikes_per_side=config.max_strikes_per_side,
         )
         rows = provider.fetch_chain(
-            ticker, expiries,
-            snapshot_date=snapshot_date, security_id=security_id,
-            scope=scope, spot=spot, risk_free_rate=config.risk_free_rate,
+            ticker,
+            expiries,
+            snapshot_date=snapshot_date,
+            security_id=security_id,
+            scope=scope,
+            spot=spot,
+            risk_free_rate=config.risk_free_rate,
         )
 
         written = 0 if dry_run else await db.upsert_options_chain(rows)
         return ImportResult(
-            ticker, security_id, snapshot_date,
-            n_contracts=len(rows), rows_written=written,
-            expiries=expiries, spot=spot,
+            ticker,
+            security_id,
+            snapshot_date,
+            n_contracts=len(rows),
+            rows_written=written,
+            expiries=expiries,
+            spot=spot,
         )
     except Exception as e:  # noqa: BLE001 — isolate per-ticker failures
         return ImportResult(ticker, security_id, snapshot_date, error=str(e))

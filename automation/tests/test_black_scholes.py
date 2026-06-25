@@ -1,4 +1,5 @@
 """Unit tests for the Black-Scholes delta helper (pure). Run: python -m pytest automation/tests"""
+
 from __future__ import annotations
 
 from automation.black_scholes import bs_delta
@@ -27,6 +28,6 @@ def test_deep_otm_call_delta_near_zero():
 
 def test_degenerate_inputs_return_none():
     assert bs_delta(None, 100.0, 30, 0.25, "C") is None
-    assert bs_delta(100.0, 100.0, 0, 0.25, "C") is None      # DTE <= 0
-    assert bs_delta(100.0, 100.0, 30, 0.0, "C") is None       # iv <= 0
-    assert bs_delta(100.0, 100.0, 30, 0.25, "X") is None      # bad option type
+    assert bs_delta(100.0, 100.0, 0, 0.25, "C") is None  # DTE <= 0
+    assert bs_delta(100.0, 100.0, 30, 0.0, "C") is None  # iv <= 0
+    assert bs_delta(100.0, 100.0, 30, 0.25, "X") is None  # bad option type

@@ -9,6 +9,7 @@ import it (package-boundary hygiene — see CLAUDE.md §5).
 Approximations (documented, acceptable for a UI greeks column): dividend yield q ≈ 0, a single
 risk-free rate r. Revisit if delta is ever used for pricing rather than display.
 """
+
 from __future__ import annotations
 
 import math

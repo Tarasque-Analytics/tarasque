@@ -101,16 +101,25 @@ export interface SHAPSnapshot {
   feature_data: Record<string, unknown>;
 }
 
-// Distribution data.
-// NOTE: not currently returned by the API — the get_distribution RPC is disabled pending
-// finance input (tracked in the distribution PR). Kept here for when it's re-enabled.
+// Distribution data — one frequency histogram per (scope, metric, lookback). Live for stock
+// scope: the backend computes these in plain Python from volatility_history (RV/IV/VRP), no RPC.
+// Sector/market scope is deferred (the toggle shows them disabled). `bins` is 15 equal-width
+// buckets between the window min/max; the overlays (current value, mean, ±stdev) are precomputed.
 export interface DistributionBin {
-  scope: "stock" | "sector" | "market";
   bin_low: number;
   bin_high: number;
   count: number;
+}
+
+export interface DistributionSet {
+  scope: "stock" | "sector" | "market";
+  metric: "rv" | "iv" | "vrp";
+  lookback: "3M" | "6M" | "YTD" | "1Y" | "2Y" | "5Y" | "MAX";
   current_value: number;
   current_percentile: number;
+  mean: number;
+  stdev?: number;
+  bins: DistributionBin[];
 }
 
 // Event (event_history) — per-security only. Market-wide events (CPI/FOMC/NFP) live in
@@ -143,8 +152,9 @@ export interface EquitiesPayload {
   options_chain: OptionRecord[];
   ai_overview: AIOverview | null;
   latest_shap_snapshot: SHAPSnapshot[];
-  // Disabled in the backend (get_distribution) — omitted from the payload for now.
-  distribution_data?: DistributionBin[];
+  // Live for stock scope — per (metric, lookback) histograms computed in-Python from
+  // volatility_history (sector/market deferred). May be absent/empty for sparse vol history.
+  distribution_data?: DistributionSet[];
   events: EventRecord[];
 }
 
@@ -215,4 +225,3 @@ export async function loadLatestModelRun(): Promise<ModelRun | null> {
     return null;
   }
 }
-

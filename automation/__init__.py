@@ -1,5 +1,5 @@
 """
-automation — data tooling for the volarbmodel database.
+automation — data tooling for the tarasque database.
 
 The only component that **writes** to the DB (via a secret-key client, separate from the app's
 read-only client). What's implemented today:

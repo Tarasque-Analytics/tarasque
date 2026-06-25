@@ -23,9 +23,16 @@ changes).
 npm run dev           # Vite dev server on http://localhost:5173
 npm run dev:backend   # FastAPI on :8000 (required for any data-backed page)
 npm run typecheck     # react-router typegen && tsc
+npm run lint:app      # ESLint (app) — `--fix`; use `lint:app:check` to check only
+npm run format:app    # Prettier (app) — use `format:app:check` to check only
+npm run test:frontend # Vitest (app/)
 ```
 
-Anything under `ProtectedLayout` needs the backend running.
+Anything under `ProtectedLayout` needs the backend running. `npm run lint` / `npm run format`
+(no suffix) cover **both** the app and the Python stacks at once; CI runs the `:check` variants on
+every PR — see `CONTRIBUTING.md` §7. Section components under `app/components/equity/` have
+app-side render tests (`*.test.tsx`, e.g. `equity_unavailable.test.tsx`); mirror that pattern for
+new ones.
 
 ## Routing
 
@@ -110,6 +117,12 @@ sections consistent with it:
 - **Data via `useEquityData()`, which may be `null`.** Two-tier empty handling, both inside
   `Card` + `Empty`: payload null → `"<Thing> data is currently unavailable."`; present-but-no-rows →
   `"No <thing> available for {symbol}."`.
+- **Windowed sections fall back to the first available window rather than landing on empty.** When a
+  section's data is split into selectable windows that may individually be absent (the distribution
+  chart's lookbacks are the first case), keep the user's selected window if it has data, otherwise
+  show the first (narrowest) window that does, and disable the empty windows in the toggle. Only fall
+  through to the per-section `Empty` when *no* window has data. This keeps a default like `1Y` from
+  showing empty when `5Y/MAX` would populate — the intended UX precedent for windowed sections.
 - **Page-level fallback** when the *whole* payload is null is a separate component,
   [components/equity/equity_unavailable.tsx](components/equity/equity_unavailable.tsx) (rendered by
   [pages/Ticker.tsx](pages/Ticker.tsx) in place of the section stack) — not the per-section `Empty`.
@@ -126,12 +139,12 @@ than letting one diverge.
 |---|---|---|
 | `security` | `SecurityMeta?` | Company name + GICS sector/industry for the page header (resolved from `securities`; present whenever the payload is) |
 | `price_history` | `PriceRecord[]` | Full available OHLCV history per security (paginated; ~12y for older listings) — source for the price-history chart (range selector filters client-side) |
-| `volatility_history` | `VolatilityRecord[]` | ~5 years of vol/IV term structures, VRP wedge, forecast features (full column list in `backend/CLAUDE.md`) |
+| `volatility_history` | `VolatilityRecord[]` | Full available vol/IV term structures, VRP wedge, forecast features (paginated, ~12y for older listings; full column list in `backend/CLAUDE.md`) |
 | `options_chain` | `OptionRecord[]` | Latest snapshot — strike/expiry/type + bid/ask/iv/delta |
 | `ai_overview` | `AIOverview \| null` | Latest unflagged AI commentary, or null |
 | `latest_shap_snapshot` | `SHAPSnapshot[]` | SHAP feature attributions per horizon |
 | `events` | `EventRecord[]` | Per-security events (full history) — drawn as event-annotation lines on the price chart |
-| `distribution_data` | `DistributionBin[]?` | Currently disabled — see `backend/CLAUDE.md` |
+| `distribution_data` | `DistributionSet[]?` | Live (stock scope) — per `(metric, lookback)` RV/IV/VRP histograms computed in-Python from `volatility_history` (lookbacks `3M/6M/YTD/1Y/2Y/5Y/MAX`; undersized combos omitted). Drives the Historical Distribution chart, which toggles metric/lookback/scope client-side and falls back to the first available window. Sector/market deferred. See `backend/CLAUDE.md` |
 
 The DB call is non-fatal; consumers **must handle `useEquityData()` returning `null`**.
 

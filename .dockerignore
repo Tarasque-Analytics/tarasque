@@ -39,7 +39,7 @@ env
 # Project specific
 supabase/
 automation/
-model/
+backend/
 Results/
 coverage
 .turbo

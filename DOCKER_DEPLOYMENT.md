@@ -69,6 +69,8 @@ The frontend requires Vite environment variables at **build time**, not runtime.
 
 This ensures the credentials are baked into the JavaScript bundle. Because the values are inlined at build time, **rebuild the frontend image whenever any `VITE_*` value changes** — passing them only at runtime has no effect on an already-built bundle.
 
+**Canonical build path — don't pass `--build-arg` by hand.** Always build through `docker-compose build` (or `./docker-run.ps1` on Windows). Both read the three `VITE_*` values from your `.env` and pass them as build args automatically, so the correct per-environment values are encoded in `.env`, not in anyone's memory. A guard in the `Dockerfile` fails the build immediately if `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` are missing, so a misconfigured build can't silently produce a broken image. For a prod/ECS image, supply those three values to the build from the CI environment (or `--env-file`) — never hardcode them in the Dockerfile.
+
 ## Windows PowerShell Deployment (docker-run.ps1)
 
 The `docker-run.ps1` script automates the deployment process on Windows:
@@ -115,9 +117,9 @@ The Dockerfile uses 4 stages for optimal image size and caching:
 ### Build Frontend Only
 
 ```bash
-# Minimal build: only VITE_API_URL has a default (http://backend:8000/api).
-# VITE_SUPABASE_* are not defaulted, so a frontend built this way fails fast at
-# runtime until real credentials are supplied — prefer the build below.
+# NOTE: this bare build FAILS — a Dockerfile guard rejects it because
+# VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY have no defaults. Pass them
+# (see below), or just build via docker-compose / docker-run.ps1 (they read .env).
 docker build -t volarbmodel-frontend .
 
 # With environment variables

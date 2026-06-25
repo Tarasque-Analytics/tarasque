@@ -28,7 +28,7 @@ if (-not $supabaseUrl -or -not $supabaseKey) {
 Write-Host "Building frontend..."
 Write-Host "Build args:"
 Write-Host "  VITE_SUPABASE_URL=$supabaseUrl"
-Write-Host "  VITE_SUPABASE_PUBLISHABLE_KEY=$supabaseKey"
+Write-Host "  VITE_SUPABASE_PUBLISHABLE_KEY=(set, value hidden)"
 Write-Host "  VITE_API_URL=http://backend:8000/api"
 Write-Host ""
 

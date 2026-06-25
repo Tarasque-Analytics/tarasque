@@ -7,8 +7,7 @@
  */
 
 // API base URL - defaults to localhost for local dev, can be overridden by environment variable
-const API_BASE_URL = "https://www.tarasqueanalytics.com/api";
-// const API_BASE_URL = "http://backend:8000/api";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
 
 // Volatility and forecasting data (volatility_history)
 export interface VolatilityRecord {

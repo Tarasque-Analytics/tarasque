@@ -246,3 +246,9 @@ Note: `distribution_data` no longer blocks deploy — stock-scope distributions 
 in-Python (`backend/distributions.py`), so the old `get_distribution` RPC is gone. Only a future
 sector/market scope would need a cross-sectional query (and would have to avoid the 57014 timeout
 that sank the original RPC).
+
+**Docker bind-mount (optional follow-up, from the containerization work #124).** `docker-compose.yml`
+bind-mounts `./backend:/app/backend`, which overrides the code baked into the backend image with the
+host tree. That's handy for local live-reload but makes the image non-reproducible (the tested image
+is bypassed) and is a no-op on ECS (no host path on the task). Optional: move the mount to a
+`docker-compose.dev.yml` override so the base compose stays production-faithful.

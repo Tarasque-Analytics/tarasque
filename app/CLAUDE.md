@@ -197,6 +197,16 @@ Same single repo-root `.env` as the backend; Vite reads `VITE_SUPABASE_URL` /
 model and the planned Vite-mode + `.env.{development,staging,production}` config are documented
 in `backend/CLAUDE.md` — not yet implemented.
 
+**Docker `env_file` vs. build-time vars (optional follow-up, from the containerization work #124).**
+`docker-compose.yml` sets `env_file: .env` on the *frontend* service, but `VITE_*` are build-time
+only — already inlined into the browser bundle by `npm run build`, so the runtime `env_file` can't
+change what the browser uses (only the Docker build args do). It *does* feed the SSR Node process's
+`process.env`, which `supabaseClient.ts` reads as a server-side fallback — so the baked (build-time)
+and runtime (`env_file`) Supabase values can diverge and point the browser vs. SSR passes at
+different projects. Optional: keep `.env` and the build args in sync, or drop `env_file` from the
+frontend service (its only effect is the SSR fallback). The backend service's `env_file` is correct
+and required.
+
 ## Conventions
 
 - `routes/<name>.tsx` co-locates the loader and re-exports the page component as default.

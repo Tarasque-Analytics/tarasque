@@ -66,7 +66,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        "http://localhost:3000",
+        "https://tarasqueanalytics.com",
+        "https://www.tarasqueanalytics.com",
     ],  # Adjust for your frontend port
     allow_credentials=True,
     allow_methods=["*"],

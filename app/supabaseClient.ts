@@ -16,7 +16,13 @@ const supabaseKey = getEnvVar(
 );
 
 if (!supabaseUrl || !supabaseKey) {
-    console.warn('Supabase environment variables are not set. Auth features may not work.');
+    // Fail fast: createClient('', '') succeeds but defers an opaque error to the first auth
+    // call. Surface the misconfiguration at startup instead.
+    throw new Error(
+        'Supabase credentials are missing. Set VITE_SUPABASE_URL and ' +
+        'VITE_SUPABASE_PUBLISHABLE_KEY (or VITE_SUPABASE_ANON_KEY). For Docker builds these ' +
+        'must be passed as build args so Vite can embed them at build time.'
+    );
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
+export const supabase = createClient(supabaseUrl, supabaseKey);

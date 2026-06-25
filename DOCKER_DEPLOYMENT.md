@@ -55,7 +55,7 @@ VITE_API_URL=http://backend:8000/api
 
 **Important Notes:**
 - `VITE_API_URL` should use `http://backend:8000/api` when running in Docker (service-to-service communication)
-- In local development, use `http://localhost:8000/api`
+- In local development, use `http://localhost:8000/api` (or omit it — `app/utils/database.ts` falls back to that value when `VITE_API_URL` is unset)
 - The `VITE_*` prefix is required for Vite to expose variables to the frontend at build time
 - The `.env` file is excluded from Docker builds for security (see `.dockerignore`)
 
@@ -64,10 +64,10 @@ VITE_API_URL=http://backend:8000/api
 The frontend requires Vite environment variables at **build time**, not runtime. The Dockerfile achieves this by:
 
 1. Accepting `ARG` parameters for Supabase credentials and API URL
-2. Converting `ARG` to `ENV` before running `npm run build`
+2. Converting `ARG` to `ENV` *by reference* (`ENV VITE_API_URL=$VITE_API_URL`) before running `npm run build`
 3. Vite statically replaces `import.meta.env.VITE_*` references with actual values during compilation
 
-This ensures the credentials are baked into the JavaScript bundle.
+This ensures the credentials are baked into the JavaScript bundle. Because the values are inlined at build time, **rebuild the frontend image whenever any `VITE_*` value changes** — passing them only at runtime has no effect on an already-built bundle.
 
 ## Windows PowerShell Deployment (docker-run.ps1)
 
@@ -99,14 +99,14 @@ The Dockerfile uses 4 stages for optimal image size and caching:
 - **Base Image**: `node:20-alpine` (~173 MB)
 - **Build Args**: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_API_URL`
 - **Port**: 5173
-- **Health Check**: HTTP endpoint check every 30 seconds
+- **Health Check**: `GET /` every 30 seconds
 - **Restart Policy**: unless-stopped
 
 ### Backend Service Details
 
 - **Base Image**: `python:3.11-slim` (~125 MB)
 - **Port**: 8000
-- **Health Check**: Curl request to `/docs` every 30 seconds
+- **Health Check**: Curl request to `/api/health` every 30 seconds
 - **Restart Policy**: unless-stopped
 - **Environment**: Supabase async client, PostgreSQL connection
 
@@ -115,7 +115,9 @@ The Dockerfile uses 4 stages for optimal image size and caching:
 ### Build Frontend Only
 
 ```bash
-# Without environment variables (uses defaults)
+# Minimal build: only VITE_API_URL has a default (http://backend:8000/api).
+# VITE_SUPABASE_* are not defaulted, so a frontend built this way fails fast at
+# runtime until real credentials are supplied — prefer the build below.
 docker build -t volarbmodel-frontend .
 
 # With environment variables
@@ -215,7 +217,7 @@ Update your deployment platform's environment configuration with:
 **Problem**: Backend errors about Supabase connection.
 
 **Solution**:
-1. Verify `SUPABASE_URL` and `SUPABASE_ANON_KEY` in `.env`
+1. Verify `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in `.env`
 2. Check that Supabase project is accessible from your network
 3. Review backend logs: `docker-compose logs backend`
 
@@ -241,6 +243,10 @@ docker-compose down
 docker run -p 5174:5173 volarbmodel-frontend
 ```
 
+### Build fails
+- Clear Docker cache: `docker system prune -a`
+- Rebuild: `docker-compose up --build`
+
 ## Performance Tips
 
 - **Layer caching**: Dockerfile stages cache dependencies separately; only rebuild when package.json changes
@@ -253,25 +259,7 @@ docker run -p 5174:5173 volarbmodel-frontend
 ⚠️ **Never commit `.env` file to git** — add to `.gitignore`
 ⚠️ **Supabase keys in .env** — treated as build secrets; consider using Docker secrets in production
 ⚠️ **API URL in bundle** — `VITE_API_URL` is visible in the browser; use CORS policies for security
-⚠️ **Health check endpoints** — Ensure `/docs` endpoint is accessible or adjust health check accordingly
-
-### Container exits immediately
-```bash
-docker-compose logs frontend
-docker-compose logs backend
-```
-
-### Port already in use
-Change ports in docker-compose.yml:
-```yaml
-ports:
-  - "8000:3000"  # Host:Container
-  - "9000:8000"
-```
-
-### Build fails
-- Clear Docker cache: `docker system prune -a`
-- Rebuild: `docker-compose up --build`
+⚠️ **Health check endpoints** — The backend health-checks `GET /api/health` and the frontend `GET /`; keep those reachable or adjust the checks in `docker-compose.yml` / the Dockerfiles.
 
 ## Environment-Specific Deployment
 
@@ -286,72 +274,30 @@ Consider creating a `docker-compose.dev.yml` for local development with:
 - Development environment variables
 - Exposed ports for debugging
 
-## Current Issues
+> Note: the base `docker-compose.yml` currently bind-mounts `./backend:/app/backend`,
+> which overrides the code baked into the backend image with the host tree. That
+> belongs in a dev override; remove it from the base file before treating the
+> compose stack as production.
 
-### Frontend-Backend Communication: Environment Variables Not Embedding in Vite Bundle
+## Notes on build-time environment variables (resolved)
 
-**Problem:**
-The frontend container is unable to query the backend API because Vite environment variables (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_API_URL`) are not being embedded into the JavaScript bundle during the Docker build process. As a result:
-- The frontend falls back to `http://localhost:8000/api` instead of `http://backend:8000/api`(hardcoded default, handled in database.ts)
-- API requests fail when the frontend container tries to reach `localhost` (which doesn't exist in the container context)
-- The Supabase client cannot initialize due to missing credentials
-- Console errors: "supabaseUrl is required."
+Earlier iterations of this branch hit a problem where the Vite env vars
+(`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_API_URL`) were not
+embedded into the frontend bundle, so the app fell back to
+`http://localhost:8000/api` and the Supabase client could not initialize.
 
-**Root Cause:**
-Vite requires environment variables to be available at **build time** (when `npm run build` runs), not at runtime. Variables must be replaced in the source code during compilation to be available via `import.meta.env.VITE_*`. Simply passing them as runtime environment variables does not work.
+This is now resolved:
 
-**Attempts Made to Fix:**
+- **`Dockerfile`** declares the three `ARG`s and converts them to `ENV` *by
+  reference* (`ENV VITE_API_URL=$VITE_API_URL`, etc.) before `npm run build`, so
+  the build args passed by `docker-compose.yml` / `docker-run.ps1` actually reach
+  Vite and are statically baked into the bundle.
+- **`app/utils/database.ts`** reads `import.meta.env.VITE_API_URL` and falls back
+  to `http://localhost:8000/api` only when it is unset, so local `npm run dev`
+  still targets the local backend.
+- **`app/supabaseClient.ts`** fails fast with a clear error if no Supabase
+  credentials are present, instead of silently constructing an empty client.
 
-1. **Attempt 1: ENV statements in Dockerfile**
-   - Used `ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL` after ARG declaration
-   - Result: Variables did not reach npm run build; vite.config.ts debug logs never appeared
-   - Issue: ENV after ARG only applies to subsequent layers, not the RUN command in the same layer
-
-2. **Attempt 2: Inline RUN command with variable export**
-   - Changed to: `RUN VITE_API_URL=$VITE_API_URL npm run build`
-   - Result: Still undefined; variables not visible to Vite
-   - Issue: Shell variable syntax did not properly export to child process
-
-3. **Attempt 3: .env.production with .env file creation**
-   - Created `.env.production` with placeholder values
-   - Modified Dockerfile RUN to create `.env` file before build: `echo "VITE_API_URL=..." >> .env`
-   - Result: Vite still read placeholders, not actual values
-   - Issue: .env file was created but values not substituted from ARG before file write
-
-4. **Attempt 4: Medium article "build once, inject later" approach**
-   - Created `.env.production` with placeholders: `VITE_API_URL=PREFIX_API_URL`
-   - Implemented `env.sh` script to run at container startup using sed replacement
-   - Modified Dockerfile with entrypoint to run injection before `npm start`
-   - Result: sed replacement did not find or modify placeholders in built JavaScript
-   - Issue: Likely because sed pattern matching or file paths were incorrect; reverted
-
-5. **Current Approach: ARG → ENV with docker-compose build args**
-   - Using Dockerfile: `ARG VITE_API_URL` then `ENV VITE_API_URL=$VITE_API_URL` before RUN
-   - Using docker-compose: `args:` section to pass `${VITE_API_URL}` from .env
-   - Using docker-run.ps1: Explicitly parsing .env and passing `--build-arg` to docker build
-   - Status: Build args are confirmed to be passed (visible in docker output), but still not reaching npm
-   - Issue: Unknown; variables reach docker build command but not npm run build subprocess
-
-**Evidence:**
-- Debug logging added to database.ts shows `import.meta.env.VITE_API_URL` is `undefined` in the browser
-- Console logs in vite.config.ts do not appear in build output, indicating Vite is not receiving the variables
-- Frontend falls back to hardcoded `http://localhost:8000/api`
-- Backend is working correctly and responds to requests (verified with wget tests)
-- Network communication between containers is working — verified with:
-  ```bash
-  docker-compose exec frontend wget -O- http://backend:8000/api/equity/AAPL
-  ```
-  This command successfully retrieved the full equity data JSON payload from the backend, proving that:
-  - The frontend container can resolve the `backend` service name via Docker's internal DNS
-  - The backend is running and accessible on port 8000
-  - The API endpoint `/api/equity/AAPL` is functional
-
-**Next Steps to Investigate:**
-1. Verify the exact syntax for passing ARG values to npm/Vite during RUN
-2. Check if npm scripts have special environment variable handling that requires different syntax
-3. Consider alternative: using a build script wrapper that logs environment variables before calling npm
-4. Explore whether Vite config needs explicit handling of undefined variables
-5. Review Vite build process documentation for how it discovers and uses environment variables
-
-**Workaround (Not Recommended for Production):**
-The frontend can be built locally with the correct .env file, then the built `/build` directory committed and deployed without rebuilding in Docker. This defeats the purpose of containerization but would allow the app to function. 
+Because Vite inlines these values at **build time**, rebuild the frontend image
+whenever any `VITE_*` value changes — passing them only at runtime has no effect
+on an already-built bundle.

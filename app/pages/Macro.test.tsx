@@ -14,4 +14,13 @@ describe("Macro page", () => {
     // Regime scatter centerpiece (#132/#133)
     expect(screen.getByText(/regime scatter pending data/i)).toBeInTheDocument();
   });
+
+  it("renders the supporting placeholder cards", () => {
+    render(<Macro />);
+    expect(screen.getByRole("heading", { name: "Watchlist" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Sector heatmap" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Macro AI overview" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Wedge dispersion" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Fed / macro events" })).toBeInTheDocument();
+  });
 });

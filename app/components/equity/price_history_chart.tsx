@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -31,6 +32,10 @@ const VRP_LINE = "#b08d3e";
 const VRP_FILL = "rgba(176, 141, 62, 0.18)";
 const EVENT_LINE = "rgba(120, 120, 120, 0.45)";
 const EVENT_LABEL = "#8a8a8a";
+// Transient click-drag range selection. Canvas literals like the rest of this block (canvas
+// can't read CSS vars); the HTML readout below reuses the --pos/--neg tokens instead.
+const SELECT_LINE = "rgba(55, 65, 81, 0.7)";
+const SELECT_BAND = "rgba(47, 111, 237, 0.1)";
 const GRID = "rgba(0, 0, 0, 0.05)";
 // Axis tick text. Canvas can't resolve CSS vars, so this mirrors --text-muted (light) as a
 // literal rather than passing "var(--text-muted)" (which the canvas would ignore).
@@ -43,11 +48,15 @@ const AXIS_TEXT = "#9ca3af";
    which is why switching range used to plot the wrong year's events. Module-level + stable. */
 type EventMarker = { index: number; label: string };
 
+/** Click-drag selection window, as a pair of indices into the visible `rows`. */
+type SelectionRange = { start: number; end: number };
+
 declare module "chart.js" {
   // `TType` must match chart.js's generic for declaration merging — intentionally unused here.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface PluginOptionsByType<TType extends ChartType> {
     eventMarkers?: { markers: EventMarker[] };
+    rangeSelection?: { selection: SelectionRange | null };
   }
 }
 
@@ -89,6 +98,63 @@ const eventMarkersPlugin: Plugin<"line"> = {
           rowRight[r] = left + ctx.measureText(text).width + 6;
           break;
         }
+      }
+    }
+    ctx.restore();
+  },
+};
+
+/* ── range-selection plugin ──
+   Renders the transient click-drag window: a subtle shaded band beneath the line and two
+   vertical dotted markers (with endpoint dots) on top. Like eventMarkers, it reads its state
+   from chart.options — NOT a closure — so react-chartjs-2's per-render options refresh keeps it
+   in sync with the live drag (a closure would redraw a stale window). Draws nothing when null. */
+const rangeSelectionPlugin: Plugin<"line"> = {
+  id: "rangeSelection",
+  beforeDatasetsDraw(chart) {
+    // chart.options is deeply partial in chart.js's types; we always write a full selection.
+    const sel = chart.options.plugins?.rangeSelection?.selection as SelectionRange | null;
+    if (!sel) return;
+    const { ctx, chartArea, scales } = chart;
+    const xScale = scales.x;
+    if (!xScale) return;
+    const x1 = xScale.getPixelForValue(sel.start);
+    const x2 = xScale.getPixelForValue(sel.end);
+    const left = Math.max(chartArea.left, Math.min(x1, x2));
+    const right = Math.min(chartArea.right, Math.max(x1, x2));
+    if (right <= left) return; // single-point window: no band, the marker line still draws below
+    ctx.save();
+    ctx.fillStyle = SELECT_BAND;
+    ctx.fillRect(left, chartArea.top, right - left, chartArea.bottom - chartArea.top);
+    ctx.restore();
+  },
+  afterDatasetsDraw(chart) {
+    const sel = chart.options.plugins?.rangeSelection?.selection as SelectionRange | null;
+    if (!sel) return;
+    const { ctx, chartArea, scales, data } = chart;
+    const xScale = scales.x;
+    const yScale = scales.y;
+    if (!xScale || !yScale) return;
+    // Read close values from chart.data (refreshed each render) rather than a closure.
+    const closes = data.datasets[0]?.data as (number | null)[] | undefined;
+    ctx.save();
+    for (const idx of [sel.start, sel.end]) {
+      const x = xScale.getPixelForValue(idx);
+      if (x < chartArea.left - 0.5 || x > chartArea.right + 0.5) continue;
+      ctx.beginPath();
+      ctx.setLineDash([4, 4]);
+      ctx.moveTo(x, chartArea.top);
+      ctx.lineTo(x, chartArea.bottom);
+      ctx.strokeStyle = SELECT_LINE;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const v = closes?.[idx];
+      if (v != null) {
+        ctx.beginPath();
+        ctx.arc(x, yScale.getPixelForValue(v), 3, 0, Math.PI * 2);
+        ctx.fillStyle = LINE;
+        ctx.fill();
       }
     }
     ctx.restore();
@@ -148,6 +214,49 @@ function cutoffFor(range: RangeKey, latestISO: string): Date {
   return d;
 }
 
+/** Close-to-close stats for a drag selection over `rows[a..b]`. */
+export interface SelectionStats {
+  startDate: string;
+  endDate: string;
+  startClose: number;
+  endClose: number;
+  absChange: number;
+  pctChange: number;
+  up: boolean;
+}
+
+/**
+ * Pure, testable seam for the drag-selection readout. `a`/`b` are indices into `rows` in either
+ * drag order; the window is normalized to [min, max] and clamped to the data. Returns null only
+ * for an empty `rows`. A single-point window (a === b, or a flat span) yields a zero change with
+ * `up: true` — matching the header's `change >= 0` convention.
+ */
+export function computeSelectionStats(
+  rows: PriceRecord[],
+  a: number,
+  b: number,
+): SelectionStats | null {
+  if (!rows.length) return null;
+  const last = rows.length - 1;
+  const lo = Math.max(0, Math.min(last, Math.min(a, b)));
+  const hi = Math.max(0, Math.min(last, Math.max(a, b)));
+  const start = rows[lo];
+  const end = rows[hi];
+  const startClose = start.close as number;
+  const endClose = end.close as number;
+  const absChange = endClose - startClose;
+  const pctChange = startClose ? (absChange / startClose) * 100 : 0;
+  return {
+    startDate: start.date,
+    endDate: end.date,
+    startClose,
+    endClose,
+    absChange,
+    pctChange,
+    up: absChange >= 0,
+  };
+}
+
 function DownloadIcon() {
   return (
     <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
@@ -173,6 +282,13 @@ function DownloadIcon() {
 export default function PriceHistoryChart() {
   const equity = useEquityData();
   const [range, setRange] = useState<RangeKey>("1Y");
+
+  // Transient click-drag range selection — non-null only while a drag is in progress. `start`/`end`
+  // are indices into `rows` (anchor + live cursor, in drag order). The chart ref maps pointer
+  // pixels → indices; the anchor ref holds the press index across moves.
+  const [selection, setSelection] = useState<SelectionRange | null>(null);
+  const priceChartRef = useRef<ChartJS<"line", (number | null)[], string> | null>(null);
+  const dragAnchor = useRef<number | null>(null);
 
   const allRows = useMemo<PriceRecord[]>(
     () => (equity?.price_history ?? []).filter((p) => p.close != null),
@@ -324,6 +440,9 @@ export default function PriceHistoryChart() {
     plugins: {
       legend: { display: false },
       tooltip: {
+        // Suppress the index-mode OHLCV tooltip while a drag selection is active so the two
+        // don't fight; normal hover resumes the moment the selection clears on release.
+        enabled: selection == null,
         callbacks: {
           title: (items) => (items.length ? longDate(items[0].label) : ""),
           label: (ctx) => `Close: ${usd(ctx.parsed.y)}`,
@@ -342,6 +461,8 @@ export default function PriceHistoryChart() {
       // Markers live in options (not a closure) so the stable plugin redraws the right set when
       // the range changes — see eventMarkersPlugin.
       eventMarkers: { markers: eventMarkers },
+      // Same options-not-closure pattern for the live drag selection — see rangeSelectionPlugin.
+      rangeSelection: { selection },
     },
     scales: {
       x: {
@@ -418,6 +539,47 @@ export default function PriceHistoryChart() {
     },
   };
 
+  // ── drag-selection pointer interaction (mouse; touch is a nice-to-have, not wired) ──
+  // Map a pointer's clientX to the nearest data index via the x-scale, clamped to the data.
+  // Runs client-side only (event handlers), so direct DOM access here is SSR-safe.
+  const indexFromPointer = (e: ReactPointerEvent<HTMLDivElement>): number | null => {
+    const chart = priceChartRef.current;
+    const xScale = chart?.scales.x;
+    if (!chart || !xScale) return null;
+    const px = e.clientX - chart.canvas.getBoundingClientRect().left;
+    const raw = xScale.getValueForPixel(px);
+    if (raw == null) return null;
+    return Math.max(0, Math.min(rows.length - 1, Math.round(raw)));
+  };
+
+  const onSelectStart = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return; // primary (left/touch) only — ignore right/middle drags
+    const idx = indexFromPointer(e);
+    if (idx == null) return;
+    e.preventDefault(); // suppress native text-selection / drag-ghost
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragAnchor.current = idx;
+    setSelection({ start: idx, end: idx });
+  };
+
+  const onSelectMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (dragAnchor.current == null) return; // not dragging
+    const idx = indexFromPointer(e);
+    if (idx == null) return;
+    e.preventDefault();
+    setSelection({ start: dragAnchor.current, end: idx });
+  };
+
+  // Clear on release / cancel / lost capture (covers pointer leaving the plot mid-drag) — the
+  // selection is shown ONLY during the gesture. Idempotent, so wiring it to several events is safe.
+  const onSelectEnd = () => {
+    if (dragAnchor.current == null) return;
+    dragAnchor.current = null;
+    setSelection(null);
+  };
+
+  const selStats = selection ? computeSelectionStats(rows, selection.start, selection.end) : null;
+
   return (
     <Card>
       <Header
@@ -439,8 +601,38 @@ export default function PriceHistoryChart() {
         <span className="text-sm text-(--text-muted)">· as of {longDate(latest.date)} · close</span>
       </div>
 
-      <div className="relative h-75">
-        <Chart type="line" data={priceData} options={priceOptions} plugins={[eventMarkersPlugin]} />
+      <div
+        className={`relative h-75 ${selection ? "cursor-ew-resize select-none" : ""}`}
+        onPointerDown={onSelectStart}
+        onPointerMove={onSelectMove}
+        onPointerUp={onSelectEnd}
+        onPointerCancel={onSelectEnd}
+        onLostPointerCapture={onSelectEnd}
+      >
+        <Chart
+          ref={(c) => {
+            priceChartRef.current = c ?? null;
+          }}
+          type="line"
+          data={priceData}
+          options={priceOptions}
+          plugins={[eventMarkersPlugin, rangeSelectionPlugin]}
+        />
+        {selStats && (
+          <div className="pointer-events-none absolute top-2 left-1/2 z-10 flex -translate-x-1/2 items-baseline gap-2 rounded-md border border-(--panel-border) bg-(--ui-background) px-2.5 py-1 text-xs shadow-sm">
+            <span
+              className={`font-semibold ${selStats.up ? "text-(--pos)" : "text-(--neg)"}`}
+              aria-label={`${selStats.up ? "up" : "down"} ${usd(Math.abs(selStats.absChange))}, ${Math.abs(selStats.pctChange).toFixed(2)} percent`}
+            >
+              {selStats.up ? "+" : "−"}
+              {usd(Math.abs(selStats.absChange))} ({selStats.up ? "+" : "−"}
+              {Math.abs(selStats.pctChange).toFixed(2)}%) {selStats.up ? "↑" : "↓"}
+            </span>
+            <span className="text-(--text-muted)">
+              {longDate(selStats.startDate)} – {longDate(selStats.endDate)}
+            </span>
+          </div>
+        )}
       </div>
 
       {hasVrp && (

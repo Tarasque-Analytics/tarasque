@@ -10,7 +10,7 @@ import type {
   VolatilityRecord,
   SecurityMeta,
 } from "~/utils/database";
-import { Card, Empty } from "./section";
+import { Card, Empty } from "~/components/ui/section";
 
 ChartJS.register(LinearScale, PointElement, BubbleController, Tooltip);
 

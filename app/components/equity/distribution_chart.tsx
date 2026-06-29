@@ -11,7 +11,7 @@ import type { ChartData, ChartOptions, ChartType, Plugin } from "chart.js";
 import { Chart } from "react-chartjs-2";
 import { useEquityData } from "~/context/EquityDataContext";
 import type { DistributionSet, SecurityMeta } from "~/utils/database";
-import { Card, Empty } from "./section";
+import { Card, Empty } from "~/components/ui/section";
 
 // A bar chart needs BarController + BarElement + CategoryScale (unlike the line charts elsewhere).
 // BarController is registered like contract_skew_chart registers BubbleController for the generic

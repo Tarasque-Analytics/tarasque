@@ -86,6 +86,31 @@ shared non-secret defaults.
 Because the equity queries run under one `asyncio.gather`, any single query raising will fail
 the whole payload (no partial results).
 
+### `/api/macro` — planned payload (forward-looking; still a `{}` stub)
+
+`/api/macro` is unimplemented (returns `{}`). The frontend `/macro` page is currently **scaffolding**
+(placeholder sections, no fetch — see `app/CLAUDE.md` "Macro page"). When it gets wired, the endpoint
+will need to supply, per issue:
+
+- **#135 — VRP wedge:** the cross-section wedge **size** (pp) + its **percentile**.
+- **#132 — regime betas:** per group, **CAPM β** (market-reactivity), **Mincer–Zarnowitz β**,
+  **Σ market cap** (blob size), and recent **history trails**.
+- **#133 — vol vs value:** **valuation** (% vs RAFI fair value, cap-weighted) + **vol percentile**
+  (0–100), available both **by sector** and **by ticker** (the page's View toggle).
+- **#134 — next FOMC:** days-to-meeting + date (**days-till-FOMC already exists** via `macro_calendar`)
+  plus **rate-cut odds**.
+
+**Provenance — do not touch the model.** The model-derived fields (the betas and the VRP wedge)
+originate from the **off-repo quant model → Supabase → backend (read-only)**. The backend only
+*reads* them from Supabase; computing them is the model's job and is out of scope here.
+
+**Cross-boundary flag (decision deferred, not implemented here).** #134 proposes the **frontend**
+pulling the rate-cut odds **directly** from Polymarket/Kalshi (API key to land in `#creds`). That
+diverges from the project rule that **business data flows via the backend, never browser→external
+service directly** (the app's data path is loader → FastAPI → Supabase; the browser only talks to
+Supabase for auth). Routing those odds through `/api/macro` would keep the rule intact. The call is
+**not made yet** — flagged here for a later decision.
+
 ## Database
 
 Canonical schema: `supabase/database_SQL_defs.sql`; migrations in `supabase/migrations/`.

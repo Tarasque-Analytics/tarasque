@@ -12,7 +12,8 @@ changes).
 - `app/pages/<Name>.tsx` — page components rendered by their route module.
 - `app/layouts/<Name>.tsx` — layout components (e.g. `ProtectedLayout`).
 - `app/components/<area>/<name>.tsx` — UI grouped by page area (`equity/` = redesigned
-  `/equity/:symbol` components, `ticker/` = legacy/being-replaced, `dashboard/`, `ui/` = shared).
+  `/equity/:symbol` components, `macro/` = `/macro` scaffolding, `ticker/` = legacy/being-replaced,
+  `dashboard/`, `ui/` = shared).
 - `app/context/<Name>Context.tsx` — React contexts + their hooks.
 - `app/utils/` — data fetchers and shared types.
 - `app/supabaseClient.ts` — Supabase JS client (auth only; data flows via FastAPI).
@@ -107,11 +108,13 @@ The `/equity/:symbol` page is a vertical stack of **section components** under
 contracts & skew. They deliberately share one skeleton; treat it as the standard and keep new
 sections consistent with it:
 
-- **Wrapper + placeholder come from [components/equity/section.tsx](components/equity/section.tsx)** —
+- **Wrapper + placeholder come from [components/ui/section.tsx](components/ui/section.tsx)** —
   `Card` (the `.panel p-5` surface every section sits in) and `Empty` (the centered, muted
   loading/empty/unavailable placeholder). **Reuse these; don't re-declare a local `Card`/`Empty`.**
   They were previously copy-pasted per file and drifted (mismatched placeholder heights) — the shared
-  module exists to prevent exactly that.
+  module exists to prevent exactly that. (Promoted from `components/equity/section.tsx` to
+  `components/ui/section.tsx` when `/macro` started reusing them; both `equity/` and `macro/` import
+  from there now.)
 - **Each section defines a local `Header`** (title + `symbol` + sector badge + any controls). Header
   *content* is component-specific, but every section has one and renders it in its empty states too.
 - **Data via `useEquityData()`, which may be `null`.** Two-tier empty handling, both inside
@@ -176,6 +179,54 @@ projection (the core call can be windowed *and* projected → tiny). Lighter var
 only and have each component background-`fetch` its full history after mount (simpler state, loses
 SSR streaming). The price-history chart would be the reference implementation that establishes the
 `useEquitySeries` contract.
+
+## Macro page
+
+`/macro` is **scaffolding** — a structurally-complete page shell that future passes fill with real
+content from the finance team and a future `/api/macro` endpoint. **No data layer yet:**
+[routes/macro.tsx](routes/macro.tsx) has no loader, there is no `MacroDataContext`, and every section
+renders placeholder / `Empty` content. **No fabricated data ships** (same stance as the `/dashboard`
+and `/sector/:sector` placeholders); the few static values present purely to convey layout (e.g. the
+FOMC card's `27d`) carry a `// TODO(#NNN)` and are obviously inert.
+
+Components live under [components/macro/](components/macro/) and reuse the shared `Card`/`Empty` from
+[components/ui/section.tsx](components/ui/section.tsx) (promoted there from `equity/section.tsx` so
+both areas share one source — see "Equity section components — shared structure"). Each section has a
+local `Header` and is presentational + SSR-safe (no `window`/`document` at module top or in render).
+
+**Layout** — 3-column `grid grid-cols-16` at `3 / 10 / 3`, mirroring [pages/Ticker.tsx](pages/Ticker.tsx):
+
+| Column | Components (top → bottom) |
+|---|---|
+| Left (`col-span-3`) | `next_fomc` (#134), `watchlist` |
+| Center (`col-span-10`) | `macro_regime_overview` (#135), `regime_scatter` (#132/#133), `sector_heatmap` |
+| Right (`col-span-3`) | `macro_ai_overview`, `wedge_dispersion`, `macro_events` |
+
+**Issue-driven sections** (#132–#135 define layout + content *context*; the mockups are layout
+references, not content specs):
+- **`macro_regime_overview` (#135)** — full-width banner: title, corpus subtitle, regime badge, an
+  "as of" line, and right-aligned VRP **WEDGE** (size) / **WEDGE %ILE** (percentile) stat chips.
+- **`regime_scatter` (#132 + #133)** — the centerpiece, **two lenses of one component** switched by a
+  **Lens** toggle. **Lens A "Cross-section regime" (#132):** x = CAPM / market-reactivity β, y =
+  Mincer–Zarnowitz β; blobs sized by Σ market cap, with history trails. **Lens B "Vol vs Value"
+  (#133):** x = valuation (% vs RAFI fair value, cap-weighted), y = vol percentile 0–100; colored by
+  sector, with the four named quadrants (Cheap & Feared / Rich & Anxious / Quietly Cheap / Priced for
+  Perfection) and a side `regime_legend`. Both lenses also carry **View** (Sector ↔ Tickers) and
+  **Horizon** (21d / 63d / 126d) toggles. The toggles are real `.segmented` + local `useState` but
+  **presentational only** — they switch the active option with **no data effects**. The body is the
+  quadrant frame (axis titles + Lens-B corner labels + legend) over an `Empty` placeholder; **no
+  Chart.js is built in this pass** — the scatter, trails, and per-sector coloring are content-pass
+  work (and chart colors must be local literals there, since canvas can't read CSS vars; #133 wants
+  per-sector colors).
+- **`next_fomc` (#134)** — small card: days-to-meeting, date, implied rate move, implied year-end path.
+
+**Supporting sections** (not specified by #132–#135) are labeled empty cards so the grid matches the
+mockup: `watchlist`, `sector_heatmap`, `macro_ai_overview`, `wedge_dispersion`, `macro_events`.
+
+Each section has an app-side render test (`components/macro/*.test.tsx`), plus a page test
+([pages/Macro.test.tsx](pages/Macro.test.tsx)) asserting the section stack mounts. The data this page
+will eventually consume — and the Polymarket/Kalshi cross-boundary question raised by #134 — is
+tracked in `backend/CLAUDE.md` under `/api/macro`.
 
 ## Utils & API client
 

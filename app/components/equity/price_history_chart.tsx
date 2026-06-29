@@ -19,7 +19,7 @@ import type {
 import { Chart } from "react-chartjs-2";
 import { useEquityData } from "~/context/EquityDataContext";
 import type { PriceRecord, VolatilityRecord, EventRecord, SecurityMeta } from "~/utils/database";
-import { Card, Empty } from "./section";
+import { Card, Empty } from "~/components/ui/section";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Filler);
 

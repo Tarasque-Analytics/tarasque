@@ -2,6 +2,10 @@
 // 3-column layout mirrors /equity/:symbol (pages/Ticker.tsx): grid-cols-16 @ 3 / 10 / 3.
 // Section components live under app/components/macro/. No data layer is wired in this pass; every
 // section renders placeholder / Empty content. See app/CLAUDE.md ("Macro page").
+import MacroRegimeOverview from "~/components/macro/macro_regime_overview";
+import NextFomc from "~/components/macro/next_fomc";
+import RegimeScatter from "~/components/macro/regime_scatter";
+
 export default function Macro() {
   return (
     <div className="grid grid-cols-16 gap-4">
@@ -10,9 +14,9 @@ export default function Macro() {
 
       {/* Center col — regime centerpiece */}
       <div className="col-span-10 flex flex-col gap-6">
-        {/* TODO(stage 2): next_fomc (#134) */}
-        {/* TODO(stage 2): macro_regime_overview (#135) */}
-        {/* TODO(stage 2): regime_scatter (#132/#133) */}
+        <NextFomc />
+        <MacroRegimeOverview />
+        <RegimeScatter />
         {/* TODO(stage 3): sector_heatmap */}
       </div>
 

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useEquityData } from "~/context/EquityDataContext";
 import type { EquitiesPayload, OptionRecord, PriceRecord, SecurityMeta } from "~/utils/database";
-import { Card, Empty } from "./section";
+import { Card, Empty } from "~/components/ui/section";
 
 /**
  * Options Chain table for /equity/:symbol — the standard CALLS | STRIKE | PUTS ladder for one

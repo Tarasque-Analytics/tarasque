@@ -1,9 +1,26 @@
+// Macro dashboard — scaffolding pending finance-team content + a future /api/macro endpoint.
+// 3-column layout mirrors /equity/:symbol (pages/Ticker.tsx): grid-cols-16 @ 3 / 10 / 3.
+// Section components live under app/components/macro/. No data layer is wired in this pass; every
+// section renders placeholder / Empty content. See app/CLAUDE.md ("Macro page").
 export default function Macro() {
   return (
-    <div className="flex min-h-[60vh] items-center justify-center">
-      <div className="w-full max-w-md bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-700 rounded-xl shadow-sm p-6 text-center">
-        <h1 className="text-lg font-semibold mb-2">Macro</h1>
-        <p className="text-sm text-gray-400">Macro analytics are coming soon.</p>
+    <div className="grid grid-cols-16 gap-4">
+      {/* Left col — watchlist / stats */}
+      <div className="col-span-3 flex flex-col gap-4">{/* TODO(stage 3): watchlist */}</div>
+
+      {/* Center col — regime centerpiece */}
+      <div className="col-span-10 flex flex-col gap-6">
+        {/* TODO(stage 2): next_fomc (#134) */}
+        {/* TODO(stage 2): macro_regime_overview (#135) */}
+        {/* TODO(stage 2): regime_scatter (#132/#133) */}
+        {/* TODO(stage 3): sector_heatmap */}
+      </div>
+
+      {/* Right col — commentary / events */}
+      <div className="col-span-3 flex flex-col gap-6">
+        {/* TODO(stage 3): macro_ai_overview */}
+        {/* TODO(stage 3): wedge_dispersion */}
+        {/* TODO(stage 3): macro_events */}
       </div>
     </div>
   );

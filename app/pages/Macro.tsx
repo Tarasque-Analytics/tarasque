@@ -10,29 +10,59 @@ import RegimeScatter from "~/components/macro/regime_scatter";
 import SectorHeatmap from "~/components/macro/sector_heatmap";
 import Watchlist from "~/components/macro/watchlist";
 import WedgeDispersion from "~/components/macro/wedge_dispersion";
+import { MacroDataProvider } from "~/context/MacroDataContext";
+import { loadMacroPayload, type MacroDataPayload } from "~/utils/macro";
+import { supabase } from "../supabaseClient";
+import { useState, useEffect } from "react";
 
 export default function Macro() {
+
+  const [uid, setUID] = useState("")
+  const [payload, setPayload] = useState<MacroDataPayload | null>(null)
+  
+  useEffect(() => {
+    const fetchUser = async () => {
+      const user = (await supabase.auth.getUser()).data.user?.id;
+      setUID(user || "");
+    };
+    fetchUser();
+  }, [])
+  
+  useEffect(() => {
+    if (!uid) return;
+    
+    const fetchPayload = async () => {
+      const data = await loadMacroPayload(uid);
+      setPayload(data);
+    };
+    
+    fetchPayload();
+  }, [uid])
+
+  console.log(payload)
   return (
-    <div className="grid grid-cols-16 gap-4">
-      {/* Left col — FOMC + watchlist / stats */}
-      <div className="col-span-3 flex flex-col gap-4">
-        <NextFomc />
-        <Watchlist />
-      </div>
+    <MacroDataProvider data={payload}>
+      <div className="grid grid-cols-16 gap-4">
+        {/* Left col — FOMC + watchlist / stats */}
+        <div className="col-span-3 flex flex-col gap-4">
+          <NextFomc />
+          <Watchlist />
+        </div>
 
-      {/* Center col — regime centerpiece */}
-      <div className="col-span-10 flex flex-col gap-6">
-        <MacroRegimeOverview />
-        <RegimeScatter />
-        <SectorHeatmap />
-      </div>
+        {/* Center col — regime centerpiece */}
+        <div className="col-span-10 flex flex-col gap-6">
+          <MacroRegimeOverview />
+          <RegimeScatter />
+          <SectorHeatmap />
+        </div>
 
-      {/* Right col — commentary / events */}
-      <div className="col-span-3 flex flex-col gap-6">
-        <MacroAiOverview />
-        <WedgeDispersion />
-        <MacroEvents />
+        {/* Right col — commentary / events */}
+        <div className="col-span-3 flex flex-col gap-6">
+          <MacroAiOverview />
+          <WedgeDispersion />
+          <MacroEvents />
+        </div>
       </div>
-    </div>
+    </MacroDataProvider>
   );
 }

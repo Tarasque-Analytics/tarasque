@@ -2,7 +2,7 @@ import { createContext, useContext } from "react";
 import type { ReactNode } from "react";
 import type { MacroDataPayload } from "../utils/macro";
 
-// Holds the database-backed equity payload (GET /api/equity/:symbol) for the /equity/:symbol
+// Holds the database-backed macro sectors payload (GET /api/macro/sectors) for the /macro
 // page. Value is null when the API is unavailable so the page can still render.
 export const MacroDataContext = createContext<MacroDataPayload | null>(null);
 
@@ -15,6 +15,6 @@ export function MacroDataProvider({ data, children }: MacroDataProviderProps) {
   return <MacroDataContext.Provider value={data}>{children}</MacroDataContext.Provider>;
 }
 
-export function useModelData(): MacroDataPayload | null {
+export function useMacroData(): MacroDataPayload | null {
   return useContext(MacroDataContext);
 }

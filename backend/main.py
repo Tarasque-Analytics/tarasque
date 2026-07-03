@@ -182,7 +182,7 @@ async def get_latest_model_run_data():
 
 
 @app.get("/api/model")
-async def getModel():
+async def get_model():
     """Fetch all global model metadata.
 
     Returns metadata about all model runs (not tied to any specific ticker).
@@ -216,7 +216,7 @@ async def getModel():
 
 
 @app.get("/api/model/{symbol}")
-async def getModelDataForSymbol(symbol: str):
+async def get_model_data_for_symbol(symbol: str):
     """Fetch model output data (SHAP features) for a specific ticker symbol.
 
     Retrieves the latest SHAP (SHapley Additive exPlanations) snapshot for a given symbol,
@@ -263,8 +263,8 @@ async def get_sector_data(sector: str):
     return {}
 
 
-@app.get("/api/macro/sectors")
-async def get_macro_sectors():
+@app.get("/api/macro/{uid}")
+async def get_macro():
     
     xlk, xly, xlp, xle, xlf, xlv, xli, xlb, xlre, xlu = await asyncio.gather(
         get_volatility_history(922996),      # XLK - Technology
@@ -280,16 +280,20 @@ async def get_macro_sectors():
     )
     
     return {
-        "xlk": xlk,
-        "xly": xly,
-        "xlp": xlp,
-        "xle": xle,
-        "xlf": xlf,
-        "xlv": xlv,
-        "xli": xli,
-        "xlb": xlb,
-        "xlre": xlre,
-        "xlu": xlu,
+        "sectors": {
+            "xlk": xlk,
+            "xly": xly,
+            "xlp": xlp,
+            "xle": xle,
+            "xlf": xlf,
+            "xlv": xlv,
+            "xli": xli,
+            "xlb": xlb,
+            "xlre": xlre,
+            "xlu": xlu,
+        },
+        # TODO will need to be implemented once we implement watchlists for users
+        "tickers": [] 
     }
 
 

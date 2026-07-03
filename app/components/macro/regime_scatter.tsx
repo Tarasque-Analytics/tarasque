@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Card, Empty } from "~/components/ui/section";
 import RegimeLegend, { type RegimeLens } from "./regime_legend";
+import { useMacroData } from "~/context/MacroDataContext";
 
 // Regime scatter — the centerpiece of /macro, two lenses of one component (#132 + #133), switched by
 // a Lens toggle:
@@ -73,6 +74,9 @@ export default function RegimeScatter() {
   const [horizon, setHorizon] = useState<HorizonKey>("63d");
 
   const cfg = LENSES[lens];
+
+  // const data = useMacroData()
+  // console.log(data)
 
   return (
     <Card>

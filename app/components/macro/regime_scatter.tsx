@@ -32,7 +32,12 @@ const LENSES: Record<RegimeLens, LensConfig> = {
     title: "Cross-section regime",
     subtitle: "CAPM β × Mincer–Zarnowitz β · blobs sized by Σ market cap, with trails",
     axes: { x: "Market-reactivity β (CAPM)", y: "Mincer–Zarnowitz β" },
-    corners: null,
+    corners: {
+      tl: "Stealth Event-Risk",
+      tr: "Idiosync + Systematic",
+      bl: "Genuinely Calm",
+      br: "Mega-Cap Buffer",
+    },
   },
   volvalue: {
     title: "Vol vs Value",

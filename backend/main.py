@@ -263,9 +263,34 @@ async def get_sector_data(sector: str):
     return {}
 
 
-@app.get("/api/macro")
-async def get_macro_data():
-    return {}
+@app.get("/api/macro/sectors")
+async def get_macro_sectors():
+    
+    xlk, xly, xlp, xle, xlf, xlv, xli, xlb, xlre, xlu = await asyncio.gather(
+        get_volatility_history(922996),      # XLK - Technology
+        get_volatility_history(1000229),     # XLY - Consumer Discretionary
+        get_volatility_history(1027928),     # XLP - Consumer Staples
+        get_volatility_history(1104652),     # XLE - Energy
+        get_volatility_history(1097914),     # XLF - Financials
+        get_volatility_history(1158140),     # XLV - Health Care
+        get_volatility_history(1193125),     # XLI - Industrials
+        get_volatility_history(1209210),     # XLB - Materials
+        get_volatility_history(1623815),     # XLRE - Real Estate
+        get_volatility_history(1485465),     # XLU - Utilities
+    )
+    
+    return {
+        "xlk": xlk,
+        "xly": xly,
+        "xlp": xlp,
+        "xle": xle,
+        "xlf": xlf,
+        "xlv": xlv,
+        "xli": xli,
+        "xlb": xlb,
+        "xlre": xlre,
+        "xlu": xlu,
+    }
 
 
 if __name__ == "__main__":

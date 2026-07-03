@@ -11,29 +11,49 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api"
 
 // Volatility and forecasting data (volatility_history)
 export interface VolatilityRecord {
+  security_id: number;
   date: string;
   rv: number | null;
+  iv_atm: number | null;
+  vrp_wedge: number | null;
+  pfv_21: number | null;
+  pfv_63: number | null;
+  pfv_126: number | null;
+  pfv_cal_21: number | null;
+  pfv_cal_63: number | null;
+  pfv_cal_126: number | null;
+  pfv_q15_21: number | null;
+  pfv_q15_63: number | null;
+  pfv_q15_126: number | null;
+  fwd_premium_21d: number | null;
+  fwd_premium_63d: number | null;
+  fwd_premium_126d: number | null;
+  fwd_premium_21_to_63d: number | null;
+  fwd_premium_63_to_126d: number | null;
   ewma_vol: number | null;
   iv_atm_30d: number | null;
   iv_atm_60d: number | null;
   iv_atm_91d: number | null;
   iv_atm_182d: number | null;
-  vrp_wedge: number | null;
   vrp_wedge_ewma_21d: number | null;
-  pfv_21: number | null;
-  pfv_63: number | null;
-  pfv_126: number | null;
-  pfv_q15_21: number | null;
-  pfv_q15_63: number | null;
-  pfv_q15_126: number | null;
-  pfv_cal_21: number | null;
-  pfv_cal_63: number | null;
-  pfv_cal_126: number | null;
-  next_earnings_date?: string | null;
-  days_to_earnings?: number | null;
-  next_dividend_date?: string | null;
-  days_to_dividend?: number | null;
+  next_earnings_date: string | null;
+  days_to_earnings: number | null;
+  next_dividend_date: string | null;
+  days_to_dividend: number | null;
   model_run_id: number | null;
+  shap_h21_top10: Record<string, unknown> | null;
+  shap_h63_top10: Record<string, unknown> | null;
+  shap_h126_top10: Record<string, unknown> | null;
+  fwd_premium_ewma_21d: number | null;
+  fwd_premium_ewma_63d: number | null;
+  fwd_premium_ewma_126d: number | null;
+  beta_mkt_252d: number | null;
+  beta_mz_h21: number | null;
+  beta_mz_h63: number | null;
+  beta_mz_h126: number | null;
+  mz_alpha_h21: number | null;
+  mz_alpha_h63: number | null;
+  mz_alpha_h126: number | null;
 }
 
 // Security metadata (securities) — subset returned alongside the equity payload for page chrome

@@ -75,8 +75,10 @@ export default function RegimeScatter() {
 
   const cfg = LENSES[lens];
 
-  // const data = useMacroData()
-  // console.log(data)
+  const data = useMacroData()
+  
+
+
 
   return (
     <Card>

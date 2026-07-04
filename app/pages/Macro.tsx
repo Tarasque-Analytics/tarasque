@@ -39,7 +39,6 @@ export default function Macro() {
     fetchPayload();
   }, [uid])
 
-  console.log(payload)
   return (
     <MacroDataProvider data={payload}>
       <div className="grid grid-cols-16 gap-4">

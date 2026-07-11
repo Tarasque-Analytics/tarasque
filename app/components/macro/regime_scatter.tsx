@@ -2,7 +2,12 @@ import { useState } from "react";
 import { Card, Empty } from "~/components/ui/section";
 import RegimeLegend, { type RegimeLens } from "./regime_legend";
 import { useMacroData } from "~/context/MacroDataContext";
+import { Chart as ChartJS, LinearScale, PointElement, Tooltip, Legend } from 'chart.js';
+import { Scatter } from 'react-chartjs-2'
+import type { SectorData } from "~/utils/macro";
+import ChartDataLabels from "chartjs-plugin-datalabels";
 
+ChartJS.register(LinearScale, PointElement, Tooltip, Legend);
 // Regime scatter — the centerpiece of /macro, two lenses of one component (#132 + #133), switched by
 // a Lens toggle:
 //   • Lens A "Cross-section regime" (#132): x = CAPM / market-reactivity β, y = Mincer–Zarnowitz β;
@@ -27,6 +32,13 @@ type LensConfig = {
   // Corner labels exist for Lens B only (#133); null for Lens A (#132).
   corners: { tl: string; tr: string; bl: string; br: string } | null;
 };
+
+interface RegimeDataPoint {
+  x: number
+  y: number
+  label: string
+  radius: number
+}
 
 const LENSES: Record<RegimeLens, LensConfig> = {
   regime: {
@@ -75,11 +87,6 @@ export default function RegimeScatter() {
 
   const cfg = LENSES[lens];
 
-  const data = useMacroData()
-  
-
-
-
   return (
     <Card>
       <Header
@@ -103,7 +110,7 @@ export default function RegimeScatter() {
             </div>
 
             <div className="flex-1">
-              <QuadrantFrame corners={cfg.corners} />
+              <QuadrantFrame corners={cfg.corners} horizon={horizon} lens={lens}/>
               {/* x-axis title */}
               <div className="mt-2 text-center text-xs font-medium text-(--text-muted)">
                 {cfg.axes.x}
@@ -120,9 +127,75 @@ export default function RegimeScatter() {
 
 /* ── quadrant frame: bordered plot area with crosshair midlines, optional corner labels, and an
    Empty placeholder standing in for the (deferred) scatter. Plain markup — no Chart.js. ── */
-function QuadrantFrame({ corners }: { corners: LensConfig["corners"] }) {
+function QuadrantFrame({ corners, horizon, lens }: { corners: LensConfig["corners"]; horizon: HorizonKey; lens: RegimeLens }) {  
+  const data = useMacroData()
+
+  
+  const tlQuandrant: RegimeDataPoint[] = []
+  const trQuandrant: RegimeDataPoint[] = []
+  const blQuandrant: RegimeDataPoint[] = []
+  const brQuandrant: RegimeDataPoint[] = []
+  
+  if (lens == "regime"  && data?.sectors) {
+    const sectors = data?.sectors
+  
+    const getQuandrantMzBetaVsMktBeta = (mktB: number | null, mzB: number | null) => {
+      if (mktB === null || mzB === null) {
+        return null
+      }
+      if (mktB < 1 && mzB < 1) {
+        return blQuandrant
+      } else if (mktB < 1 && mzB > 1) {
+        return tlQuandrant
+      } else if (mktB > 1 && mzB < 1) {
+        return brQuandrant
+      } else { // (mktB > 1 && mzB > 1)
+        return trQuandrant
+      }
+    }
+
+    // sort the sectors into the appropriate quandrants
+    for (const sector of sectors) {
+      const latest_vol = sector.vol_history[0] ? sector.vol_history[0] : {beta_mkt_252d: Math.random() * 2, beta_mz_h21: Math.random() * 2, beta_mz_h63: Math.random() * 2, beta_mz_h126: Math.random() * 2}
+      let quadrant = null
+      const mkt_beta = latest_vol.beta_mkt_252d
+      let mz_beta: number | null = null
+      switch (horizon) {
+        case "21d":
+          mz_beta = latest_vol.beta_mz_h21
+          break;
+        case "63d":
+          mz_beta = latest_vol.beta_mz_h63
+          break;
+        case "126d":
+          mz_beta = latest_vol.beta_mz_h126
+          break;
+      }
+
+      quadrant = getQuandrantMzBetaVsMktBeta(mkt_beta, mz_beta)
+      if (quadrant && mkt_beta && mz_beta) {
+        const point_radii = Math.max(sector.mkt_cap / 100000000000 * 5, 5)
+        console.log(point_radii)
+        quadrant.push({x: mkt_beta, y: mz_beta, label: sector.name, radius: point_radii})
+      } else {
+        // console.log(`Error plotting ${sector.name}`)
+      }
+    }
+  } else if (lens == "volvalue") {
+
+  }
+
+  // Pre-compute radius arrays for each dataset
+  const tlRadii = tlQuandrant.map(p => p.radius)
+  const trRadii = trQuandrant.map(p => p.radius)
+  const blRadii = blQuandrant.map(p => p.radius)
+  const brRadii = brQuandrant.map(p => p.radius)
+  console.log(blRadii)
+
+
+
   return (
-    <div className="relative rounded-lg border border-(--panel-border)">
+    <div className="relative rounded-lg border border-(--panel-border) h-80">
       {/* crosshair midlines splitting the four quadrants */}
       <div className="absolute inset-y-0 left-1/2 w-px bg-(--panel-border)" aria-hidden="true" />
       <div className="absolute inset-x-0 top-1/2 h-px bg-(--panel-border)" aria-hidden="true" />
@@ -130,15 +203,68 @@ function QuadrantFrame({ corners }: { corners: LensConfig["corners"] }) {
       {/* corner labels (Lens B only) */}
       {corners && (
         <>
-          <CornerLabel className="left-2 top-2 text-left">{corners.tl}</CornerLabel>
-          <CornerLabel className="right-2 top-2 text-right">{corners.tr}</CornerLabel>
-          <CornerLabel className="bottom-2 left-2 text-left">{corners.bl}</CornerLabel>
-          <CornerLabel className="bottom-2 right-2 text-right">{corners.br}</CornerLabel>
+          <CornerLabel className="left-8 top-2 text-left">{corners.tl}</CornerLabel>
+          <CornerLabel className="right-3 top-2 text-right">{corners.tr}</CornerLabel>
+          <CornerLabel className="bottom-7 left-8 text-left">{corners.bl}</CornerLabel>
+          <CornerLabel className="bottom-7 right-3 text-right">{corners.br}</CornerLabel>
         </>
       )}
 
-      {/* placeholder plot area — Empty provides the frame height (h-80) */}
-      <Empty>Regime scatter pending data</Empty>
+      {/* placeholder plot area */}
+      <div className="absolute inset-0 rounded-lg overflow-hidden">
+        <Scatter
+          options={{
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            plugins: {
+              legend: {
+                display: false
+              }
+            },
+            scales: {
+              x: {
+                type: 'linear',
+                position: 'bottom',
+                min: 0,
+                max: 2
+              },
+              y: {
+                min: 0,
+                max: 2
+              }
+            }
+          }}
+          data={{
+            datasets: [
+              {
+                label: 'tlQuandrant',
+                data: tlQuandrant,
+                backgroundColor: 'rgba(75, 192, 192, 0.6)',
+                pointRadius: tlRadii
+              },
+              {
+                label: 'trQuadrant',
+                data: trQuandrant,
+                backgroundColor: 'rgba(153, 102, 255, 0.6)',
+                pointRadius: trRadii
+              },
+              {
+                label: 'blQuadrant',
+                data: blQuandrant,
+                backgroundColor: 'rgba(255, 159, 64, 0.6)',
+                pointRadius: blRadii
+              },
+              {
+                label: 'brQuadrant',
+                data: brQuandrant,
+                backgroundColor: 'rgba(255, 99, 132, 0.6)',
+                pointRadius: brRadii 
+              }
+            ]
+          }}
+      />
+      </div>
     </div>
   );
 }

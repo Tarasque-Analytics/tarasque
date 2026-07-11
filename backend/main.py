@@ -280,18 +280,18 @@ async def get_macro():
     )
     
     return {
-        "sectors": {
-            "xlk": xlk,
-            "xly": xly,
-            "xlp": xlp,
-            "xle": xle,
-            "xlf": xlf,
-            "xlv": xlv,
-            "xli": xli,
-            "xlb": xlb,
-            "xlre": xlre,
-            "xlu": xlu,
-        },
+        "sectors": [
+            {"name": "XLK", "vol_history": xlk, "mkt_cap": 100000000},
+            {"name": "XLY", "vol_history": xly, "mkt_cap": 100000000},
+            {"name": "XLP", "vol_history": xlp, "mkt_cap": 100000000},
+            {"name": "XLE", "vol_history": xle, "mkt_cap": 100000000},
+            {"name": "XLF", "vol_history": xlf, "mkt_cap": 100000000},
+            {"name": "XLV", "vol_history": xlv, "mkt_cap": 100000000},
+            {"name": "XLI", "vol_history": xli, "mkt_cap": 100000000},
+            {"name": "XLB", "vol_history": xlb, "mkt_cap": 100000000},
+            {"name": "XLRE", "vol_history": xlre, "mkt_cap": 100000000},
+            {"name": "XLU", "vol_history": xlu, "mkt_cap": 100000000}
+        ],
         # TODO will need to be implemented once we implement watchlists for users
         "tickers": [] 
     }

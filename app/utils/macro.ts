@@ -20,9 +20,22 @@ export interface MacroTickers {
   vol_history: VolatilityRecord[]
 }
 
+export interface SectorData {
+  name: string;
+  vol_history: VolatilityRecord[];
+  mkt_cap: number;
+}
+
 export interface MacroDataPayload {
-  sectors: MacroSectors;
+  sectors: SectorData[];
   tickers: MacroTickers[]
+}
+
+export function flattenMacroSectors(sectors: MacroSectors): SectorData[] {
+  return Object.entries(sectors).map(([name, vol_history]) => ({
+    name,
+    vol_history,
+  }));
 }
 
 export async function loadMacroPayload(uid: string): Promise<MacroDataPayload | null> {

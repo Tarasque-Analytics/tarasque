@@ -29,9 +29,10 @@
   },
   "dependencies": {
     "@react-router/node": "7.12.0",
-    "@react-router/serve": "7.12.0",
+    "@react-router/serve": "^7.18.1",
     "@supabase/supabase-js": "^2.103.3",
     "chart.js": "^4.5.1",
+    "chartjs-plugin-annotation": "^3.1.0",
     "chartjs-plugin-datalabels": "^2.2.0",
     "isbot": "^5.1.31",
     "react": "^19.2.4",
@@ -42,7 +43,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@react-router/dev": "7.12.0",
+    "@react-router/dev": "^7.18.1",
     "@tailwindcss/vite": "^4.1.13",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

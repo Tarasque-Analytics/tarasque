@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, Empty } from "~/components/ui/section";
 import RegimeLegend, { type RegimeLens } from "./regime_legend";
 import { useMacroData } from "~/context/MacroDataContext";
@@ -6,8 +6,9 @@ import { Chart as ChartJS, LinearScale, PointElement, Tooltip, Legend } from 'ch
 import { Scatter } from 'react-chartjs-2'
 import type { SectorData } from "~/utils/macro";
 import ChartDataLabels from "chartjs-plugin-datalabels";
+import annotationPlugin from 'chartjs-plugin-annotation'
 
-ChartJS.register(LinearScale, PointElement, Tooltip, Legend);
+ChartJS.register(LinearScale, PointElement, Tooltip, Legend, ChartDataLabels, annotationPlugin);
 // Regime scatter — the centerpiece of /macro, two lenses of one component (#132 + #133), switched by
 // a Lens toggle:
 //   • Lens A "Cross-section regime" (#132): x = CAPM / market-reactivity β, y = Mincer–Zarnowitz β;
@@ -129,12 +130,28 @@ export default function RegimeScatter() {
    Empty placeholder standing in for the (deferred) scatter. Plain markup — no Chart.js. ── */
 function QuadrantFrame({ corners, horizon, lens }: { corners: LensConfig["corners"]; horizon: HorizonKey; lens: RegimeLens }) {  
   const data = useMacroData()
+  
+  // Compute CSS variable color for labels to match system settings (memoized for performance)
+  const getSystemColor = () => {
+    if (typeof window !== 'undefined') {
+      const color = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary')?.trim()
+      return color || '#999999'
+    }
+    return '#999999'
+  }
+  const labelColor = useMemo(() => getSystemColor(), [])
 
   
   const tlQuandrant: RegimeDataPoint[] = []
   const trQuandrant: RegimeDataPoint[] = []
   const blQuandrant: RegimeDataPoint[] = []
   const brQuandrant: RegimeDataPoint[] = []
+
+  
+  let xMin: number = Infinity
+  let xMax: number = -Infinity
+  let yMin: number = Infinity
+  let yMax: number = -Infinity
   
   if (lens == "regime"  && data?.sectors) {
     const sectors = data?.sectors
@@ -156,6 +173,7 @@ function QuadrantFrame({ corners, horizon, lens }: { corners: LensConfig["corner
 
     // sort the sectors into the appropriate quandrants
     for (const sector of sectors) {
+      // const latest_vol = sector.vol_history[0]
       const latest_vol = sector.vol_history[0] ? sector.vol_history[0] : {beta_mkt_252d: Math.random() * 2, beta_mz_h21: Math.random() * 2, beta_mz_h63: Math.random() * 2, beta_mz_h126: Math.random() * 2}
       let quadrant = null
       const mkt_beta = latest_vol.beta_mkt_252d
@@ -174,11 +192,16 @@ function QuadrantFrame({ corners, horizon, lens }: { corners: LensConfig["corner
 
       quadrant = getQuandrantMzBetaVsMktBeta(mkt_beta, mz_beta)
       if (quadrant && mkt_beta && mz_beta) {
-        const point_radii = Math.max(sector.mkt_cap / 100000000000 * 5, 5)
-        console.log(point_radii)
+        // const point_radii = Math.max(sector.mkt_cap / 100000000000 * 50, 15)
+        const point_radii = Math.random() * 35 + 15
+        xMin = Math.min(mkt_beta, xMin)
+        xMax = Math.max(mkt_beta, xMax)
+        yMin = Math.min(mz_beta, yMin)
+        yMax = Math.max(mz_beta, yMax)
+        
         quadrant.push({x: mkt_beta, y: mz_beta, label: sector.name, radius: point_radii})
       } else {
-        // console.log(`Error plotting ${sector.name}`)
+        console.log(`Error plotting ${sector.name}`)
       }
     }
   } else if (lens == "volvalue") {
@@ -190,25 +213,29 @@ function QuadrantFrame({ corners, horizon, lens }: { corners: LensConfig["corner
   const trRadii = trQuandrant.map(p => p.radius)
   const blRadii = blQuandrant.map(p => p.radius)
   const brRadii = brQuandrant.map(p => p.radius)
-  console.log(blRadii)
 
+  // Add one unit of padding for the axies
+  xMin -= 1
+  xMax += 1
+  yMin -= 1
+  yMax += 1
 
 
   return (
     <div className="relative rounded-lg border border-(--panel-border) h-80">
       {/* crosshair midlines splitting the four quadrants */}
-      <div className="absolute inset-y-0 left-1/2 w-px bg-(--panel-border)" aria-hidden="true" />
-      <div className="absolute inset-x-0 top-1/2 h-px bg-(--panel-border)" aria-hidden="true" />
+      {/* <div className="absolute inset-y-0 left-1/2 w-px bg-(--panel-border)" aria-hidden="true" />
+      <div className="absolute inset-x-0 top-1/2 h-px bg-(--panel-border)" aria-hidden="true" /> */}
 
       {/* corner labels (Lens B only) */}
-      {corners && (
+      {/* {corners && (
         <>
-          <CornerLabel className="left-8 top-2 text-left">{corners.tl}</CornerLabel>
-          <CornerLabel className="right-3 top-2 text-right">{corners.tr}</CornerLabel>
+          <CornerLabel className="top-2 left-8 text-left">{corners.tl}</CornerLabel>
+          <CornerLabel className="top-2 right-3 text-right">{corners.tr}</CornerLabel>
           <CornerLabel className="bottom-7 left-8 text-left">{corners.bl}</CornerLabel>
-          <CornerLabel className="bottom-7 right-3 text-right">{corners.br}</CornerLabel>
+          <CornerLabel className="bottom-1 right-3 text-right">{corners.br}</CornerLabel>
         </>
-      )}
+      )} */}
 
       {/* placeholder plot area */}
       <div className="absolute inset-0 rounded-lg overflow-hidden">
@@ -220,18 +247,73 @@ function QuadrantFrame({ corners, horizon, lens }: { corners: LensConfig["corner
             plugins: {
               legend: {
                 display: false
+              },
+              datalabels: {
+                color: '#FFFFFF'
+              },
+              annotation: {
+                annotations: {
+                  verticalLine: {
+                    type: 'line',
+                    scaleID: 'x',
+                    value: 1,
+                    // borderColor: 'white',
+                    borderWidth: 1,
+                    borderDash: [10, 5]
+                  },
+                  horizontalLine: {
+                    type: 'line',
+                    scaleID: 'y',
+                    value: 1,
+                    // borderColor: 'white',
+                    borderWidth: 1,
+                    borderDash: [10, 5]
+                  },
+                  tlCorner: {
+                    type: 'label',
+                    xValue: xMin + 0.27,
+                    yValue: yMax - 0.1,
+                    content: [corners?.tl || ''],
+                    font: { size: 12, weight: 'bold' },
+                    color: labelColor
+                  },
+                  trCorner: {
+                    type: 'label',
+                    xValue: xMax - 0.35,
+                    yValue: yMax - 0.2,
+                    content: [corners?.tr || ''],
+                    font: { size: 12, weight: 'bold' },
+                    color: labelColor
+                  },
+                  blCorner: {
+                    type: 'label',
+                    xValue: xMin + 0.25,
+                    yValue: yMin + 0.1,
+                    content: [corners?.bl || ''],
+                    font: { size: 12, weight: 'bold' },
+                    color: labelColor
+                  },
+                  brCorner: {
+                    type: 'label',
+                    xValue: xMax - 0.27,
+                    yValue: yMin + 0.1,
+                    content: [corners?.br || ''],
+                    font: { size: 12, weight: 'bold' },
+                    color: labelColor
+                  }
+                }
               }
             },
             scales: {
               x: {
                 type: 'linear',
                 position: 'bottom',
-                min: 0,
-                max: 2
+                min: xMin,
+                max: xMax
               },
               y: {
-                min: 0,
-                max: 2
+                min: yMin,
+                max: yMax
               }
             }
           }}

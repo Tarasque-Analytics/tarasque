@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 CONFLICT_KEYS: dict[str, str] = {
     "securities": "security_id",
     "options_chain": "security_id,snapshot_date,expiry,option_type,strike",
+    "ai_overview": "security_id",
 }
 
 
@@ -83,6 +84,10 @@ class WriteClient:
         """Upsert universe metadata. Keyed on security_id (PK)."""
         return await self._upsert("securities", rows)
 
+    async def upsert_ai_overview(self, rows: Sequence[dict[str, Any]]) -> int:
+        """Upsert AI overview"""
+        return await self._upsert("ai_overview", rows)
+    
     # ── reads (freshness signals + planning) ──────────────────────────────────────────────────
     async def options_snapshot_exists(
         self, security_ids: Sequence[int], snapshot_date: date

@@ -15,7 +15,16 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+<<<<<<< HEAD
+from dotenv import load_dotenv
+from supabase import acreate_client
+import asyncio
+from contextlib import asynccontextmanager
+import traceback
+from openrouter import OpenRouter
+=======
 
+>>>>>>> f43ae04 (updated to include AI overview automation script)
 from backend import database
 from backend.database import (
     get_active_tickers,
@@ -81,7 +90,23 @@ async def health_check():
     """Health check endpoint"""
     return {"status": "ok"}
 
-
+@app.get("/api/equity/aislop")
+async def ai_overview(ticker):
+    ticker = ticker.upper()
+    try:
+        security_medatadata = await get_security_data(ticker)
+        sec_id = security_medatadata["security_id"]
+        summary = get_ai_overview(sec_id)
+        
+    
+    except HTTPException:
+        raise  # Re-raise HTTPException as-is to preserve status codes
+    except Exception as e:
+        print(f"Exception thrown: {str(e)}", flush=True)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Equity data cannot be found for {ticker}")
+    return summary
+    
 @app.get("/api/equity/{symbol}")
 async def get_equity_data(symbol: str):
     """

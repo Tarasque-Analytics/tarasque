@@ -9,7 +9,7 @@ import DistributionChart from "../components/equity/distribution_chart";
 import EquityUnavailable from "../components/equity/equity_unavailable";
 import { EquityDataProvider } from "../context/EquityDataContext";
 import type { TickerLoaderData } from "../routes/ticker";
-
+import Overview from "../components/equity/overview";
 export default function TickerView() {
   const { equity } = useLoaderData() as TickerLoaderData;
   const { symbol } = useParams();

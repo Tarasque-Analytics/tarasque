@@ -9,15 +9,16 @@ Tiers:
   - live tests require VITE_SUPABASE_URL + VITE_SUPABASE_PUBLISHABLE_KEY (loaded from the
     repo-root .env by conftest.py) and are skipped otherwise.
 """
+
 import asyncio
 import inspect
 import os
 
 import pytest
-from supabase import AsyncClient, acreate_client
 
 from backend import database
 from backend.main import app, lifespan
+from supabase import AsyncClient, acreate_client
 
 LIVE = bool(os.getenv("VITE_SUPABASE_URL") and os.getenv("VITE_SUPABASE_PUBLISHABLE_KEY"))
 requires_creds = pytest.mark.skipif(
@@ -31,6 +32,7 @@ FAKE_KEY = "fake-key-for-construction-only"
 
 
 # --- client construction & wiring (offline) ---------------------------------
+
 
 def test_acreate_client_must_be_awaited():
     """acreate_client is a coroutine function: calling it without `await` yields a
@@ -65,12 +67,14 @@ def test_initialize_db_sets_module_client():
 
 # --- lifespan & live connection (need creds) ---------------------------------
 
+
 @requires_creds
 def test_app_boots_and_health_ok():
     """The app's lifespan (env load + client creation + initialize_db) runs without error,
     and a non-DB endpoint responds. Drives the lifespan + ASGI app directly (avoids the
     starlette TestClient, which is incompatible with httpx >= 0.28's removed `app=` kwarg)."""
-    from httpx import ASGITransport, AsyncClient as HttpxClient
+    from httpx import ASGITransport
+    from httpx import AsyncClient as HttpxClient
 
     async def _boot_and_health():
         async with lifespan(app):
@@ -87,6 +91,7 @@ def test_app_boots_and_health_ok():
 def test_lifespan_initializes_real_async_client():
     """After startup the shared client must be a live AsyncClient, not an un-awaited
     coroutine — the precise failure mode the lifespan bug produced."""
+
     async def _boot():
         async with lifespan(app):
             return database.supabase
@@ -100,6 +105,7 @@ def test_lifespan_initializes_real_async_client():
 def test_live_db_roundtrip():
     """Connectivity smoke test: a query round-trips and returns a list. Uses the core
     `securities` table only as a ping; asserts nothing about its columns or contents."""
+
     async def _ping():
         client = await acreate_client(
             os.environ["VITE_SUPABASE_URL"],

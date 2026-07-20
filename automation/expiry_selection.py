@@ -8,6 +8,7 @@ while serving both a useful term structure and liquid near-term expiries for the
 
 No network, no I/O — trivially testable.
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -60,7 +61,7 @@ def select_expiries(
 
     # Front monthlies — the next N standard (3rd-Friday) expiries.
     monthlies = [d for d in future if is_standard_monthly(d)]
-    for d in monthlies[:max(0, front_monthlies)]:
+    for d in monthlies[: max(0, front_monthlies)]:
         chosen.add(d)
 
     return sorted(chosen)

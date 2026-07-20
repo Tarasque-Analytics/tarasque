@@ -63,11 +63,7 @@ export default function Login() {
       <div className="auth-card">
         <h1 className="page-title">Login</h1>
 
-        {error && (
-          <div className="error-box">
-            {error}
-          </div>
-        )}
+        {error && <div className="error-box">{error}</div>}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="form-field">
@@ -94,11 +90,7 @@ export default function Login() {
             />
           </div>
 
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="primary-button"
-          >
+          <button type="submit" disabled={isLoading} className="primary-button">
             {isLoading ? "Logging in..." : "Login"}
           </button>
 
@@ -114,11 +106,7 @@ export default function Login() {
             disabled={isLoading}
             className="oauth-button"
           >
-            
-            <img
-              src="app\assets\Google__G__logo.svg"
-              alt="Google Logo"
-            />
+            <img src="app\assets\Google__G__logo.svg" alt="Google Logo" />
             Continue with Google
           </button>
 

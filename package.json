@@ -1,5 +1,5 @@
 {
-  "name": "volarbmodel",
+  "name": "tarasque",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,9 +9,23 @@
     "dev:backend": "python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir backend",
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc",
-    "test:backend": "python -m pytest",
+    "lint": "npm run lint:app && npm run lint:py",
+    "lint:check": "npm run lint:app:check && npm run lint:py:check",
+    "lint:app": "eslint app --fix",
+    "lint:app:check": "eslint app",
+    "lint:py": "ruff check --fix backend automation",
+    "lint:py:check": "ruff check backend automation",
+    "format": "npm run format:app && npm run format:py",
+    "format:check": "npm run format:app:check && npm run format:py:check",
+    "format:app": "prettier --write \"app/**/*.{ts,tsx,css}\"",
+    "format:app:check": "prettier --check \"app/**/*.{ts,tsx,css}\"",
+    "format:py": "ruff format backend automation",
+    "format:py:check": "ruff format --check backend automation",
+    "test": "npm run test:frontend && npm run test:backend && npm run test:automation",
     "test:frontend": "vitest run",
-    "test:frontend:watch": "vitest"
+    "test:frontend:watch": "vitest",
+    "test:backend": "python -m pytest",
+    "test:automation": "python -m pytest automation/tests"
   },
   "dependencies": {
     "@react-router/node": "7.12.0",
@@ -27,6 +41,7 @@
     "types": "^0.1.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@react-router/dev": "7.12.0",
     "@tailwindcss/vite": "^4.1.13",
     "@testing-library/jest-dom": "^6.9.1",
@@ -35,10 +50,16 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "concurrently": "^10.0.3",
+    "eslint": "^10.5.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.7.0",
     "jsdom": "^29.1.1",
+    "prettier": "^3.8.4",
     "supabase": "^2.82.0",
     "tailwindcss": "^4.1.13",
     "typescript": "^5.9.2",
+    "typescript-eslint": "^8.62.0",
     "vite": "^7.1.7",
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^4.1.8"

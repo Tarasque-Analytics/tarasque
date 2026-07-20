@@ -12,7 +12,8 @@ changes).
 - `app/pages/<Name>.tsx` — page components rendered by their route module.
 - `app/layouts/<Name>.tsx` — layout components (e.g. `ProtectedLayout`).
 - `app/components/<area>/<name>.tsx` — UI grouped by page area (`equity/` = redesigned
-  `/equity/:symbol` components, `ticker/` = legacy/being-replaced, `dashboard/`, `ui/` = shared).
+  `/equity/:symbol` components, `macro/` = `/macro` scaffolding, `ticker/` = legacy/being-replaced,
+  `dashboard/`, `ui/` = shared).
 - `app/context/<Name>Context.tsx` — React contexts + their hooks.
 - `app/utils/` — data fetchers and shared types.
 - `app/supabaseClient.ts` — Supabase JS client (auth only; data flows via FastAPI).
@@ -23,9 +24,16 @@ changes).
 npm run dev           # Vite dev server on http://localhost:5173
 npm run dev:backend   # FastAPI on :8000 (required for any data-backed page)
 npm run typecheck     # react-router typegen && tsc
+npm run lint:app      # ESLint (app) — `--fix`; use `lint:app:check` to check only
+npm run format:app    # Prettier (app) — use `format:app:check` to check only
+npm run test:frontend # Vitest (app/)
 ```
 
-Anything under `ProtectedLayout` needs the backend running.
+Anything under `ProtectedLayout` needs the backend running. `npm run lint` / `npm run format`
+(no suffix) cover **both** the app and the Python stacks at once; CI runs the `:check` variants on
+every PR — see `CONTRIBUTING.md` §7. Section components under `app/components/equity/` have
+app-side render tests (`*.test.tsx`, e.g. `equity_unavailable.test.tsx`); mirror that pattern for
+new ones.
 
 ## Routing
 
@@ -100,16 +108,24 @@ The `/equity/:symbol` page is a vertical stack of **section components** under
 contracts & skew. They deliberately share one skeleton; treat it as the standard and keep new
 sections consistent with it:
 
-- **Wrapper + placeholder come from [components/equity/section.tsx](components/equity/section.tsx)** —
+- **Wrapper + placeholder come from [components/ui/section.tsx](components/ui/section.tsx)** —
   `Card` (the `.panel p-5` surface every section sits in) and `Empty` (the centered, muted
   loading/empty/unavailable placeholder). **Reuse these; don't re-declare a local `Card`/`Empty`.**
   They were previously copy-pasted per file and drifted (mismatched placeholder heights) — the shared
-  module exists to prevent exactly that.
+  module exists to prevent exactly that. (Promoted from `components/equity/section.tsx` to
+  `components/ui/section.tsx` when `/macro` started reusing them; both `equity/` and `macro/` import
+  from there now.)
 - **Each section defines a local `Header`** (title + `symbol` + sector badge + any controls). Header
   *content* is component-specific, but every section has one and renders it in its empty states too.
 - **Data via `useEquityData()`, which may be `null`.** Two-tier empty handling, both inside
   `Card` + `Empty`: payload null → `"<Thing> data is currently unavailable."`; present-but-no-rows →
   `"No <thing> available for {symbol}."`.
+- **Windowed sections fall back to the first available window rather than landing on empty.** When a
+  section's data is split into selectable windows that may individually be absent (the distribution
+  chart's lookbacks are the first case), keep the user's selected window if it has data, otherwise
+  show the first (narrowest) window that does, and disable the empty windows in the toggle. Only fall
+  through to the per-section `Empty` when *no* window has data. This keeps a default like `1Y` from
+  showing empty when `5Y/MAX` would populate — the intended UX precedent for windowed sections.
 - **Page-level fallback** when the *whole* payload is null is a separate component,
   [components/equity/equity_unavailable.tsx](components/equity/equity_unavailable.tsx) (rendered by
   [pages/Ticker.tsx](pages/Ticker.tsx) in place of the section stack) — not the per-section `Empty`.
@@ -126,12 +142,12 @@ than letting one diverge.
 |---|---|---|
 | `security` | `SecurityMeta?` | Company name + GICS sector/industry for the page header (resolved from `securities`; present whenever the payload is) |
 | `price_history` | `PriceRecord[]` | Full available OHLCV history per security (paginated; ~12y for older listings) — source for the price-history chart (range selector filters client-side) |
-| `volatility_history` | `VolatilityRecord[]` | ~5 years of vol/IV term structures, VRP wedge, forecast features (full column list in `backend/CLAUDE.md`) |
+| `volatility_history` | `VolatilityRecord[]` | Full available vol/IV term structures, VRP wedge, forecast features (paginated, ~12y for older listings; full column list in `backend/CLAUDE.md`) |
 | `options_chain` | `OptionRecord[]` | Latest snapshot — strike/expiry/type + bid/ask/iv/delta |
 | `ai_overview` | `AIOverview \| null` | Latest unflagged AI commentary, or null |
 | `latest_shap_snapshot` | `SHAPSnapshot[]` | SHAP feature attributions per horizon |
 | `events` | `EventRecord[]` | Per-security events (full history) — drawn as event-annotation lines on the price chart |
-| `distribution_data` | `DistributionBin[]?` | Currently disabled — see `backend/CLAUDE.md` |
+| `distribution_data` | `DistributionSet[]?` | Live (stock scope) — per `(metric, lookback)` RV/IV/VRP histograms computed in-Python from `volatility_history` (lookbacks `3M/6M/YTD/1Y/2Y/5Y/MAX`; undersized combos omitted). Drives the Historical Distribution chart, which toggles metric/lookback/scope client-side and falls back to the first available window. Sector/market deferred. See `backend/CLAUDE.md` |
 
 The DB call is non-fatal; consumers **must handle `useEquityData()` returning `null`**.
 
@@ -164,6 +180,54 @@ only and have each component background-`fetch` its full history after mount (si
 SSR streaming). The price-history chart would be the reference implementation that establishes the
 `useEquitySeries` contract.
 
+## Macro page
+
+`/macro` is **scaffolding** — a structurally-complete page shell that future passes fill with real
+content from the finance team and a future `/api/macro` endpoint. **No data layer yet:**
+[routes/macro.tsx](routes/macro.tsx) has no loader, there is no `MacroDataContext`, and every section
+renders placeholder / `Empty` content. **No fabricated data ships** (same stance as the `/dashboard`
+and `/sector/:sector` placeholders); the few static values present purely to convey layout (e.g. the
+FOMC card's `27d`) carry a `// TODO(#NNN)` and are obviously inert.
+
+Components live under [components/macro/](components/macro/) and reuse the shared `Card`/`Empty` from
+[components/ui/section.tsx](components/ui/section.tsx) (promoted there from `equity/section.tsx` so
+both areas share one source — see "Equity section components — shared structure"). Each section has a
+local `Header` and is presentational + SSR-safe (no `window`/`document` at module top or in render).
+
+**Layout** — 3-column `grid grid-cols-16` at `3 / 10 / 3`, mirroring [pages/Ticker.tsx](pages/Ticker.tsx):
+
+| Column | Components (top → bottom) |
+|---|---|
+| Left (`col-span-3`) | `next_fomc` (#134), `watchlist` |
+| Center (`col-span-10`) | `macro_regime_overview` (#135), `regime_scatter` (#132/#133), `sector_heatmap` |
+| Right (`col-span-3`) | `macro_ai_overview`, `wedge_dispersion`, `macro_events` |
+
+**Issue-driven sections** (#132–#135 define layout + content *context*; the mockups are layout
+references, not content specs):
+- **`macro_regime_overview` (#135)** — full-width banner: title, corpus subtitle, regime badge, an
+  "as of" line, and right-aligned VRP **WEDGE** (size) / **WEDGE %ILE** (percentile) stat chips.
+- **`regime_scatter` (#132 + #133)** — the centerpiece, **two lenses of one component** switched by a
+  **Lens** toggle. **Lens A "Cross-section regime" (#132):** x = CAPM / market-reactivity β, y =
+  Mincer–Zarnowitz β; blobs sized by Σ market cap, with history trails. **Lens B "Vol vs Value"
+  (#133):** x = valuation (% vs RAFI fair value, cap-weighted), y = vol percentile 0–100; colored by
+  sector, with the four named quadrants (Cheap & Feared / Rich & Anxious / Quietly Cheap / Priced for
+  Perfection) and a side `regime_legend`. Both lenses also carry **View** (Sector ↔ Tickers) and
+  **Horizon** (21d / 63d / 126d) toggles. The toggles are real `.segmented` + local `useState` but
+  **presentational only** — they switch the active option with **no data effects**. The body is the
+  quadrant frame (axis titles + Lens-B corner labels + legend) over an `Empty` placeholder; **no
+  Chart.js is built in this pass** — the scatter, trails, and per-sector coloring are content-pass
+  work (and chart colors must be local literals there, since canvas can't read CSS vars; #133 wants
+  per-sector colors).
+- **`next_fomc` (#134)** — small card: days-to-meeting, date, implied rate move, implied year-end path.
+
+**Supporting sections** (not specified by #132–#135) are labeled empty cards so the grid matches the
+mockup: `watchlist`, `sector_heatmap`, `macro_ai_overview`, `wedge_dispersion`, `macro_events`.
+
+Each section has an app-side render test (`components/macro/*.test.tsx`), plus a page test
+([pages/Macro.test.tsx](pages/Macro.test.tsx)) asserting the section stack mounts. The data this page
+will eventually consume — and the Polymarket/Kalshi cross-boundary question raised by #134 — is
+tracked in `backend/CLAUDE.md` under `/api/macro`.
+
 ## Utils & API client
 
 - [utils/database.ts](utils/database.ts) — **canonical** equity spec and the only data-fetch util.
@@ -183,6 +247,16 @@ Same single repo-root `.env` as the backend; Vite reads `VITE_SUPABASE_URL` /
 `VITE_SUPABASE_PUBLISHABLE_KEY` (with `VITE_SUPABASE_ANON_KEY` as fallback). The dev/stg/prod
 model and the planned Vite-mode + `.env.{development,staging,production}` config are documented
 in `backend/CLAUDE.md` — not yet implemented.
+
+**Docker `env_file` vs. build-time vars (optional follow-up, from the containerization work #124).**
+`docker-compose.yml` sets `env_file: .env` on the *frontend* service, but `VITE_*` are build-time
+only — already inlined into the browser bundle by `npm run build`, so the runtime `env_file` can't
+change what the browser uses (only the Docker build args do). It *does* feed the SSR Node process's
+`process.env`, which `supabaseClient.ts` reads as a server-side fallback — so the baked (build-time)
+and runtime (`env_file`) Supabase values can diverge and point the browser vs. SSR passes at
+different projects. Optional: keep `.env` and the build args in sync, or drop `env_file` from the
+frontend service (its only effect is the SSR fallback). The backend service's `env_file` is correct
+and required.
 
 ## Conventions
 

@@ -1,0 +1,8 @@
+# Dev/test dependencies for the automation package (not required to run the tools).
+# Install (from repo root): pip install -r automation/requirements-dev.txt
+# Run tests: python -m pytest automation/tests
+pytest
+
+# Linter + formatter (app-team Python; config in pyproject.toml [tool.ruff]). Pinned so a
+# Ruff release can't change rules/formatting and break CI unexpectedly — bump deliberately.
+ruff==0.15.19

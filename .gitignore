@@ -54,17 +54,100 @@ model/**/__pycache__/
 model/**/*.pyc
 
 # Pipeline generated outputs (regenerated each run — not tracked)
-# Versioned run archives (v1_no_t5yifr/, v2_t5yifr/, etc.) ARE tracked.
 model/pipeline/results/predictions_*.csv
-model/pipeline/results/all_predictions.csv
+model/pipeline/results/all_predictions*.csv
 model/pipeline/results/backtest_results.csv
 model/pipeline/results/resid_*.csv
 model/pipeline/results/vrp_*.csv
+model/pipeline/results/mz_calibration.csv
+model/pipeline/results/q15_coverage_offsets.csv
+model/pipeline/results/feature_decay_*.csv
+model/pipeline/results/lasso_detailed_*.csv
+model/pipeline/results/lasso_tracking_*.csv
+model/pipeline/results/xgb_importance_*.csv
+model/pipeline/results/corr_matrix_*.csv
+model/pipeline/results/corr_summary.json
+model/pipeline/results/benchmark_comparison.csv
+model/pipeline/results/regime_2x2*
 model/pipeline/results/payloads/
+model/pipeline/results/forecasts/
+model/pipeline/results/regime_trail/
+model/pipeline/results/beta_over_time/
+model/pipeline/results/tail_log/
+model/pipeline/results/signal_strength/
+model/pipeline/results/vrp_conditional/
+model/pipeline/results/audit/
+model/pipeline/results/validation/
+model/pipeline/results/webapp_export/
+model/pipeline/results/archive_pre_v6/
+model/pipeline/results/*.png
+logs/
+
 # Supabase local state
 supabase/.branches
 supabase/.temp
+supabase/snippets/
 
 # Model pipeline artifacts
 model/.env
 data_cache/
+
+# Local-only research / analysis scripts
+# (production analysis lives at model/pipeline/analysis/mz_overlay.py)
+model/pipeline/analysis/vrp_*.py
+model/pipeline/analysis/beta_*.py
+model/pipeline/analysis/regime_*.py
+model/pipeline/analysis/aggregate_*.py
+model/pipeline/analysis/iv_prediction_*.py
+model/pipeline/analysis/yz_vs_gk_*.py
+model/pipeline/analysis/residual_analysis.py
+model/pipeline/analysis/vrp_analysis.py
+model/pipeline/analysis/feature_decay.py
+model/pipeline/analysis/hyperparam_search.py
+model/pipeline/analysis/relative_quadrant_ic.py
+model/pipeline/analysis/signal_strength.py
+model/pipeline/analysis/stack_v9_canary.py
+model/pipeline/analysis/tail_log.py
+model/pipeline/analysis/trail_dynamics_ic.py
+model/pipeline/analysis/validate_signal.py
+model/pipeline/analysis/wedge_price_panel.py
+model/pipeline/analysis/benchmark_models.py
+model/pipeline/analysis/quick_validation.py
+model/pipeline/analysis/refresh_q15_offsets.py
+model/pipeline/analysis/overnight_runner.py
+model/pipeline/analysis/coverage_check.py
+model/pipeline/analysis/audit.py
+model/pipeline/analysis/corr_matrix.py
+
+# Local-only research scripts deferred from PR
+model/pipeline/pull_sp500.py
+model/pipeline/scripts/bundle_risk_payloads.py
+model/pipeline/scripts/cadence_experiment.py
+model/pipeline/scripts/merge_cadence_to_canonical.py
+model/pipeline/scripts/db_audit.py
+model/pipeline/scripts/test_*.py
+model/pipeline/test_*.py
+
+# Local-only research docs and writeups
+model/RESEARCH_TODO.md
+model/iteration_log.md
+model/iteration_roadmap.md
+model/AUDIT_PLAN_*.md
+model/CLAUDE_HANDOFF_*.md
+model/LAUNCH_PLAN_*.md
+model/DASHBOARD_SPEC*.md
+model/SUPABASE_SCHEMA.md
+model/claude_context.md
+model/signal_context/
+
+# Local-only orchestration drafts (path not taken — see automation/ on main)
+scripts/*.bat
+scripts/*.ps1
+.github/workflows/tarasque-*.yml
+.github/workflows/README.md
+
+# SQL migrations live in automation/ per architectural split (model = math only)
+model/sql/
+
+# Claude session state
+.claude/

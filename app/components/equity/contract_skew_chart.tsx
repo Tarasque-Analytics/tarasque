@@ -10,7 +10,7 @@ import type {
   VolatilityRecord,
   SecurityMeta,
 } from "~/utils/database";
-import { Card, Empty } from "./section";
+import { Card, Empty } from "~/components/ui/section";
 
 ChartJS.register(LinearScale, PointElement, BubbleController, Tooltip);
 
@@ -57,6 +57,8 @@ type SkewBands = {
 };
 
 declare module "chart.js" {
+  // `TType` must match chart.js's generic for declaration merging — intentionally unused here.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface PluginOptionsByType<TType extends ChartType> {
     skewBands?: SkewBands;
   }

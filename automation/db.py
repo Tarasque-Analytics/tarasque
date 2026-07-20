@@ -9,6 +9,7 @@ Every write is an **upsert keyed on the table's real constraint** so re-running 
 duplicates, no corruption. The supabase SDK is imported lazily inside `connect()` so `import
 automation` works without it installed (e.g. for dry-run / typechecking).
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -32,7 +33,7 @@ CONFLICT_KEYS: dict[str, str] = {
 class WriteClient:
     """Thin, typed wrapper over the service-role Supabase client (write side only)."""
 
-    _BATCH = 500   # max rows per PostgREST request; larger sets are batched
+    _BATCH = 500  # max rows per PostgREST request; larger sets are batched
 
     def __init__(self, config: "SupabaseConfig", *, dry_run: bool = False) -> None:
         self._config = config
@@ -47,6 +48,7 @@ class WriteClient:
             return
         self._config.validate()
         from supabase import acreate_client  # lazy: keeps `import automation` dependency-free
+
         self._client = await acreate_client(self._config.url, self._config.secret_key)
 
     async def close(self) -> None:
@@ -66,7 +68,7 @@ class WriteClient:
         conflict = CONFLICT_KEYS[table]
         written = 0
         for i in range(0, len(rows), self._BATCH):
-            batch = list(rows[i:i + self._BATCH])
+            batch = list(rows[i : i + self._BATCH])
             try:
                 await self._client.table(table).upsert(batch, on_conflict=conflict).execute()
             except Exception as e:  # noqa: BLE001 — add table context; don't leak raw PostgREST text
@@ -87,8 +89,9 @@ class WriteClient:
         return await self._upsert("ai_overview", rows)
     
     # ── reads (freshness signals + planning) ──────────────────────────────────────────────────
-    async def options_snapshot_exists(self, security_ids: Sequence[int],
-                                      snapshot_date: date) -> dict[int, bool]:
+    async def options_snapshot_exists(
+        self, security_ids: Sequence[int], snapshot_date: date
+    ) -> dict[int, bool]:
         """Whether today's options_chain snapshot already exists per security (skip-if-done)."""
         ids = list(security_ids)
         if not ids or self._client is None:
@@ -123,7 +126,11 @@ class WriteClient:
         """All securities rows with the GICS/name columns — for diffing a metadata sync."""
         if self._client is None:
             return []
-        resp = await self._client.table("securities").select(
-            "security_id,ticker,gics_sector,gics_subindustry,company_name,sector_etf,active"
-        ).execute()
+        resp = (
+            await self._client.table("securities")
+            .select(
+                "security_id,ticker,gics_sector,gics_subindustry,company_name,sector_etf,active"
+            )
+            .execute()
+        )
         return resp.data or []

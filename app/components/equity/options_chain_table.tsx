@@ -1,13 +1,8 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useEquityData } from "~/context/EquityDataContext";
-import type {
-  EquitiesPayload,
-  OptionRecord,
-  PriceRecord,
-  SecurityMeta,
-} from "~/utils/database";
-import { Card, Empty } from "./section";
+import type { EquitiesPayload, OptionRecord, PriceRecord, SecurityMeta } from "~/utils/database";
+import { Card, Empty } from "~/components/ui/section";
 
 /**
  * Options Chain table for /equity/:symbol — the standard CALLS | STRIKE | PUTS ladder for one
@@ -141,7 +136,7 @@ const HIGH_R = 0.005; // prem/spot at/above which a leg is full strength
 const legOpacity = (leg: Leg | null, spot: number) => {
   if (!leg) return 1;
   const prem =
-    leg.mid ?? (leg.bid != null && leg.ask != null ? (leg.bid + leg.ask) / 2 : leg.bid ?? 0);
+    leg.mid ?? (leg.bid != null && leg.ask != null ? (leg.bid + leg.ask) / 2 : (leg.bid ?? 0));
   const e = Math.min(1, Math.max(0, (prem / spot - LOW_R) / (HIGH_R - LOW_R)));
   return 0.4 + 0.6 * e;
 };
@@ -155,7 +150,9 @@ export default function OptionsChainTable() {
   // previously-picked expiry isn't present in the current view.
   const [picked, setPicked] = useState<string | null>(null);
   const selected =
-    view && picked && view.expiries.some((e) => e.iso === picked) ? picked : view?.expiries[0]?.iso ?? "";
+    view && picked && view.expiries.some((e) => e.iso === picked)
+      ? picked
+      : (view?.expiries[0]?.iso ?? "");
 
   const rows = useMemo<Row[]>(
     () => (view && selected ? view.rowsFor(selected) : []),
@@ -236,7 +233,9 @@ export default function OptionsChainTable() {
                   {h}
                 </th>
               ))}
-              <th className="border-x border-(--panel-border) px-3 py-1.5 text-center font-medium">$</th>
+              <th className="border-x border-(--panel-border) px-3 py-1.5 text-center font-medium">
+                $
+              </th>
               {(["BID", "ASK", "IV", "VOL", "OI", "Δ"] as const).map((h) => (
                 <th key={`p-${h}`} className="px-2 py-1.5 text-right font-medium">
                   {h}

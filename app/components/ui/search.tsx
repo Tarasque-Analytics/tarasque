@@ -25,7 +25,7 @@ export default function Search() {
 
   // Filter tickers based on input (case-insensitive)
   const filteredTickers = availableTickers.filter((t) =>
-    t.toUpperCase().includes(ticker.toUpperCase())
+    t.toUpperCase().includes(ticker.toUpperCase()),
   );
 
   return (

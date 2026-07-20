@@ -9,12 +9,16 @@ import os
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+<<<<<<< HEAD
 from dotenv import load_dotenv
 from supabase import acreate_client
 import asyncio
 from contextlib import asynccontextmanager
 import traceback
 from openrouter import OpenRouter
+=======
+
+>>>>>>> f43ae04 (updated to include AI overview automation script)
 from backend import database
 from backend.database import (
     get_active_tickers,
@@ -74,23 +78,22 @@ async def health_check():
     return {"status": "ok"}
 
 @app.get("/api/equity/aislop")
-async def ai_overview():
-    request = """You are a memelord, and have been winning awards for years.
-    Your task is to translate 朋友是一个坚韧不拔的纪录片， 在香港这座城市的设置。 主演：钱德勒 索罗斯 傅博斯1 瑞秋 莫妮卡 和一些其他他妈的演员。
-    into a random Romance language, including old languages like Latin.
-    Only output the translation itself, nothing else, and make sure you only give me one version of the translation.
-     """
-    async with OpenRouter(api_key = os.environ.get("llm_api_key")) as client:
-        response = await client.chat.send_async(
-            model = "nvidia/nemotron-3-ultra-550b-a55b:free",
-            messages = [
-                {"role": "user",
-                 "content": request
-                    }
-            ]
-        )
-        # return response.choices[0].message.content
-        print(response.choices[0].message.content)
+async def ai_overview(ticker):
+    ticker = ticker.upper()
+    try:
+        security_medatadata = await get_security_data(ticker)
+        sec_id = security_medatadata["security_id"]
+        summary = get_ai_overview(sec_id)
+        
+    
+    except HTTPException:
+        raise  # Re-raise HTTPException as-is to preserve status codes
+    except Exception as e:
+        print(f"Exception thrown: {str(e)}", flush=True)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Equity data cannot be found for {ticker}")
+    return summary
+    
 @app.get("/api/equity/{symbol}")
 async def get_equity_data(symbol: str):
     """

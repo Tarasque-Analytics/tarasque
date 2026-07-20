@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import { useState, useEffect } from "react";
 import { Card, Empty } from "./section";
 
@@ -28,7 +27,7 @@ return (
         </h2>
         <p>{message}</p>
         <Empty>
-            {/* <p>{reply}</p> */}
+            <p>reply</p>
         </Empty>
     </div>
     </Card>

@@ -1,14 +1,13 @@
 import { useState, useMemo } from "react";
-import { Card, Empty } from "~/components/ui/section";
+import { Card } from "~/components/ui/section";
 import RegimeLegend, { type RegimeLens } from "./regime_legend";
 import { useMacroData } from "~/context/MacroDataContext";
 import { Chart as ChartJS, LinearScale, PointElement, Tooltip, Legend } from 'chart.js';
 import { Scatter } from 'react-chartjs-2'
-import type { SectorData } from "~/utils/macro";
 import ChartDataLabels from "chartjs-plugin-datalabels";
-import annotationPlugin from 'chartjs-plugin-annotation'
+import AnnotationPlugin from 'chartjs-plugin-annotation'
 
-ChartJS.register(LinearScale, PointElement, Tooltip, Legend, ChartDataLabels, annotationPlugin);
+ChartJS.register(LinearScale, PointElement, Tooltip, Legend, ChartDataLabels, AnnotationPlugin);
 // Regime scatter — the centerpiece of /macro, two lenses of one component (#132 + #133), switched by
 // a Lens toggle:
 //   • Lens A "Cross-section regime" (#132): x = CAPM / market-reactivity β, y = Mincer–Zarnowitz β;
@@ -154,6 +153,7 @@ function QuadrantFrame({ corners, horizon, lens }: { corners: LensConfig["corner
   let yMax: number = -Infinity
   
   if (lens == "regime"  && data?.sectors) {
+    // probably refactor this section out to its own function to make this cleaner
     const sectors = data?.sectors
   
     const getQuandrantMzBetaVsMktBeta = (mktB: number | null, mzB: number | null) => {
@@ -171,10 +171,9 @@ function QuadrantFrame({ corners, horizon, lens }: { corners: LensConfig["corner
       }
     }
 
-    // sort the sectors into the appropriate quandrants
     for (const sector of sectors) {
       // const latest_vol = sector.vol_history[0]
-      const latest_vol = sector.vol_history[0] ? sector.vol_history[0] : {beta_mkt_252d: Math.random() * 2, beta_mz_h21: Math.random() * 2, beta_mz_h63: Math.random() * 2, beta_mz_h126: Math.random() * 2}
+      const latest_vol = sector.vol_history[0] ? sector.vol_history[0] : {beta_mkt_252d: Math.random() * 4 - 2, beta_mz_h21: Math.random() * 4 - 2, beta_mz_h63: Math.random() * 4 - 2, beta_mz_h126: Math.random() * 4 - 2}
       let quadrant = null
       const mkt_beta = latest_vol.beta_mkt_252d
       let mz_beta: number | null = null
@@ -189,7 +188,8 @@ function QuadrantFrame({ corners, horizon, lens }: { corners: LensConfig["corner
           mz_beta = latest_vol.beta_mz_h126
           break;
       }
-
+            
+      // sort the sectors into the appropriate quandrants
       quadrant = getQuandrantMzBetaVsMktBeta(mkt_beta, mz_beta)
       if (quadrant && mkt_beta && mz_beta) {
         // const point_radii = Math.max(sector.mkt_cap / 100000000000 * 50, 15)
@@ -198,7 +198,6 @@ function QuadrantFrame({ corners, horizon, lens }: { corners: LensConfig["corner
         xMax = Math.max(mkt_beta, xMax)
         yMin = Math.min(mz_beta, yMin)
         yMax = Math.max(mz_beta, yMax)
-        
         quadrant.push({x: mkt_beta, y: mz_beta, label: sector.name, radius: point_radii})
       } else {
         console.log(`Error plotting ${sector.name}`)
@@ -219,6 +218,9 @@ function QuadrantFrame({ corners, horizon, lens }: { corners: LensConfig["corner
   xMax += 1
   yMin -= 1
   yMax += 1
+
+  // Inset for corner labels (keeps them fully in-frame, away from edges)
+  const labelInset = 0.5
 
 
   return (
@@ -257,7 +259,6 @@ function QuadrantFrame({ corners, horizon, lens }: { corners: LensConfig["corner
                     type: 'line',
                     scaleID: 'x',
                     value: 1,
-                    // borderColor: 'white',
                     borderWidth: 1,
                     borderDash: [10, 5]
                   },
@@ -271,32 +272,32 @@ function QuadrantFrame({ corners, horizon, lens }: { corners: LensConfig["corner
                   },
                   tlCorner: {
                     type: 'label',
-                    xValue: xMin + 0.27,
-                    yValue: yMax - 0.1,
+                    xValue: xMin + labelInset,
+                    yValue: yMax - labelInset,
                     content: [corners?.tl || ''],
                     font: { size: 12, weight: 'bold' },
                     color: labelColor
                   },
                   trCorner: {
                     type: 'label',
-                    xValue: xMax - 0.35,
-                    yValue: yMax - 0.2,
+                    xValue: xMax - labelInset,
+                    yValue: yMax - labelInset,
                     content: [corners?.tr || ''],
                     font: { size: 12, weight: 'bold' },
                     color: labelColor
                   },
                   blCorner: {
                     type: 'label',
-                    xValue: xMin + 0.25,
-                    yValue: yMin + 0.1,
+                    xValue: xMin + labelInset,
+                    yValue: yMin + labelInset,
                     content: [corners?.bl || ''],
                     font: { size: 12, weight: 'bold' },
                     color: labelColor
                   },
                   brCorner: {
                     type: 'label',
-                    xValue: xMax - 0.27,
-                    yValue: yMin + 0.1,
+                    xValue: xMax - labelInset,
+                    yValue: yMin + labelInset,
                     content: [corners?.br || ''],
                     font: { size: 12, weight: 'bold' },
                     color: labelColor

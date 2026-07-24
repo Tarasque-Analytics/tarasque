@@ -31,13 +31,6 @@ export interface MacroDataPayload {
   tickers: MacroTickers[]
 }
 
-export function flattenMacroSectors(sectors: MacroSectors): SectorData[] {
-  return Object.entries(sectors).map(([name, vol_history]) => ({
-    name,
-    vol_history,
-  }));
-}
-
 export async function loadMacroPayload(uid: string): Promise<MacroDataPayload | null> {
   try {
     const response = await fetch(`${API_BASE_URL}/macro/${uid}`);

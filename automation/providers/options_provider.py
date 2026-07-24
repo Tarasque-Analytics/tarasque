@@ -271,7 +271,7 @@ class YFinanceOptionsProvider:
 
         t = self._ticker(ticker)
         rows: list[dict[str, Any]] = []
-
+        
         for expiry in expiries:
             chain = self._retry(
                 lambda e=expiry: t.option_chain(e.isoformat()),
